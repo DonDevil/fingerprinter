@@ -1,0 +1,5 @@
+loguru
+requests
+pytest
+python-dotenv
+# Video/audio/image fingerprinting libraries (to be added as needed)
