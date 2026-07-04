@@ -2,4 +2,5 @@ loguru
 requests
 pytest
 python-dotenv
+PyYAML
 # Video/audio/image fingerprinting libraries (to be added as needed)

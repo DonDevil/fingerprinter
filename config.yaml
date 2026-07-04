@@ -1,0 +1,27 @@
+pipeline:
+  # Reject discovered videos shorter than this duration (seconds).
+  # Set to -1 to disable short-video rejection and process full video base.
+  short_video_threshold_seconds: 19
+
+queue:
+  backend: crawler
+  crawler_media_db_path: ../crawler/storage/media_evidence.db
+  worker_name: fingerprinter-worker
+  poll_interval_seconds: 2
+  max_retry_count: 3
+
+downloader:
+  download_dir: fingerprinter/storage/downloads
+  request_timeout_seconds: 30
+  # Keep Tor disabled unless SOCKS proxy routing is intentionally configured.
+  enable_tor: false
+
+storage_policy:
+  # Local metadata DB for processed assets and file lifecycle.
+  metadata_db_path: fingerprinter/storage/processing.db
+  # Maximum number of rejected/test files to retain.
+  max_rejected_files: 200
+  # Maximum total size of rejected/test files (MB) to retain.
+  max_rejected_bytes_mb: 2048
+  # When limits are exceeded, delete oldest rejected files first.
+  delete_rejected_overflow: true
