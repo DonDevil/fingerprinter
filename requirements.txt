@@ -3,4 +3,5 @@ requests
 pytest
 python-dotenv
 PyYAML
+imageio-ffmpeg
 # Video/audio/image fingerprinting libraries (to be added as needed)

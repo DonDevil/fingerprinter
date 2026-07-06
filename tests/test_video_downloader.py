@@ -7,7 +7,7 @@ import tempfile
 import shutil
 import time
 import pytest
-from fingerprinter.downloader.video_downloader import VideoDownloader
+from downloader.video_downloader import VideoDownloader
 
 @pytest.fixture(scope="module")
 def http_server():
@@ -30,7 +30,7 @@ def http_server():
 
 
 def test_full_download(http_server):
-    downloader = VideoDownloader(download_dir="fingerprinter/storage/test_downloads")
+    downloader = VideoDownloader(download_dir="storage/test_downloads")
     path = downloader.download(http_server)
     assert os.path.exists(path)
     assert os.path.getsize(path) == 1024 * 1024
@@ -38,7 +38,7 @@ def test_full_download(http_server):
 
 
 def test_partial_download(http_server):
-    downloader = VideoDownloader(download_dir="fingerprinter/storage/test_downloads")
+    downloader = VideoDownloader(download_dir="storage/test_downloads")
     path = downloader.download(http_server, filename="partial.mp4", byte_range=(0, 499999))
     assert os.path.exists(path)
     size = os.path.getsize(path)
@@ -47,3 +47,15 @@ def test_partial_download(http_server):
         pytest.skip("Server does not support partial content; full file downloaded.")
     assert 400000 < size < 600000
     os.remove(path)
+
+
+def test_local_file_copy_download(tmp_path):
+    source = tmp_path / "source.mp4"
+    source.write_bytes(b"hello-world")
+
+    downloader = VideoDownloader(download_dir=str(tmp_path / "downloads"))
+    path = downloader.download(str(source), filename="copied.mp4")
+
+    assert os.path.exists(path)
+    with open(path, "rb") as handle:
+        assert handle.read() == b"hello-world"

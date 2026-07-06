@@ -1,7 +1,7 @@
 import os
 import tempfile
 import pytest
-from fingerprinter.queue.job_queue import JobQueue
+from work_queue.job_queue import JobQueue
 
 @pytest.fixture
 def temp_db():

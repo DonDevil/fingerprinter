@@ -341,6 +341,30 @@ Current operational baseline for Phase A worker:
   - oldest rejected files are deleted first when overflow is enabled
 
 
+## Phase Status Checkpoint (2026-07-05)
+
+### Phase A Status: Completed
+
+- Queue integration with crawler sample jobs is operational.
+- Schema-compatibility and retry logic are stable in production runs.
+- Tor-disabled policy now rejects `.onion` assets early instead of retry churn.
+- Metadata persistence and rejected-file retention are active.
+- Verification: test suite green (`21 passed, 1 skipped`) and bounded runtime smoke checks pass.
+
+### Phase B Status: Stage 0-2 Baseline Implemented
+
+- Added runtime target input via CLI flag: `--target "Film Title"`.
+- Stage 1 implemented: container signature extraction (URL/file extension + duration artifact).
+- Stage 2 implemented: quick target match scorer using token overlap from target title vs URL/filename.
+- Decision policy added with configurable thresholds:
+  - `phase_b_low_match_threshold`
+  - `phase_b_high_match_threshold`
+- Worker now emits conservative statuses for Phase B:
+  - `sampled`
+  - `uncertain_manual_review`
+  - `no_match_pending_review`
+
+
 ## Non-negotiables
 
 - No automatic piracy flag from single weak signal.

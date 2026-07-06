@@ -9,3 +9,4 @@ class QueueJob:
     media_url: str
     media_type: str
     priority: int
+    source_domain: str | None = None

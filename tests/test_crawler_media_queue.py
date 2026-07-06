@@ -1,6 +1,6 @@
 import sqlite3
 
-from fingerprinter.queue.crawler_media_queue import CrawlerMediaQueue
+from work_queue.crawler_media_queue import CrawlerMediaQueue
 
 
 def _create_media_schema(conn: sqlite3.Connection) -> None:
@@ -185,5 +185,98 @@ def test_retry_policy_requeues_before_max_then_fails(tmp_path):
 
         assert retry_count == 3
         assert status == "failed"
+    finally:
+        queue.close()
+
+
+def test_boost_domain_priority_updates_pending_jobs_for_same_source(tmp_path):
+    db_path = tmp_path / "media_domain_boost.db"
+    conn = sqlite3.connect(str(db_path))
+    _create_media_schema(conn)
+
+    conn.execute(
+        """INSERT INTO media_assets (id, url, media_type, source_domain, status)
+           VALUES (10, ?, 'video', 'pirate.example', 'queued_for_sampling')""",
+        ("https://pirate.example/a.mp4",),
+    )
+    conn.execute(
+        """INSERT INTO media_assets (id, url, media_type, source_domain, status)
+           VALUES (11, ?, 'video', 'pirate.example', 'queued_for_sampling')""",
+        ("https://pirate.example/b.mp4",),
+    )
+    conn.execute(
+        """INSERT INTO media_assets (id, url, media_type, source_domain, status)
+           VALUES (12, ?, 'video', 'other.example', 'queued_for_sampling')""",
+        ("https://other.example/c.mp4",),
+    )
+
+    conn.execute(
+        """INSERT INTO sample_jobs (asset_id, status, priority, created_at, updated_at)
+           VALUES (10, 'pending', 9, '2026-07-01T00:00:00Z', '2026-07-01T00:00:00Z')"""
+    )
+    conn.execute(
+        """INSERT INTO sample_jobs (asset_id, status, priority, created_at, updated_at)
+           VALUES (11, 'pending', 8, '2026-07-01T00:00:00Z', '2026-07-01T00:00:00Z')"""
+    )
+    conn.execute(
+        """INSERT INTO sample_jobs (asset_id, status, priority, created_at, updated_at)
+           VALUES (12, 'pending', 7, '2026-07-01T00:00:00Z', '2026-07-01T00:00:00Z')"""
+    )
+    conn.commit()
+    conn.close()
+
+    queue = CrawlerMediaQueue(str(db_path), worker_name="worker-domain")
+    try:
+        updated = queue.boost_domain_priority("pirate.example", boosted_priority=1)
+        assert updated == 2
+
+        conn = sqlite3.connect(str(db_path))
+        rows = conn.execute(
+            """SELECT ma.source_domain, sj.priority
+               FROM sample_jobs sj
+               JOIN media_assets ma ON ma.id = sj.asset_id
+               ORDER BY sj.asset_id ASC"""
+        ).fetchall()
+        conn.close()
+
+        assert rows[0] == ("pirate.example", 1)
+        assert rows[1] == ("pirate.example", 1)
+        assert rows[2] == ("other.example", 7)
+    finally:
+        queue.close()
+
+
+def test_requeue_stale_claimed_jobs_moves_jobs_back_to_pending(tmp_path):
+    db_path = tmp_path / "media_reclaim.db"
+    conn = sqlite3.connect(str(db_path))
+    _create_media_schema(conn)
+
+    conn.execute(
+        "INSERT INTO media_assets (id, url, media_type, status) VALUES (20, ?, 'video', 'claimed')",
+        ("https://cdn.example/stale.mp4",),
+    )
+    conn.execute(
+        """INSERT INTO sample_jobs (asset_id, status, priority, claimed_by, created_at, updated_at)
+           VALUES (20, 'claimed', 5, 'worker-a', '2026-07-01T00:00:00Z', '2026-07-01T00:00:00Z')"""
+    )
+    conn.commit()
+    conn.close()
+
+    queue = CrawlerMediaQueue(str(db_path), worker_name="worker-reclaim")
+    try:
+        reclaimed = queue.requeue_stale_claimed_jobs(stale_after_seconds=10)
+        assert reclaimed == 1
+
+        conn = sqlite3.connect(str(db_path))
+        sample = conn.execute(
+            "SELECT status, claimed_by FROM sample_jobs WHERE asset_id = 20"
+        ).fetchone()
+        asset = conn.execute(
+            "SELECT status FROM media_assets WHERE id = 20"
+        ).fetchone()
+        conn.close()
+
+        assert sample == ("pending", None)
+        assert asset == ("queued_for_sampling",)
     finally:
         queue.close()

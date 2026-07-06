@@ -4,7 +4,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from fingerprinter.storage.processing_metadata_store import ProcessingMetadataStore
+from storage.processing_metadata_store import ProcessingMetadataStore
 
 
 class RejectedFileRetentionPolicy:
@@ -55,5 +55,45 @@ class RejectedFileRetentionPolicy:
                 logger.info("Deleted rejected file due to retention policy: {}", local_path)
             except Exception as exc:
                 logger.warning("Failed to delete rejected file {}: {}", local_path, exc)
+
+        return deleted
+
+    def delete_non_matching_assets(self) -> int:
+        """Delete non-matching local files while retaining matched evidence."""
+
+        records = self.metadata_store.list_non_matching_not_deleted()
+        deleted = 0
+
+        for item in records:
+            raw_local_path = str(item.get("local_path") or "").strip()
+            local_path = Path(raw_local_path) if raw_local_path else None
+            record_id = int(item["id"])
+            if not local_path or raw_local_path in {"", "."}:
+                self.metadata_store.mark_deleted(
+                    record_id,
+                    note="marked deleted without local file path",
+                )
+                deleted += 1
+                continue
+
+            try:
+                if local_path.exists() and local_path.is_file():
+                    local_path.unlink()
+                elif local_path.exists() and local_path.is_dir():
+                    self.metadata_store.mark_deleted(
+                        record_id,
+                        note="skipped deletion for directory path",
+                    )
+                    deleted += 1
+                    logger.warning("Skipped non-matching deletion because path is directory: {}", local_path)
+                    continue
+                self.metadata_store.mark_deleted(
+                    record_id,
+                    note="deleted after non-match final decision",
+                )
+                deleted += 1
+                logger.info("Deleted non-matching asset file: {}", local_path)
+            except Exception as exc:
+                logger.warning("Failed to delete non-matching file {}: {}", local_path, exc)
 
         return deleted

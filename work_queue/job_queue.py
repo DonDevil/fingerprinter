@@ -4,7 +4,7 @@ from typing import Optional, List, Dict
 
 class JobQueue:
     """Queue for video fingerprinting jobs, backed by SQLite."""
-    def __init__(self, db_path: str = "fingerprinter/storage/jobs.db"):
+    def __init__(self, db_path: str = "storage/jobs.db"):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.conn = sqlite3.connect(str(self.db_path))

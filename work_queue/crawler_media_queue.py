@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
-from fingerprinter.queue.models import QueueJob
+from work_queue.models import QueueJob
 
 
 class CrawlerMediaQueue:
@@ -66,17 +66,79 @@ class CrawlerMediaQueue:
     def _now() -> str:
         return datetime.now(timezone.utc).isoformat()
 
+    @staticmethod
+    def _parse_timestamp(value: str | None) -> datetime | None:
+        if not value:
+            return None
+        raw = value.strip()
+        if not raw:
+            return None
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        try:
+            dt = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
     def pending_count(self) -> int:
         cur = self.conn.execute("SELECT COUNT(*) FROM sample_jobs WHERE status = 'pending'")
         row = cur.fetchone()
         return int(row[0]) if row else 0
 
+    def requeue_stale_claimed_jobs(self, *, stale_after_seconds: int) -> int:
+        """Move stale claimed jobs back to pending so they can be retried."""
+
+        threshold_seconds = max(1, int(stale_after_seconds))
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=threshold_seconds)
+
+        rows = self.conn.execute(
+            "SELECT asset_id, updated_at FROM sample_jobs WHERE status = 'claimed'"
+        ).fetchall()
+        if not rows:
+            return 0
+
+        reclaimed_asset_ids: list[int] = []
+        for row in rows:
+            updated_at = self._parse_timestamp(row["updated_at"])
+            if updated_at is None or updated_at <= cutoff:
+                reclaimed_asset_ids.append(int(row["asset_id"]))
+
+        if not reclaimed_asset_ids:
+            return 0
+
+        now = self._now()
+        for asset_id in reclaimed_asset_ids:
+            if self._has_sample_jobs_column("claimed_by"):
+                self.conn.execute(
+                    """UPDATE sample_jobs
+                       SET status = 'pending', claimed_by = NULL, updated_at = ?
+                       WHERE asset_id = ?""",
+                    (now, asset_id),
+                )
+            else:
+                self.conn.execute(
+                    "UPDATE sample_jobs SET status = 'pending', updated_at = ? WHERE asset_id = ?",
+                    (now, asset_id),
+                )
+            self._update_media_asset(
+                asset_id=asset_id,
+                status="queued_for_sampling",
+                now=now,
+            )
+
+        self.conn.commit()
+        return len(reclaimed_asset_ids)
+
     def claim_job(self) -> Optional[QueueJob]:
         now = self._now()
         self.conn.execute("BEGIN IMMEDIATE")
         try:
+            source_domain_select = "ma.source_domain" if self._has_media_assets_column("source_domain") else "NULL as source_domain"
             row = self.conn.execute(
-                """SELECT sj.asset_id, sj.priority, ma.url, ma.media_type
+                f"""SELECT sj.asset_id, sj.priority, ma.url, ma.media_type, {source_domain_select}
                    FROM sample_jobs sj
                    JOIN media_assets ma ON ma.id = sj.asset_id
                    WHERE sj.status = 'pending'
@@ -111,6 +173,7 @@ class CrawlerMediaQueue:
                 media_url=str(row["url"]),
                 media_type=str(row["media_type"] or "unknown"),
                 priority=int(row["priority"]),
+                source_domain=str(row["source_domain"]).strip().lower() if row["source_domain"] else None,
             )
         except Exception:
             self.conn.execute("ROLLBACK")
@@ -209,6 +272,31 @@ class CrawlerMediaQueue:
             match_confidence=confidence,
             matched_title=matched_title,
         )
+
+    def boost_domain_priority(self, source_domain: str, *, boosted_priority: int = 1) -> int:
+        """Raise crawler attention for domains that produced pirated matches.
+
+        Returns number of pending sample jobs updated.
+        """
+
+        domain = (source_domain or "").strip().lower()
+        if not domain:
+            return 0
+
+        priority_value = max(1, int(boosted_priority))
+        now = self._now()
+        cur = self.conn.execute(
+            """UPDATE sample_jobs
+               SET priority = ?, updated_at = ?
+               WHERE status = 'pending'
+                 AND asset_id IN (
+                   SELECT id FROM media_assets WHERE lower(coalesce(source_domain, '')) = ?
+                 )
+                 AND priority > ?""",
+            (priority_value, now, domain, priority_value),
+        )
+        self.conn.commit()
+        return int(cur.rowcount or 0)
 
     def close(self) -> None:
         self.conn.close()

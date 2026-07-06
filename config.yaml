@@ -2,6 +2,15 @@ pipeline:
   # Reject discovered videos shorter than this duration (seconds).
   # Set to -1 to disable short-video rejection and process full video base.
   short_video_threshold_seconds: 19
+  # Optional reference title for Phase B quick matching.
+  target_title: "Blast"
+  # Reference target media used across fingerprint stages.
+  target_file_path: target/Blast.mp4
+  # Stage-2 policy thresholds for quick target matching score.
+  phase_b_low_match_threshold: 0.2
+  phase_b_high_match_threshold: 0.65
+  # On confirmed match, pending jobs from same source domain get this priority.
+  pirate_domain_boost_priority: 1
 
 queue:
   backend: crawler
@@ -9,16 +18,18 @@ queue:
   worker_name: fingerprinter-worker
   poll_interval_seconds: 2
   max_retry_count: 3
+  # If a worker dies after claiming a job, move stale claimed jobs back to pending after this many seconds.
+  reclaim_claimed_after_seconds: 600
 
 downloader:
-  download_dir: fingerprinter/storage/downloads
+  download_dir: storage/downloads
   request_timeout_seconds: 30
   # Keep Tor disabled unless SOCKS proxy routing is intentionally configured.
   enable_tor: false
 
 storage_policy:
   # Local metadata DB for processed assets and file lifecycle.
-  metadata_db_path: fingerprinter/storage/processing.db
+  metadata_db_path: storage/processing.db
   # Maximum number of rejected/test files to retain.
   max_rejected_files: 200
   # Maximum total size of rejected/test files (MB) to retain.

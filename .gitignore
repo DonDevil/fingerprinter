@@ -66,4 +66,5 @@ coverage.xml
 Thumbs.db
 
 # Local runtime storage
-fingerprinter/storage/*.db
+storage/*.db
+storage/downloads/

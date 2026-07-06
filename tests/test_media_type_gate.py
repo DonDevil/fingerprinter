@@ -1,4 +1,4 @@
-from fingerprinter.matcher.media_type_gate import should_reject_non_video
+from matcher.media_type_gate import should_reject_non_video
 
 
 def test_media_type_gate_rejects_image_extension():
