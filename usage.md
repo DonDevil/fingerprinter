@@ -2,6 +2,13 @@
 
 This guide explains how to run the fingerprinter, what processing cycle it follows, and all supported CLI flags.
 
+The matcher now uses segment-based video/audio fingerprints with configurable sequence alignment:
+
+- Video segmentation for target and candidate streams (separate durations).
+- Sequence alignment with `constrained` sliding or `dtw`.
+- Audio segmentation with offset estimation via `offset_xcorr` or `dtw`.
+- High-intensity mode that switches candidate segment duration.
+
 ## Environment
 
 Use only the local virtual environment.
@@ -191,6 +198,45 @@ Supported technique names:
 
 If an unknown technique is provided, the run exits with a validation error.
 
+## Segment and Alignment Flags
+
+Override video segmentation:
+
+```bash
+./.venv/bin/python -m main --target-segment-seconds 1.0 --candidate-segment-seconds 2.0 --frame-sample-fps 2.5
+```
+
+Enable high-intensity candidate segmentation:
+
+```bash
+./.venv/bin/python -m main --compare-dir storage/downloads --high-intensity
+```
+
+Override high-intensity candidate segment duration:
+
+```bash
+./.venv/bin/python -m main --high-intensity --candidate-segment-seconds-high-intensity 0.75
+```
+
+Override sequence alignment method and band:
+
+```bash
+./.venv/bin/python -m main --sequence-alignment-method dtw --sequence-band-ratio 0.2
+```
+
+Override audio segmentation and alignment:
+
+```bash
+./.venv/bin/python -m main --audio-segment-seconds 1.5 --audio-alignment-method offset_xcorr
+./.venv/bin/python -m main --audio-segment-seconds 1.2 --audio-alignment-method dtw --audio-band-ratio 0.25
+```
+
+Notes:
+
+- `--sequence-alignment-method` supports `constrained` or `dtw`.
+- `--audio-alignment-method` supports `offset_xcorr` or `dtw`.
+- Segment and band overrides are applied to queue mode, `--compare-file`, and `--compare-dir`.
+
 ## Target Selection Flags
 
 Override target title:
@@ -230,6 +276,37 @@ Disable that behavior:
 - `--reset`: clear local processing metadata tables in `storage/processing.db`.
 - `--clear-assets`: remove all files from downloader directory and mark matching processed rows deleted.
 - `--keep-non-matches`: retain local files for non-match outcomes instead of auto-deleting them.
+- `--target-segment-seconds FLOAT`: override target/movie segment duration.
+- `--candidate-segment-seconds FLOAT`: override candidate segment duration.
+- `--candidate-segment-seconds-high-intensity FLOAT`: override high-intensity candidate segment duration.
+- `--high-intensity`: enable high-intensity candidate segmentation mode.
+- `--frame-sample-fps FLOAT`: override sampled frame rate used by segment fingerprinting.
+- `--sequence-alignment-method {constrained,dtw}`: override video sequence alignment method.
+- `--sequence-band-ratio FLOAT`: override sequence alignment DTW/constrained band ratio.
+- `--audio-segment-seconds FLOAT`: override audio segment duration.
+- `--audio-alignment-method {offset_xcorr,dtw}`: override audio alignment method.
+- `--audio-band-ratio FLOAT`: override audio DTW band ratio.
+
+## Config Defaults For Segment Matching
+
+Default values in `config.yaml`:
+
+```yaml
+video_fingerprint:
+  target_segment_seconds: 1.0
+  candidate_segment_seconds: 2.0
+  candidate_segment_seconds_high_intensity: 1.0
+  frame_sample_fps: 2.0
+
+sequence_alignment:
+  method: constrained
+  band_ratio: 0.15
+
+audio_fingerprint:
+  segment_seconds: 1.5
+  alignment_method: offset_xcorr
+  alignment_band_ratio: 0.2
+```
 
 ## Useful Debug Commands
 

@@ -7,10 +7,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from fingerprint.segment_fingerprint import extract_audio_segment_fingerprints
+from fingerprint.segment_fingerprint import extract_video_segment_fingerprints
 from fingerprint.video_probe import get_media_probe
+from matcher.sequence_alignment import align_audio_segments_dtw
+from matcher.sequence_alignment import align_audio_segments_offset_xcorr
+from matcher.sequence_alignment import align_video_segments_constrained
+from matcher.sequence_alignment import align_video_segments_dtw
 
 TOKEN_RE = re.compile(r"[a-z0-9]+")
 ALL_TECHNIQUES = ("metadata", "visual", "audio", "temporal")
+ALL_ALIGNMENT_METHODS = ("constrained", "dtw")
+ALL_AUDIO_ALIGNMENT_METHODS = ("offset_xcorr", "dtw")
 
 
 @dataclass(slots=True)
@@ -143,6 +151,20 @@ def _normalize_enabled_techniques(enabled_techniques: set[str] | None) -> set[st
     return normalized
 
 
+def _normalize_alignment_method(method: str) -> str:
+    normalized = (method or "constrained").strip().lower()
+    if normalized not in ALL_ALIGNMENT_METHODS:
+        raise ValueError(f"Unknown alignment method: {method}")
+    return normalized
+
+
+def _normalize_audio_alignment_method(method: str) -> str:
+    normalized = (method or "offset_xcorr").strip().lower()
+    if normalized not in ALL_AUDIO_ALIGNMENT_METHODS:
+        raise ValueError(f"Unknown audio alignment method: {method}")
+    return normalized
+
+
 def run_staged_fingerprint(
     *,
     target_title: str,
@@ -152,10 +174,20 @@ def run_staged_fingerprint(
     low_threshold: float,
     high_threshold: float,
     enabled_techniques: set[str] | None = None,
+    target_segment_seconds: float = 1.0,
+    candidate_segment_seconds: float = 2.0,
+    frame_sample_fps: float = 2.0,
+    sequence_alignment_method: str = "constrained",
+    sequence_band_ratio: float = 0.15,
+    audio_segment_seconds: float = 1.5,
+    audio_alignment_method: str = "offset_xcorr",
+    audio_band_ratio: float = 0.2,
 ) -> PipelineResult:
     candidate = Path(candidate_path)
     target = Path(target_path)
     enabled = _normalize_enabled_techniques(enabled_techniques)
+    sequence_alignment_method = _normalize_alignment_method(sequence_alignment_method)
+    audio_alignment_method = _normalize_audio_alignment_method(audio_alignment_method)
 
     outcomes: list[StageOutcome] = []
 
@@ -213,15 +245,37 @@ def run_staged_fingerprint(
         )
     )
 
-    # Stage 2: URL/title lexical overlap + file signature overlap
+    # Stage 2: URL/title lexical overlap + segment alignment against movie timeline.
     title_tokens = _tokenize(target_title)
     candidate_tokens = _tokenize(candidate_url + " " + candidate.name)
     lexical_score = _jaccard(title_tokens, candidate_tokens)
 
-    candidate_signature = _file_fingerprint(candidate)
-    target_signature = _file_fingerprint(target)
-    signature_score = 1.0 if candidate_signature and target_signature and candidate_signature == target_signature else 0.0
-    stage2_score = _clip01((lexical_score * 0.65) + (signature_score * 0.35))
+    target_video_segments = extract_video_segment_fingerprints(
+        str(target),
+        segment_seconds=max(0.1, float(target_segment_seconds)),
+        frame_sample_fps=max(0.1, float(frame_sample_fps)),
+    )
+    candidate_video_segments = extract_video_segment_fingerprints(
+        str(candidate),
+        segment_seconds=max(0.1, float(candidate_segment_seconds)),
+        frame_sample_fps=max(0.1, float(frame_sample_fps)),
+    )
+
+    if sequence_alignment_method == "dtw":
+        sequence_alignment = align_video_segments_dtw(
+            target_video_segments,
+            candidate_video_segments,
+            candidate_segment_seconds=max(0.1, float(candidate_segment_seconds)),
+            band_ratio=max(0.0, float(sequence_band_ratio)),
+        )
+    else:
+        sequence_alignment = align_video_segments_constrained(
+            target_video_segments,
+            candidate_video_segments,
+            candidate_segment_seconds=max(0.1, float(candidate_segment_seconds)),
+        )
+
+    stage2_score = _clip01((lexical_score * 0.3) + (sequence_alignment.similarity * 0.7))
     if "visual" not in enabled:
         stage2_score = 0.0
     outcomes.append(
@@ -232,20 +286,49 @@ def run_staged_fingerprint(
             note=(
                 "disabled by --techniques"
                 if "visual" not in enabled
-                else "token overlap plus approximate visual/container hash"
+                else "token overlap plus segment sequence alignment"
             ),
             details={
                 "lexical_score": lexical_score,
-                "signature_equal": bool(signature_score > 0),
+                "alignment_method": sequence_alignment.method,
+                "alignment_similarity": sequence_alignment.similarity,
+                "offset_seconds": sequence_alignment.offset_seconds,
+                "target_start_index": sequence_alignment.target_start_index,
+                "target_end_index": sequence_alignment.target_end_index,
+                "target_segment_seconds": float(target_segment_seconds),
+                "candidate_segment_seconds": float(candidate_segment_seconds),
+                "target_segment_count": len(target_video_segments),
+                "candidate_segment_count": len(candidate_video_segments),
                 "matched_tokens": sorted(title_tokens & candidate_tokens),
             },
         )
     )
 
-    # Stage 3: audio fingerprint similarity (proxy)
-    candidate_audio = _audio_digest(candidate)
-    target_audio = _audio_digest(target)
-    audio_score = 1.0 if candidate_audio and target_audio and candidate_audio == target_audio else 0.0
+    # Stage 3: audio segment fingerprinting and offset-aware alignment.
+    target_audio_segments = extract_audio_segment_fingerprints(
+        str(target),
+        segment_seconds=max(0.1, float(audio_segment_seconds)),
+    )
+    candidate_audio_segments = extract_audio_segment_fingerprints(
+        str(candidate),
+        segment_seconds=max(0.1, float(audio_segment_seconds)),
+    )
+
+    if audio_alignment_method == "dtw":
+        audio_alignment = align_audio_segments_dtw(
+            target_audio_segments,
+            candidate_audio_segments,
+            audio_segment_seconds=max(0.1, float(audio_segment_seconds)),
+            band_ratio=max(0.0, float(audio_band_ratio)),
+        )
+    else:
+        audio_alignment = align_audio_segments_offset_xcorr(
+            target_audio_segments,
+            candidate_audio_segments,
+            audio_segment_seconds=max(0.1, float(audio_segment_seconds)),
+        )
+
+    audio_score = audio_alignment.similarity
     if "audio" not in enabled:
         audio_score = 0.0
     outcomes.append(
@@ -256,17 +339,32 @@ def run_staged_fingerprint(
             note=(
                 "disabled by --techniques"
                 if "audio" not in enabled
-                else "audio digest equality (resource-light proxy)"
+                else "audio segment fingerprint alignment"
             ),
             details={
-                "candidate_audio_available": candidate_audio is not None,
-                "target_audio_available": target_audio is not None,
+                "alignment_method": audio_alignment.method,
+                "alignment_similarity": audio_alignment.similarity,
+                "offset_seconds": audio_alignment.offset_seconds,
+                "target_start_index": audio_alignment.target_start_index,
+                "target_end_index": audio_alignment.target_end_index,
+                "audio_segment_seconds": float(audio_segment_seconds),
+                "target_segment_count": len(target_audio_segments),
+                "candidate_segment_count": len(candidate_audio_segments),
             },
         )
     )
 
-    # Stage 4: temporal consistency (duration + hash-driven fallback)
-    temporal_score = _clip01((duration_score * 0.6) + (signature_score * 0.4))
+    # Stage 4: temporal consistency from duration + sequence/audio offset agreement.
+    alignment_agreement = 1.0
+    if sequence_alignment.offset_seconds or audio_alignment.offset_seconds:
+        offset_delta = abs(sequence_alignment.offset_seconds - audio_alignment.offset_seconds)
+        alignment_agreement = _clip01(1.0 - (offset_delta / max(1.0, float(candidate_segment_seconds) * 10.0)))
+    temporal_score = _clip01(
+        (duration_score * 0.25)
+        + (sequence_alignment.similarity * 0.45)
+        + (audio_alignment.similarity * 0.20)
+        + (alignment_agreement * 0.10)
+    )
     if "temporal" not in enabled:
         temporal_score = 0.0
     outcomes.append(
@@ -277,11 +375,13 @@ def run_staged_fingerprint(
             note=(
                 "disabled by --techniques"
                 if "temporal" not in enabled
-                else "duration alignment plus segment-hash stability"
+                else "duration and sequence/audio offset consistency"
             ),
             details={
                 "duration_score": duration_score,
-                "signature_score": signature_score,
+                "video_alignment_similarity": sequence_alignment.similarity,
+                "audio_alignment_similarity": audio_alignment.similarity,
+                "alignment_agreement": alignment_agreement,
             },
         )
     )

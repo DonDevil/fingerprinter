@@ -36,3 +36,27 @@ storage_policy:
   max_rejected_bytes_mb: 2048
   # When limits are exceeded, delete oldest rejected files first.
   delete_rejected_overflow: true
+
+video_fingerprint:
+  # Target/movie fingerprint segments (seconds). Keep small for fine-grained matching.
+  target_segment_seconds: 1.0
+  # Candidate/downloaded video segment duration (seconds).
+  candidate_segment_seconds: 2.0
+  # Candidate segment duration used for high-intensity mode.
+  candidate_segment_seconds_high_intensity: 1.0
+  # Number of sampled frames per second for segment fingerprinting.
+  frame_sample_fps: 2.0
+
+sequence_alignment:
+  # Sequence alignment method: constrained or dtw.
+  method: constrained
+  # Sakoe-Chiba style band ratio used by constrained DTW (0.0-1.0).
+  band_ratio: 0.15
+
+audio_fingerprint:
+  # Segment duration for audio fingerprints (seconds).
+  segment_seconds: 1.5
+  # Audio alignment method: offset_xcorr or dtw.
+  alignment_method: offset_xcorr
+  # Band ratio used for DTW-based audio alignment.
+  alignment_band_ratio: 0.2

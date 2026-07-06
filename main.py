@@ -71,6 +71,56 @@ def main():
         action="store_true",
         help="Retain non-matching local files instead of deleting them",
     )
+    parser.add_argument(
+        "--target-segment-seconds",
+        type=float,
+        help="Override target/movie segment duration in seconds",
+    )
+    parser.add_argument(
+        "--candidate-segment-seconds",
+        type=float,
+        help="Override candidate segment duration in seconds",
+    )
+    parser.add_argument(
+        "--candidate-segment-seconds-high-intensity",
+        type=float,
+        help="Override candidate segment duration used in high-intensity mode",
+    )
+    parser.add_argument(
+        "--high-intensity",
+        action="store_true",
+        help="Use high-intensity candidate segmentation configuration",
+    )
+    parser.add_argument(
+        "--frame-sample-fps",
+        type=float,
+        help="Override sampled video frames-per-second for segment fingerprints",
+    )
+    parser.add_argument(
+        "--sequence-alignment-method",
+        choices=["constrained", "dtw"],
+        help="Override video sequence alignment method",
+    )
+    parser.add_argument(
+        "--sequence-band-ratio",
+        type=float,
+        help="Override DTW/constrained band ratio for video sequence alignment",
+    )
+    parser.add_argument(
+        "--audio-segment-seconds",
+        type=float,
+        help="Override audio segment duration in seconds",
+    )
+    parser.add_argument(
+        "--audio-alignment-method",
+        choices=["offset_xcorr", "dtw"],
+        help="Override audio alignment method",
+    )
+    parser.add_argument(
+        "--audio-band-ratio",
+        type=float,
+        help="Override DTW band ratio for audio alignment",
+    )
     args = parser.parse_args()
 
     configure_logging()
@@ -82,6 +132,16 @@ def main():
         settings,
         enabled_techniques=selected_techniques,
         keep_non_matches=args.keep_non_matches,
+        target_segment_seconds_override=args.target_segment_seconds,
+        candidate_segment_seconds_override=args.candidate_segment_seconds,
+        candidate_segment_seconds_high_intensity_override=args.candidate_segment_seconds_high_intensity,
+        frame_sample_fps_override=args.frame_sample_fps,
+        sequence_alignment_method_override=args.sequence_alignment_method,
+        sequence_band_ratio_override=args.sequence_band_ratio,
+        audio_segment_seconds_override=args.audio_segment_seconds,
+        audio_alignment_method_override=args.audio_alignment_method,
+        audio_band_ratio_override=args.audio_band_ratio,
+        high_intensity_mode=args.high_intensity,
     )
 
     try:

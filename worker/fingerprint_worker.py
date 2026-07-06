@@ -32,6 +32,16 @@ class FingerprintWorker:
         *,
         enabled_techniques: set[str] | None = None,
         keep_non_matches: bool = False,
+        target_segment_seconds_override: float | None = None,
+        candidate_segment_seconds_override: float | None = None,
+        candidate_segment_seconds_high_intensity_override: float | None = None,
+        frame_sample_fps_override: float | None = None,
+        sequence_alignment_method_override: str | None = None,
+        sequence_band_ratio_override: float | None = None,
+        audio_segment_seconds_override: float | None = None,
+        audio_alignment_method_override: str | None = None,
+        audio_band_ratio_override: float | None = None,
+        high_intensity_mode: bool = False,
     ):
         self.settings = settings
         if settings.queue.backend != "crawler":
@@ -56,6 +66,58 @@ class FingerprintWorker:
         )
         self.enabled_techniques = self._normalize_techniques(enabled_techniques)
         self.keep_non_matches = bool(keep_non_matches)
+
+        self.high_intensity_mode = bool(high_intensity_mode)
+        self.target_segment_seconds = float(
+            target_segment_seconds_override
+            if target_segment_seconds_override is not None
+            else settings.video_fingerprint.target_segment_seconds
+        )
+        self.candidate_segment_seconds = float(
+            candidate_segment_seconds_override
+            if candidate_segment_seconds_override is not None
+            else settings.video_fingerprint.candidate_segment_seconds
+        )
+        self.candidate_segment_seconds_high_intensity = float(
+            candidate_segment_seconds_high_intensity_override
+            if candidate_segment_seconds_high_intensity_override is not None
+            else settings.video_fingerprint.candidate_segment_seconds_high_intensity
+        )
+        self.frame_sample_fps = float(
+            frame_sample_fps_override
+            if frame_sample_fps_override is not None
+            else settings.video_fingerprint.frame_sample_fps
+        )
+        self.sequence_alignment_method = (
+            sequence_alignment_method_override.strip().lower()
+            if sequence_alignment_method_override is not None
+            else settings.sequence_alignment.method
+        )
+        self.sequence_band_ratio = float(
+            sequence_band_ratio_override
+            if sequence_band_ratio_override is not None
+            else settings.sequence_alignment.band_ratio
+        )
+        self.audio_segment_seconds = float(
+            audio_segment_seconds_override
+            if audio_segment_seconds_override is not None
+            else settings.audio_fingerprint.segment_seconds
+        )
+        self.audio_alignment_method = (
+            audio_alignment_method_override.strip().lower()
+            if audio_alignment_method_override is not None
+            else settings.audio_fingerprint.alignment_method
+        )
+        self.audio_band_ratio = float(
+            audio_band_ratio_override
+            if audio_band_ratio_override is not None
+            else settings.audio_fingerprint.alignment_band_ratio
+        )
+
+    def _effective_candidate_segment_seconds(self) -> float:
+        if self.high_intensity_mode:
+            return self.candidate_segment_seconds_high_intensity
+        return self.candidate_segment_seconds
 
     @staticmethod
     def _normalize_techniques(enabled_techniques: set[str] | None) -> set[str]:
@@ -177,6 +239,14 @@ class FingerprintWorker:
                 low_threshold=self.settings.pipeline.phase_b_low_match_threshold,
                 high_threshold=self.settings.pipeline.phase_b_high_match_threshold,
                 enabled_techniques=self.enabled_techniques,
+                target_segment_seconds=self.target_segment_seconds,
+                candidate_segment_seconds=self._effective_candidate_segment_seconds(),
+                frame_sample_fps=self.frame_sample_fps,
+                sequence_alignment_method=self.sequence_alignment_method,
+                sequence_band_ratio=self.sequence_band_ratio,
+                audio_segment_seconds=self.audio_segment_seconds,
+                audio_alignment_method=self.audio_alignment_method,
+                audio_band_ratio=self.audio_band_ratio,
             )
 
         # Fallback if no target media exists: keep legacy title-token stage score.

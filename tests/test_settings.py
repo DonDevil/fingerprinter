@@ -16,6 +16,15 @@ def test_load_settings_uses_defaults_for_missing_file(tmp_path):
     assert settings.downloader.enable_tor is False
     assert settings.storage_policy.metadata_db_path == "storage/processing.db"
     assert settings.storage_policy.max_rejected_files == 200
+    assert settings.video_fingerprint.target_segment_seconds == 1.0
+    assert settings.video_fingerprint.candidate_segment_seconds == 2.0
+    assert settings.video_fingerprint.candidate_segment_seconds_high_intensity == 1.0
+    assert settings.video_fingerprint.frame_sample_fps == 2.0
+    assert settings.sequence_alignment.method == "constrained"
+    assert settings.sequence_alignment.band_ratio == 0.15
+    assert settings.audio_fingerprint.segment_seconds == 1.5
+    assert settings.audio_fingerprint.alignment_method == "offset_xcorr"
+    assert settings.audio_fingerprint.alignment_band_ratio == 0.2
 
 
 def test_load_settings_reads_threshold_and_queue_fields(tmp_path):
@@ -39,6 +48,18 @@ storage_policy:
     max_rejected_bytes_mb: 512
 downloader:
     enable_tor: false
+video_fingerprint:
+    target_segment_seconds: 0.8
+    candidate_segment_seconds: 1.6
+    candidate_segment_seconds_high_intensity: 0.7
+    frame_sample_fps: 3
+sequence_alignment:
+    method: DTW
+    band_ratio: 0.2
+audio_fingerprint:
+    segment_seconds: 1.2
+    alignment_method: dtw
+    alignment_band_ratio: 0.3
 """,
         encoding="utf-8",
     )
@@ -57,3 +78,12 @@ downloader:
     assert settings.downloader.enable_tor is False
     assert settings.storage_policy.max_rejected_files == 50
     assert settings.storage_policy.max_rejected_bytes_mb == 512
+    assert settings.video_fingerprint.target_segment_seconds == 0.8
+    assert settings.video_fingerprint.candidate_segment_seconds == 1.6
+    assert settings.video_fingerprint.candidate_segment_seconds_high_intensity == 0.7
+    assert settings.video_fingerprint.frame_sample_fps == 3
+    assert settings.sequence_alignment.method == "dtw"
+    assert settings.sequence_alignment.band_ratio == 0.2
+    assert settings.audio_fingerprint.segment_seconds == 1.2
+    assert settings.audio_fingerprint.alignment_method == "dtw"
+    assert settings.audio_fingerprint.alignment_band_ratio == 0.3

@@ -26,6 +26,15 @@ DEFAULT_METADATA_DB_PATH = "storage/processing.db"
 DEFAULT_MAX_REJECTED_FILES = 200
 DEFAULT_MAX_REJECTED_BYTES_MB = 2048
 DEFAULT_DELETE_REJECTED_OVERFLOW = True
+DEFAULT_TARGET_SEGMENT_SECONDS = 1.0
+DEFAULT_CANDIDATE_SEGMENT_SECONDS = 2.0
+DEFAULT_CANDIDATE_SEGMENT_SECONDS_HIGH_INTENSITY = 1.0
+DEFAULT_FRAME_SAMPLE_FPS = 2.0
+DEFAULT_ALIGNMENT_METHOD = "constrained"
+DEFAULT_ALIGNMENT_BAND_RATIO = 0.15
+DEFAULT_AUDIO_SEGMENT_SECONDS = 1.5
+DEFAULT_AUDIO_ALIGNMENT_METHOD = "offset_xcorr"
+DEFAULT_AUDIO_ALIGNMENT_BAND_RATIO = 0.2
 
 
 @dataclass(slots=True)
@@ -64,11 +73,35 @@ class StoragePolicyConfig:
 
 
 @dataclass(slots=True)
+class VideoFingerprintConfig:
+    target_segment_seconds: float = DEFAULT_TARGET_SEGMENT_SECONDS
+    candidate_segment_seconds: float = DEFAULT_CANDIDATE_SEGMENT_SECONDS
+    candidate_segment_seconds_high_intensity: float = DEFAULT_CANDIDATE_SEGMENT_SECONDS_HIGH_INTENSITY
+    frame_sample_fps: float = DEFAULT_FRAME_SAMPLE_FPS
+
+
+@dataclass(slots=True)
+class SequenceAlignmentConfig:
+    method: str = DEFAULT_ALIGNMENT_METHOD
+    band_ratio: float = DEFAULT_ALIGNMENT_BAND_RATIO
+
+
+@dataclass(slots=True)
+class AudioFingerprintConfig:
+    segment_seconds: float = DEFAULT_AUDIO_SEGMENT_SECONDS
+    alignment_method: str = DEFAULT_AUDIO_ALIGNMENT_METHOD
+    alignment_band_ratio: float = DEFAULT_AUDIO_ALIGNMENT_BAND_RATIO
+
+
+@dataclass(slots=True)
 class Settings:
     pipeline: PipelineConfig = field(default_factory=PipelineConfig)
     queue: QueueConfig = field(default_factory=QueueConfig)
     downloader: DownloaderConfig = field(default_factory=DownloaderConfig)
     storage_policy: StoragePolicyConfig = field(default_factory=StoragePolicyConfig)
+    video_fingerprint: VideoFingerprintConfig = field(default_factory=VideoFingerprintConfig)
+    sequence_alignment: SequenceAlignmentConfig = field(default_factory=SequenceAlignmentConfig)
+    audio_fingerprint: AudioFingerprintConfig = field(default_factory=AudioFingerprintConfig)
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -91,6 +124,9 @@ def load_settings(path: str = "config.yaml") -> Settings:
     queue_raw = raw.get("queue", {}) if isinstance(raw.get("queue", {}), dict) else {}
     downloader_raw = raw.get("downloader", {}) if isinstance(raw.get("downloader", {}), dict) else {}
     storage_raw = raw.get("storage_policy", {}) if isinstance(raw.get("storage_policy", {}), dict) else {}
+    video_fp_raw = raw.get("video_fingerprint", {}) if isinstance(raw.get("video_fingerprint", {}), dict) else {}
+    alignment_raw = raw.get("sequence_alignment", {}) if isinstance(raw.get("sequence_alignment", {}), dict) else {}
+    audio_fp_raw = raw.get("audio_fingerprint", {}) if isinstance(raw.get("audio_fingerprint", {}), dict) else {}
 
     return Settings(
         pipeline=PipelineConfig(
@@ -144,6 +180,40 @@ def load_settings(path: str = "config.yaml") -> Settings:
             max_rejected_bytes_mb=int(storage_raw.get("max_rejected_bytes_mb", DEFAULT_MAX_REJECTED_BYTES_MB)),
             delete_rejected_overflow=bool(
                 storage_raw.get("delete_rejected_overflow", DEFAULT_DELETE_REJECTED_OVERFLOW)
+            ),
+        ),
+        video_fingerprint=VideoFingerprintConfig(
+            target_segment_seconds=float(
+                video_fp_raw.get("target_segment_seconds", DEFAULT_TARGET_SEGMENT_SECONDS)
+            ),
+            candidate_segment_seconds=float(
+                video_fp_raw.get("candidate_segment_seconds", DEFAULT_CANDIDATE_SEGMENT_SECONDS)
+            ),
+            candidate_segment_seconds_high_intensity=float(
+                video_fp_raw.get(
+                    "candidate_segment_seconds_high_intensity",
+                    DEFAULT_CANDIDATE_SEGMENT_SECONDS_HIGH_INTENSITY,
+                )
+            ),
+            frame_sample_fps=float(
+                video_fp_raw.get("frame_sample_fps", DEFAULT_FRAME_SAMPLE_FPS)
+            ),
+        ),
+        sequence_alignment=SequenceAlignmentConfig(
+            method=str(alignment_raw.get("method", DEFAULT_ALIGNMENT_METHOD)).strip().lower(),
+            band_ratio=float(
+                alignment_raw.get("band_ratio", DEFAULT_ALIGNMENT_BAND_RATIO)
+            ),
+        ),
+        audio_fingerprint=AudioFingerprintConfig(
+            segment_seconds=float(
+                audio_fp_raw.get("segment_seconds", DEFAULT_AUDIO_SEGMENT_SECONDS)
+            ),
+            alignment_method=str(
+                audio_fp_raw.get("alignment_method", DEFAULT_AUDIO_ALIGNMENT_METHOD)
+            ).strip().lower(),
+            alignment_band_ratio=float(
+                audio_fp_raw.get("alignment_band_ratio", DEFAULT_AUDIO_ALIGNMENT_BAND_RATIO)
             ),
         ),
     )
