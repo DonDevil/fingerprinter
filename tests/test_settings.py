@@ -27,6 +27,16 @@ def test_load_settings_uses_defaults_for_missing_file(tmp_path):
     assert settings.audio_fingerprint.segment_seconds == 1.5
     assert settings.audio_fingerprint.alignment_method == "offset_xcorr"
     assert settings.audio_fingerprint.alignment_band_ratio == 0.2
+    assert settings.dinov2.model_name == "facebook/dinov2-base"
+    assert settings.dinov2.device == "auto"
+    assert settings.dinov2.target_sample_fps == 2.0
+    assert settings.dinov2.candidate_sample_fps == 2.0
+    assert settings.dinov2.cosine_threshold == 0.93
+    assert settings.dinov2.l2_score_threshold == 0.70
+    assert settings.dinov2.margin_threshold == 0.03
+    assert settings.dinov2.min_consecutive_frames == 6
+    assert settings.dinov2.max_target_frame_step == 3
+    assert settings.dinov2.min_run_avg_cosine == 0.94
 
 
 def test_load_settings_reads_threshold_and_queue_fields(tmp_path):
@@ -64,6 +74,17 @@ audio_fingerprint:
     segment_seconds: 1.2
     alignment_method: dtw
     alignment_band_ratio: 0.3
+dinov2:
+    model_name: facebook/dinov2-base
+    device: cpu
+    target_sample_fps: 1.5
+    candidate_sample_fps: 2.5
+    cosine_threshold: 0.95
+    l2_score_threshold: 0.72
+    margin_threshold: 0.05
+    min_consecutive_frames: 8
+    max_target_frame_step: 4
+    min_run_avg_cosine: 0.96
 """,
         encoding="utf-8",
     )
@@ -93,3 +114,13 @@ audio_fingerprint:
     assert settings.audio_fingerprint.segment_seconds == 1.2
     assert settings.audio_fingerprint.alignment_method == "dtw"
     assert settings.audio_fingerprint.alignment_band_ratio == 0.3
+    assert settings.dinov2.model_name == "facebook/dinov2-base"
+    assert settings.dinov2.device == "cpu"
+    assert settings.dinov2.target_sample_fps == 1.5
+    assert settings.dinov2.candidate_sample_fps == 2.5
+    assert settings.dinov2.cosine_threshold == 0.95
+    assert settings.dinov2.l2_score_threshold == 0.72
+    assert settings.dinov2.margin_threshold == 0.05
+    assert settings.dinov2.min_consecutive_frames == 8
+    assert settings.dinov2.max_target_frame_step == 4
+    assert settings.dinov2.min_run_avg_cosine == 0.96

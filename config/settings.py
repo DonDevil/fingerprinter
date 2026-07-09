@@ -38,6 +38,16 @@ DEFAULT_ALIGNMENT_BAND_RATIO = 0.15
 DEFAULT_AUDIO_SEGMENT_SECONDS = 1.5
 DEFAULT_AUDIO_ALIGNMENT_METHOD = "offset_xcorr"
 DEFAULT_AUDIO_ALIGNMENT_BAND_RATIO = 0.2
+DEFAULT_DINOV2_MODEL_NAME = "facebook/dinov2-base"
+DEFAULT_DINOV2_DEVICE = "auto"
+DEFAULT_DINOV2_TARGET_SAMPLE_FPS = 2.0
+DEFAULT_DINOV2_CANDIDATE_SAMPLE_FPS = 2.0
+DEFAULT_DINOV2_COSINE_THRESHOLD = 0.93
+DEFAULT_DINOV2_L2_SCORE_THRESHOLD = 0.70
+DEFAULT_DINOV2_MARGIN_THRESHOLD = 0.03
+DEFAULT_DINOV2_MIN_CONSECUTIVE_FRAMES = 6
+DEFAULT_DINOV2_MAX_TARGET_FRAME_STEP = 3
+DEFAULT_DINOV2_MIN_RUN_AVG_COSINE = 0.94
 
 
 @dataclass(slots=True)
@@ -100,6 +110,20 @@ class AudioFingerprintConfig:
 
 
 @dataclass(slots=True)
+class DinoV2Config:
+    model_name: str = DEFAULT_DINOV2_MODEL_NAME
+    device: str = DEFAULT_DINOV2_DEVICE
+    target_sample_fps: float = DEFAULT_DINOV2_TARGET_SAMPLE_FPS
+    candidate_sample_fps: float = DEFAULT_DINOV2_CANDIDATE_SAMPLE_FPS
+    cosine_threshold: float = DEFAULT_DINOV2_COSINE_THRESHOLD
+    l2_score_threshold: float = DEFAULT_DINOV2_L2_SCORE_THRESHOLD
+    margin_threshold: float = DEFAULT_DINOV2_MARGIN_THRESHOLD
+    min_consecutive_frames: int = DEFAULT_DINOV2_MIN_CONSECUTIVE_FRAMES
+    max_target_frame_step: int = DEFAULT_DINOV2_MAX_TARGET_FRAME_STEP
+    min_run_avg_cosine: float = DEFAULT_DINOV2_MIN_RUN_AVG_COSINE
+
+
+@dataclass(slots=True)
 class Settings:
     pipeline: PipelineConfig = field(default_factory=PipelineConfig)
     queue: QueueConfig = field(default_factory=QueueConfig)
@@ -108,6 +132,7 @@ class Settings:
     video_fingerprint: VideoFingerprintConfig = field(default_factory=VideoFingerprintConfig)
     sequence_alignment: SequenceAlignmentConfig = field(default_factory=SequenceAlignmentConfig)
     audio_fingerprint: AudioFingerprintConfig = field(default_factory=AudioFingerprintConfig)
+    dinov2: DinoV2Config = field(default_factory=DinoV2Config)
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -133,6 +158,7 @@ def load_settings(path: str = "config.yaml") -> Settings:
     video_fp_raw = raw.get("video_fingerprint", {}) if isinstance(raw.get("video_fingerprint", {}), dict) else {}
     alignment_raw = raw.get("sequence_alignment", {}) if isinstance(raw.get("sequence_alignment", {}), dict) else {}
     audio_fp_raw = raw.get("audio_fingerprint", {}) if isinstance(raw.get("audio_fingerprint", {}), dict) else {}
+    dinov2_raw = raw.get("dinov2", {}) if isinstance(raw.get("dinov2", {}), dict) else {}
 
     return Settings(
         pipeline=PipelineConfig(
@@ -229,6 +255,38 @@ def load_settings(path: str = "config.yaml") -> Settings:
             ).strip().lower(),
             alignment_band_ratio=float(
                 audio_fp_raw.get("alignment_band_ratio", DEFAULT_AUDIO_ALIGNMENT_BAND_RATIO)
+            ),
+        ),
+        dinov2=DinoV2Config(
+            model_name=str(
+                dinov2_raw.get("model_name", DEFAULT_DINOV2_MODEL_NAME)
+            ).strip(),
+            device=str(
+                dinov2_raw.get("device", DEFAULT_DINOV2_DEVICE)
+            ).strip().lower(),
+            target_sample_fps=float(
+                dinov2_raw.get("target_sample_fps", DEFAULT_DINOV2_TARGET_SAMPLE_FPS)
+            ),
+            candidate_sample_fps=float(
+                dinov2_raw.get("candidate_sample_fps", DEFAULT_DINOV2_CANDIDATE_SAMPLE_FPS)
+            ),
+            cosine_threshold=float(
+                dinov2_raw.get("cosine_threshold", DEFAULT_DINOV2_COSINE_THRESHOLD)
+            ),
+            l2_score_threshold=float(
+                dinov2_raw.get("l2_score_threshold", DEFAULT_DINOV2_L2_SCORE_THRESHOLD)
+            ),
+            margin_threshold=float(
+                dinov2_raw.get("margin_threshold", DEFAULT_DINOV2_MARGIN_THRESHOLD)
+            ),
+            min_consecutive_frames=int(
+                dinov2_raw.get("min_consecutive_frames", DEFAULT_DINOV2_MIN_CONSECUTIVE_FRAMES)
+            ),
+            max_target_frame_step=int(
+                dinov2_raw.get("max_target_frame_step", DEFAULT_DINOV2_MAX_TARGET_FRAME_STEP)
+            ),
+            min_run_avg_cosine=float(
+                dinov2_raw.get("min_run_avg_cosine", DEFAULT_DINOV2_MIN_RUN_AVG_COSINE)
             ),
         ),
     )

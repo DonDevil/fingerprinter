@@ -6,3 +6,8 @@ PyYAML
 imageio-ffmpeg
 PySocks
 numpy
+torch
+torchvision
+transformers
+Pillow
+opencv-python

@@ -66,3 +66,25 @@ audio_fingerprint:
   alignment_method: offset_xcorr
   # Band ratio used for DTW-based audio alignment.
   alignment_band_ratio: 0.2
+
+dinov2:
+  # Pretrained model used for frame embeddings.
+  model_name: facebook/dinov2-base
+  # auto, cpu, or cuda.
+  device: auto
+  # FPS used when building/storing target embeddings.
+  target_sample_fps: 2.0
+  # FPS used when embedding crawler clips.
+  candidate_sample_fps: 2.0
+  # Per-frame cosine similarity threshold for accepting nearest neighbors.
+  cosine_threshold: 0.93
+  # Secondary distance check score: 1/(1+l2_distance).
+  l2_score_threshold: 0.70
+  # Require the best match to exceed the second-best by this margin.
+  margin_threshold: 0.03
+  # Minimum consecutive accepted frames required to consider a match.
+  min_consecutive_frames: 6
+  # Maximum allowed jump in matched target frame index between consecutive clip frames.
+  max_target_frame_step: 3
+  # Minimum average cosine required inside the best consecutive run.
+  min_run_avg_cosine: 0.94

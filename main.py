@@ -10,8 +10,9 @@ def _parse_techniques(value: str | None) -> set[str] | None:
         return None
     raw = value.strip().lower()
     if not raw or raw == "all":
-        return None
-    return {item.strip().lower() for item in raw.split(",") if item.strip()}
+        return {"dinov2"}
+    normalized = {item.strip().lower() for item in raw.split(",") if item.strip()}
+    return normalized
 
 
 def main():
@@ -43,8 +44,8 @@ def main():
     )
     parser.add_argument(
         "--techniques",
-        default="all",
-        help="Comma-separated techniques: metadata,visual,audio,temporal (default: all)",
+        default="dinov2",
+        help="Comma-separated techniques (currently only: dinov2)",
     )
     parser.add_argument(
         "--status",
@@ -72,54 +73,44 @@ def main():
         help="Retain non-matching local files instead of deleting them",
     )
     parser.add_argument(
-        "--target-segment-seconds",
+        "--dinov2-target-sample-fps",
         type=float,
-        help="Override target/movie segment duration in seconds",
+        help="Override DINOv2 target embedding sample FPS",
     )
     parser.add_argument(
-        "--candidate-segment-seconds",
+        "--dinov2-candidate-sample-fps",
         type=float,
-        help="Override candidate segment duration in seconds",
+        help="Override DINOv2 candidate clip sample FPS",
     )
     parser.add_argument(
-        "--candidate-segment-seconds-high-intensity",
+        "--dinov2-cosine-threshold",
         type=float,
-        help="Override candidate segment duration used in high-intensity mode",
+        help="Override per-frame cosine threshold",
     )
     parser.add_argument(
-        "--high-intensity",
-        action="store_true",
-        help="Use high-intensity candidate segmentation configuration",
-    )
-    parser.add_argument(
-        "--frame-sample-fps",
+        "--dinov2-l2-score-threshold",
         type=float,
-        help="Override sampled video frames-per-second for segment fingerprints",
+        help="Override per-frame L2 score threshold (1/(1+l2_distance))",
     )
     parser.add_argument(
-        "--sequence-alignment-method",
-        choices=["constrained", "dtw"],
-        help="Override video sequence alignment method",
-    )
-    parser.add_argument(
-        "--sequence-band-ratio",
+        "--dinov2-margin-threshold",
         type=float,
-        help="Override DTW/constrained band ratio for video sequence alignment",
+        help="Override nearest-neighbor margin threshold (best - second-best cosine)",
     )
     parser.add_argument(
-        "--audio-segment-seconds",
+        "--dinov2-min-consecutive-frames",
+        type=int,
+        help="Override minimum consecutive matched frames required",
+    )
+    parser.add_argument(
+        "--dinov2-max-target-frame-step",
+        type=int,
+        help="Override maximum allowed target-frame jump between consecutive clip frames",
+    )
+    parser.add_argument(
+        "--dinov2-min-run-avg-cosine",
         type=float,
-        help="Override audio segment duration in seconds",
-    )
-    parser.add_argument(
-        "--audio-alignment-method",
-        choices=["offset_xcorr", "dtw"],
-        help="Override audio alignment method",
-    )
-    parser.add_argument(
-        "--audio-band-ratio",
-        type=float,
-        help="Override DTW band ratio for audio alignment",
+        help="Override minimum average cosine required within best consecutive run",
     )
     args = parser.parse_args()
 
@@ -132,16 +123,14 @@ def main():
         settings,
         enabled_techniques=selected_techniques,
         keep_non_matches=args.keep_non_matches,
-        target_segment_seconds_override=args.target_segment_seconds,
-        candidate_segment_seconds_override=args.candidate_segment_seconds,
-        candidate_segment_seconds_high_intensity_override=args.candidate_segment_seconds_high_intensity,
-        frame_sample_fps_override=args.frame_sample_fps,
-        sequence_alignment_method_override=args.sequence_alignment_method,
-        sequence_band_ratio_override=args.sequence_band_ratio,
-        audio_segment_seconds_override=args.audio_segment_seconds,
-        audio_alignment_method_override=args.audio_alignment_method,
-        audio_band_ratio_override=args.audio_band_ratio,
-        high_intensity_mode=args.high_intensity,
+        dinov2_target_sample_fps_override=args.dinov2_target_sample_fps,
+        dinov2_candidate_sample_fps_override=args.dinov2_candidate_sample_fps,
+        dinov2_cosine_threshold_override=args.dinov2_cosine_threshold,
+        dinov2_l2_score_threshold_override=args.dinov2_l2_score_threshold,
+        dinov2_margin_threshold_override=args.dinov2_margin_threshold,
+        dinov2_min_consecutive_frames_override=args.dinov2_min_consecutive_frames,
+        dinov2_max_target_frame_step_override=args.dinov2_max_target_frame_step,
+        dinov2_min_run_avg_cosine_override=args.dinov2_min_run_avg_cosine,
     )
 
     try:

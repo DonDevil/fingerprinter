@@ -10,16 +10,17 @@ from loguru import logger
 
 from config.settings import Settings
 from downloader.video_downloader import VideoDownloader
-from fingerprint.segment_fingerprint import FINGERPRINT_ALGO_VERSION
-from fingerprint.segment_fingerprint import AudioSegmentFingerprint
-from fingerprint.segment_fingerprint import VideoSegmentFingerprint
-from fingerprint.segment_fingerprint import extract_audio_segment_fingerprints
-from fingerprint.segment_fingerprint import extract_video_segment_fingerprints
 from fingerprint.video_probe import get_media_probe
+from matcher.dinov2_matcher import DinoV2Config
+from matcher.dinov2_matcher import DinoV2Embedder
+from matcher.dinov2_matcher import DinoV2EmbeddingIndex
+from matcher.dinov2_matcher import load_embedding_index
+from matcher.dinov2_matcher import run_dinov2_fingerprint
+from matcher.dinov2_matcher import save_embedding_index
+from matcher.dinov2_matcher import target_embedding_cache_key
 from matcher.duration_gate import should_reject_for_short_duration
 from matcher.media_type_gate import should_reject_non_video
-from matcher.multi_stage_fingerprint import run_staged_fingerprint
-from matcher.multi_stage_fingerprint import ALL_TECHNIQUES, PipelineResult, StageOutcome
+from matcher.multi_stage_fingerprint import PipelineResult, StageOutcome
 from matcher.candidate_matcher import (
     score_title_token_overlap,
 )
@@ -38,16 +39,14 @@ class FingerprintWorker:
         *,
         enabled_techniques: set[str] | None = None,
         keep_non_matches: bool = False,
-        target_segment_seconds_override: float | None = None,
-        candidate_segment_seconds_override: float | None = None,
-        candidate_segment_seconds_high_intensity_override: float | None = None,
-        frame_sample_fps_override: float | None = None,
-        sequence_alignment_method_override: str | None = None,
-        sequence_band_ratio_override: float | None = None,
-        audio_segment_seconds_override: float | None = None,
-        audio_alignment_method_override: str | None = None,
-        audio_band_ratio_override: float | None = None,
-        high_intensity_mode: bool = False,
+        dinov2_target_sample_fps_override: float | None = None,
+        dinov2_candidate_sample_fps_override: float | None = None,
+        dinov2_cosine_threshold_override: float | None = None,
+        dinov2_l2_score_threshold_override: float | None = None,
+        dinov2_margin_threshold_override: float | None = None,
+        dinov2_min_consecutive_frames_override: int | None = None,
+        dinov2_max_target_frame_step_override: int | None = None,
+        dinov2_min_run_avg_cosine_override: float | None = None,
     ):
         self.settings = settings
         if settings.queue.backend != "crawler":
@@ -74,70 +73,62 @@ class FingerprintWorker:
         )
         self.enabled_techniques = self._normalize_techniques(enabled_techniques)
         self.keep_non_matches = bool(keep_non_matches)
-
-        self.high_intensity_mode = bool(high_intensity_mode)
-        self.target_segment_seconds = float(
-            target_segment_seconds_override
-            if target_segment_seconds_override is not None
-            else settings.video_fingerprint.target_segment_seconds
+        self.dinov2_config = DinoV2Config(
+            model_name=str(settings.dinov2.model_name),
+            target_sample_fps=float(
+                dinov2_target_sample_fps_override
+                if dinov2_target_sample_fps_override is not None
+                else settings.dinov2.target_sample_fps
+            ),
+            candidate_sample_fps=float(
+                dinov2_candidate_sample_fps_override
+                if dinov2_candidate_sample_fps_override is not None
+                else settings.dinov2.candidate_sample_fps
+            ),
+            cosine_threshold=float(
+                dinov2_cosine_threshold_override
+                if dinov2_cosine_threshold_override is not None
+                else settings.dinov2.cosine_threshold
+            ),
+            l2_score_threshold=float(
+                dinov2_l2_score_threshold_override
+                if dinov2_l2_score_threshold_override is not None
+                else settings.dinov2.l2_score_threshold
+            ),
+            margin_threshold=float(
+                dinov2_margin_threshold_override
+                if dinov2_margin_threshold_override is not None
+                else settings.dinov2.margin_threshold
+            ),
+            min_consecutive_frames=int(
+                dinov2_min_consecutive_frames_override
+                if dinov2_min_consecutive_frames_override is not None
+                else settings.dinov2.min_consecutive_frames
+            ),
+            max_target_frame_step=int(
+                dinov2_max_target_frame_step_override
+                if dinov2_max_target_frame_step_override is not None
+                else settings.dinov2.max_target_frame_step
+            ),
+            min_run_avg_cosine=float(
+                dinov2_min_run_avg_cosine_override
+                if dinov2_min_run_avg_cosine_override is not None
+                else settings.dinov2.min_run_avg_cosine
+            ),
         )
-        self.candidate_segment_seconds = float(
-            candidate_segment_seconds_override
-            if candidate_segment_seconds_override is not None
-            else settings.video_fingerprint.candidate_segment_seconds
+        self.dinov2_embedder = DinoV2Embedder(
+            model_name=self.dinov2_config.model_name,
+            device=settings.dinov2.device,
         )
-        self.candidate_segment_seconds_high_intensity = float(
-            candidate_segment_seconds_high_intensity_override
-            if candidate_segment_seconds_high_intensity_override is not None
-            else settings.video_fingerprint.candidate_segment_seconds_high_intensity
-        )
-        self.frame_sample_fps = float(
-            frame_sample_fps_override
-            if frame_sample_fps_override is not None
-            else settings.video_fingerprint.frame_sample_fps
-        )
-        self.video_use_gpu = bool(settings.video_fingerprint.use_gpu)
-        self.video_gpu_device = int(settings.video_fingerprint.gpu_device)
-        self.sequence_alignment_method = (
-            sequence_alignment_method_override.strip().lower()
-            if sequence_alignment_method_override is not None
-            else settings.sequence_alignment.method
-        )
-        self.sequence_band_ratio = float(
-            sequence_band_ratio_override
-            if sequence_band_ratio_override is not None
-            else settings.sequence_alignment.band_ratio
-        )
-        self.audio_segment_seconds = float(
-            audio_segment_seconds_override
-            if audio_segment_seconds_override is not None
-            else settings.audio_fingerprint.segment_seconds
-        )
-        self.audio_alignment_method = (
-            audio_alignment_method_override.strip().lower()
-            if audio_alignment_method_override is not None
-            else settings.audio_fingerprint.alignment_method
-        )
-        self.audio_band_ratio = float(
-            audio_band_ratio_override
-            if audio_band_ratio_override is not None
-            else settings.audio_fingerprint.alignment_band_ratio
-        )
-        self._target_video_segments_cache: list[VideoSegmentFingerprint] | None = None
-        self._target_audio_segments_cache: list[AudioSegmentFingerprint] | None = None
-        self._target_segments_cache_key: str | None = None
-
-    def _effective_candidate_segment_seconds(self) -> float:
-        if self.high_intensity_mode:
-            return self.candidate_segment_seconds_high_intensity
-        return self.candidate_segment_seconds
+        self._target_embedding_cache_key: str | None = None
+        self._target_embedding_cache: DinoV2EmbeddingIndex | None = None
 
     @staticmethod
     def _normalize_techniques(enabled_techniques: set[str] | None) -> set[str]:
         if not enabled_techniques:
-            return set(ALL_TECHNIQUES)
+            return {"dinov2"}
         normalized = {item.strip().lower() for item in enabled_techniques if item and item.strip()}
-        unknown = sorted(normalized - set(ALL_TECHNIQUES))
+        unknown = sorted(normalized - {"dinov2"})
         if unknown:
             raise ValueError(f"Unknown techniques: {', '.join(unknown)}")
         if not normalized:
@@ -172,145 +163,57 @@ class FingerprintWorker:
         suffix = Path(parsed_path).suffix or ".bin"
         return f"asset_{job.asset_id}{suffix}"
 
-    def _target_fingerprint_cache_dir(self) -> Path:
+    def _target_embedding_cache_dir(self) -> Path:
         return Path("storage/target_fingerprints")
 
-    def _target_fingerprint_cache_key(self, target_file: Path) -> str:
-        resolved = target_file.expanduser().resolve()
-        stat = resolved.stat()
-        payload = "|".join(
-            [
-                str(resolved),
-                str(stat.st_size),
-                str(int(stat.st_mtime_ns)),
-                f"vseg={self.target_segment_seconds}",
-                f"vfps={self.frame_sample_fps}",
-                f"aseg={self.audio_segment_seconds}",
-                f"vgpu={self.video_use_gpu}",
-                f"vgpudev={self.video_gpu_device}",
-                f"algo={FINGERPRINT_ALGO_VERSION}",
-            ]
-        )
-        return hashlib.sha1(payload.encode("utf-8")).hexdigest()
+    def _target_embedding_cache_file(self, cache_key: str) -> Path:
+        return self._target_embedding_cache_dir() / f"{cache_key}.npz"
 
-    def _target_fingerprint_cache_file(self, cache_key: str) -> Path:
-        return self._target_fingerprint_cache_dir() / f"{cache_key}.json"
-
-    @staticmethod
-    def _serialize_video_segments(segments: list[VideoSegmentFingerprint]) -> list[dict]:
-        return [
-            {
-                "start_second": float(seg.start_second),
-                "end_second": float(seg.end_second),
-                "digest": seg.digest,
-                "frame_count": int(seg.frame_count),
-            }
-            for seg in segments
-        ]
-
-    @staticmethod
-    def _deserialize_video_segments(payload: list[dict]) -> list[VideoSegmentFingerprint]:
-        out: list[VideoSegmentFingerprint] = []
-        for item in payload:
-            out.append(
-                VideoSegmentFingerprint(
-                    start_second=float(item["start_second"]),
-                    end_second=float(item["end_second"]),
-                    digest=str(item["digest"]),
-                    frame_count=int(item["frame_count"]),
-                )
-            )
-        return out
-
-    @staticmethod
-    def _serialize_audio_segments(segments: list[AudioSegmentFingerprint]) -> list[dict]:
-        return [
-            {
-                "start_second": float(seg.start_second),
-                "end_second": float(seg.end_second),
-                "digest": seg.digest,
-                "rms": float(seg.rms),
-                "zero_crossing_rate": float(seg.zero_crossing_rate),
-            }
-            for seg in segments
-        ]
-
-    @staticmethod
-    def _deserialize_audio_segments(payload: list[dict]) -> list[AudioSegmentFingerprint]:
-        out: list[AudioSegmentFingerprint] = []
-        for item in payload:
-            out.append(
-                AudioSegmentFingerprint(
-                    start_second=float(item["start_second"]),
-                    end_second=float(item["end_second"]),
-                    digest=str(item.get("digest", "")),
-                    rms=float(item["rms"]),
-                    zero_crossing_rate=float(item["zero_crossing_rate"]),
-                )
-            )
-        return out
-
-    def _load_or_build_target_segments(
-        self,
-        target_file: Path,
-    ) -> tuple[list[VideoSegmentFingerprint], list[AudioSegmentFingerprint]]:
+    def _load_or_build_target_embedding_index(self, target_file: Path) -> DinoV2EmbeddingIndex | None:
         if not target_file or not target_file.exists():
-            return [], []
+            return None
 
-        cache_key = self._target_fingerprint_cache_key(target_file)
-        if (
-            self._target_segments_cache_key == cache_key
-            and self._target_video_segments_cache is not None
-            and self._target_audio_segments_cache is not None
-        ):
-            return self._target_video_segments_cache, self._target_audio_segments_cache
+        cache_key = target_embedding_cache_key(
+            target_path=target_file,
+            model_name=self.dinov2_config.model_name,
+            sample_fps=self.dinov2_config.target_sample_fps,
+        )
+        if self._target_embedding_cache_key == cache_key and self._target_embedding_cache is not None:
+            return self._target_embedding_cache
 
-        cache_dir = self._target_fingerprint_cache_dir()
+        cache_dir = self._target_embedding_cache_dir()
         cache_dir.mkdir(parents=True, exist_ok=True)
-        cache_file = self._target_fingerprint_cache_file(cache_key)
+        cache_file = self._target_embedding_cache_file(cache_key)
 
         if cache_file.exists():
             try:
-                payload = json.loads(cache_file.read_text(encoding="utf-8"))
-                video_segments = self._deserialize_video_segments(payload.get("video_segments", []))
-                audio_segments = self._deserialize_audio_segments(payload.get("audio_segments", []))
-                if video_segments and audio_segments:
-                    self._target_segments_cache_key = cache_key
-                    self._target_video_segments_cache = video_segments
-                    self._target_audio_segments_cache = audio_segments
-                    return video_segments, audio_segments
+                index = load_embedding_index(cache_file)
+                if index.embeddings.size > 0:
+                    self._target_embedding_cache_key = cache_key
+                    self._target_embedding_cache = index
+                    return index
             except Exception:
-                logger.warning("Failed to load target fingerprint cache at {}", cache_file)
+                logger.warning("Failed to load DINOv2 target embedding cache at {}", cache_file)
 
-        logger.info("Building target fingerprint cache for {}", target_file)
-        video_segments = extract_video_segment_fingerprints(
+        logger.info("Building DINOv2 target embedding cache for {}", target_file)
+        index = self.dinov2_embedder.embed_video(
             str(target_file),
-            segment_seconds=max(0.1, float(self.target_segment_seconds)),
-            frame_sample_fps=max(0.1, float(self.frame_sample_fps)),
-            use_gpu=self.video_use_gpu,
-            gpu_device=self.video_gpu_device,
+            sample_fps=self.dinov2_config.target_sample_fps,
         )
-        audio_segments = extract_audio_segment_fingerprints(
-            str(target_file),
-            segment_seconds=max(0.1, float(self.audio_segment_seconds)),
-        )
+        save_embedding_index(index, cache_file)
 
-        payload = {
+        meta_file = cache_file.with_suffix(".meta.json")
+        meta_payload = {
             "target_path": str(target_file.expanduser().resolve()),
-            "target_segment_seconds": float(self.target_segment_seconds),
-            "frame_sample_fps": float(self.frame_sample_fps),
-            "audio_segment_seconds": float(self.audio_segment_seconds),
-            "video_use_gpu": bool(self.video_use_gpu),
-            "video_gpu_device": int(self.video_gpu_device),
-            "video_segments": self._serialize_video_segments(video_segments),
-            "audio_segments": self._serialize_audio_segments(audio_segments),
+            "model_name": self.dinov2_config.model_name,
+            "target_sample_fps": float(self.dinov2_config.target_sample_fps),
+            "embedding_count": int(index.embeddings.shape[0]),
         }
-        cache_file.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+        meta_file.write_text(json.dumps(meta_payload, sort_keys=True), encoding="utf-8")
 
-        self._target_segments_cache_key = cache_key
-        self._target_video_segments_cache = video_segments
-        self._target_audio_segments_cache = audio_segments
-        return video_segments, audio_segments
+        self._target_embedding_cache_key = cache_key
+        self._target_embedding_cache = index
+        return index
 
     def _resolve_target_file(self) -> Path:
         configured = (self.settings.pipeline.target_file_path or "").strip()
@@ -387,27 +290,31 @@ class FingerprintWorker:
         target_file: Path,
     ) -> PipelineResult:
         if target_file and target_file.exists():
-            target_video_segments, target_audio_segments = self._load_or_build_target_segments(target_file)
-            return run_staged_fingerprint(
+            target_index = self._load_or_build_target_embedding_index(target_file)
+            if target_index is None:
+                return PipelineResult(
+                    final_status="failed",
+                    piracy_score=0.0,
+                    outcomes=[
+                        StageOutcome(
+                            stage_name="stage0_sanitization",
+                            score=0.0,
+                            decision="reject",
+                            note="target video missing or unreadable",
+                            details={"target_path": str(target_file)},
+                        )
+                    ],
+                )
+
+            return run_dinov2_fingerprint(
                 target_title=target_title,
                 candidate_url=candidate_url,
                 candidate_path=candidate_path,
-                target_path=str(target_file),
+                target_index=target_index,
+                embedder=self.dinov2_embedder,
+                config=self.dinov2_config,
                 low_threshold=self.settings.pipeline.phase_b_low_match_threshold,
                 high_threshold=self.settings.pipeline.phase_b_high_match_threshold,
-                enabled_techniques=self.enabled_techniques,
-                target_segment_seconds=self.target_segment_seconds,
-                candidate_segment_seconds=self._effective_candidate_segment_seconds(),
-                frame_sample_fps=self.frame_sample_fps,
-                sequence_alignment_method=self.sequence_alignment_method,
-                sequence_band_ratio=self.sequence_band_ratio,
-                audio_segment_seconds=self.audio_segment_seconds,
-                audio_alignment_method=self.audio_alignment_method,
-                audio_band_ratio=self.audio_band_ratio,
-                precomputed_target_video_segments=target_video_segments,
-                precomputed_target_audio_segments=target_audio_segments,
-                video_use_gpu=self.video_use_gpu,
-                video_gpu_device=self.video_gpu_device,
             )
 
         # Fallback if no target media exists: keep legacy title-token stage score.
