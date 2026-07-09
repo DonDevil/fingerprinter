@@ -7,8 +7,8 @@ pipeline:
   # Reference target media used across fingerprint stages.
   target_file_path: target/Blast.mp4
   # Stage-2 policy thresholds for quick target matching score.
-  phase_b_low_match_threshold: 0.2
-  phase_b_high_match_threshold: 0.65
+  phase_b_low_match_threshold: 0.10
+  phase_b_high_match_threshold: 0.40
   # On confirmed match, pending jobs from same source domain get this priority.
   pirate_domain_boost_priority: 1
 
@@ -25,7 +25,9 @@ downloader:
   download_dir: storage/downloads
   request_timeout_seconds: 30
   # Keep Tor disabled unless SOCKS proxy routing is intentionally configured.
-  enable_tor: false
+  enable_tor: true
+  # Tor SOCKS endpoint used when enable_tor is true.
+  tor_proxy_url: socks5h://127.0.0.1:9050
 
 storage_policy:
   # Local metadata DB for processed assets and file lifecycle.
@@ -41,11 +43,15 @@ video_fingerprint:
   # Target/movie fingerprint segments (seconds). Keep small for fine-grained matching.
   target_segment_seconds: 1.0
   # Candidate/downloaded video segment duration (seconds).
-  candidate_segment_seconds: 2.0
+  candidate_segment_seconds: 1.0
   # Candidate segment duration used for high-intensity mode.
   candidate_segment_seconds_high_intensity: 1.0
   # Number of sampled frames per second for segment fingerprinting.
   frame_sample_fps: 2.0
+  # Enable NVIDIA CUDA hardware decode for video fingerprint extraction when available.
+  use_gpu: true
+  # CUDA device index (0 for first GPU).
+  gpu_device: 0
 
 sequence_alignment:
   # Sequence alignment method: constrained or dtw.

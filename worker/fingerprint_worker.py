@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import hashlib
 import time
 from pathlib import Path
@@ -9,6 +10,11 @@ from loguru import logger
 
 from config.settings import Settings
 from downloader.video_downloader import VideoDownloader
+from fingerprint.segment_fingerprint import FINGERPRINT_ALGO_VERSION
+from fingerprint.segment_fingerprint import AudioSegmentFingerprint
+from fingerprint.segment_fingerprint import VideoSegmentFingerprint
+from fingerprint.segment_fingerprint import extract_audio_segment_fingerprints
+from fingerprint.segment_fingerprint import extract_video_segment_fingerprints
 from fingerprint.video_probe import get_media_probe
 from matcher.duration_gate import should_reject_for_short_duration
 from matcher.media_type_gate import should_reject_non_video
@@ -52,6 +58,8 @@ class FingerprintWorker:
         self.downloader = VideoDownloader(
             download_dir=settings.downloader.download_dir,
             request_timeout_seconds=settings.downloader.request_timeout_seconds,
+            enable_tor=settings.downloader.enable_tor,
+            tor_proxy_url=settings.downloader.tor_proxy_url,
         )
         self.queue = CrawlerMediaQueue(
             db_path=settings.queue.crawler_media_db_path,
@@ -88,6 +96,8 @@ class FingerprintWorker:
             if frame_sample_fps_override is not None
             else settings.video_fingerprint.frame_sample_fps
         )
+        self.video_use_gpu = bool(settings.video_fingerprint.use_gpu)
+        self.video_gpu_device = int(settings.video_fingerprint.gpu_device)
         self.sequence_alignment_method = (
             sequence_alignment_method_override.strip().lower()
             if sequence_alignment_method_override is not None
@@ -113,6 +123,9 @@ class FingerprintWorker:
             if audio_band_ratio_override is not None
             else settings.audio_fingerprint.alignment_band_ratio
         )
+        self._target_video_segments_cache: list[VideoSegmentFingerprint] | None = None
+        self._target_audio_segments_cache: list[AudioSegmentFingerprint] | None = None
+        self._target_segments_cache_key: str | None = None
 
     def _effective_candidate_segment_seconds(self) -> float:
         if self.high_intensity_mode:
@@ -138,7 +151,9 @@ class FingerprintWorker:
 
     @staticmethod
     def _is_video_candidate(path: Path) -> bool:
-        return path.suffix.lower() in {".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v"}
+        name = str(path.name).split("?", 1)[0]
+        suffix = Path(name).suffix.lower()
+        return suffix in {".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v"}
 
     @staticmethod
     def _queue_task_key(asset_id: int) -> str:
@@ -153,8 +168,149 @@ class FingerprintWorker:
 
     @staticmethod
     def _build_filename(job: QueueJob) -> str:
-        suffix = Path(job.media_url).suffix or ".bin"
+        parsed_path = urlparse(job.media_url).path
+        suffix = Path(parsed_path).suffix or ".bin"
         return f"asset_{job.asset_id}{suffix}"
+
+    def _target_fingerprint_cache_dir(self) -> Path:
+        return Path("storage/target_fingerprints")
+
+    def _target_fingerprint_cache_key(self, target_file: Path) -> str:
+        resolved = target_file.expanduser().resolve()
+        stat = resolved.stat()
+        payload = "|".join(
+            [
+                str(resolved),
+                str(stat.st_size),
+                str(int(stat.st_mtime_ns)),
+                f"vseg={self.target_segment_seconds}",
+                f"vfps={self.frame_sample_fps}",
+                f"aseg={self.audio_segment_seconds}",
+                f"vgpu={self.video_use_gpu}",
+                f"vgpudev={self.video_gpu_device}",
+                f"algo={FINGERPRINT_ALGO_VERSION}",
+            ]
+        )
+        return hashlib.sha1(payload.encode("utf-8")).hexdigest()
+
+    def _target_fingerprint_cache_file(self, cache_key: str) -> Path:
+        return self._target_fingerprint_cache_dir() / f"{cache_key}.json"
+
+    @staticmethod
+    def _serialize_video_segments(segments: list[VideoSegmentFingerprint]) -> list[dict]:
+        return [
+            {
+                "start_second": float(seg.start_second),
+                "end_second": float(seg.end_second),
+                "digest": seg.digest,
+                "frame_count": int(seg.frame_count),
+            }
+            for seg in segments
+        ]
+
+    @staticmethod
+    def _deserialize_video_segments(payload: list[dict]) -> list[VideoSegmentFingerprint]:
+        out: list[VideoSegmentFingerprint] = []
+        for item in payload:
+            out.append(
+                VideoSegmentFingerprint(
+                    start_second=float(item["start_second"]),
+                    end_second=float(item["end_second"]),
+                    digest=str(item["digest"]),
+                    frame_count=int(item["frame_count"]),
+                )
+            )
+        return out
+
+    @staticmethod
+    def _serialize_audio_segments(segments: list[AudioSegmentFingerprint]) -> list[dict]:
+        return [
+            {
+                "start_second": float(seg.start_second),
+                "end_second": float(seg.end_second),
+                "digest": seg.digest,
+                "rms": float(seg.rms),
+                "zero_crossing_rate": float(seg.zero_crossing_rate),
+            }
+            for seg in segments
+        ]
+
+    @staticmethod
+    def _deserialize_audio_segments(payload: list[dict]) -> list[AudioSegmentFingerprint]:
+        out: list[AudioSegmentFingerprint] = []
+        for item in payload:
+            out.append(
+                AudioSegmentFingerprint(
+                    start_second=float(item["start_second"]),
+                    end_second=float(item["end_second"]),
+                    digest=str(item.get("digest", "")),
+                    rms=float(item["rms"]),
+                    zero_crossing_rate=float(item["zero_crossing_rate"]),
+                )
+            )
+        return out
+
+    def _load_or_build_target_segments(
+        self,
+        target_file: Path,
+    ) -> tuple[list[VideoSegmentFingerprint], list[AudioSegmentFingerprint]]:
+        if not target_file or not target_file.exists():
+            return [], []
+
+        cache_key = self._target_fingerprint_cache_key(target_file)
+        if (
+            self._target_segments_cache_key == cache_key
+            and self._target_video_segments_cache is not None
+            and self._target_audio_segments_cache is not None
+        ):
+            return self._target_video_segments_cache, self._target_audio_segments_cache
+
+        cache_dir = self._target_fingerprint_cache_dir()
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_file = self._target_fingerprint_cache_file(cache_key)
+
+        if cache_file.exists():
+            try:
+                payload = json.loads(cache_file.read_text(encoding="utf-8"))
+                video_segments = self._deserialize_video_segments(payload.get("video_segments", []))
+                audio_segments = self._deserialize_audio_segments(payload.get("audio_segments", []))
+                if video_segments and audio_segments:
+                    self._target_segments_cache_key = cache_key
+                    self._target_video_segments_cache = video_segments
+                    self._target_audio_segments_cache = audio_segments
+                    return video_segments, audio_segments
+            except Exception:
+                logger.warning("Failed to load target fingerprint cache at {}", cache_file)
+
+        logger.info("Building target fingerprint cache for {}", target_file)
+        video_segments = extract_video_segment_fingerprints(
+            str(target_file),
+            segment_seconds=max(0.1, float(self.target_segment_seconds)),
+            frame_sample_fps=max(0.1, float(self.frame_sample_fps)),
+            use_gpu=self.video_use_gpu,
+            gpu_device=self.video_gpu_device,
+        )
+        audio_segments = extract_audio_segment_fingerprints(
+            str(target_file),
+            segment_seconds=max(0.1, float(self.audio_segment_seconds)),
+        )
+
+        payload = {
+            "target_path": str(target_file.expanduser().resolve()),
+            "target_segment_seconds": float(self.target_segment_seconds),
+            "frame_sample_fps": float(self.frame_sample_fps),
+            "audio_segment_seconds": float(self.audio_segment_seconds),
+            "video_use_gpu": bool(self.video_use_gpu),
+            "video_gpu_device": int(self.video_gpu_device),
+            "video_segments": self._serialize_video_segments(video_segments),
+            "audio_segments": self._serialize_audio_segments(audio_segments),
+        }
+        cache_file.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+
+        self._target_segments_cache_key = cache_key
+        self._target_video_segments_cache = video_segments
+        self._target_audio_segments_cache = audio_segments
+        return video_segments, audio_segments
 
     def _resolve_target_file(self) -> Path:
         configured = (self.settings.pipeline.target_file_path or "").strip()
@@ -231,6 +387,7 @@ class FingerprintWorker:
         target_file: Path,
     ) -> PipelineResult:
         if target_file and target_file.exists():
+            target_video_segments, target_audio_segments = self._load_or_build_target_segments(target_file)
             return run_staged_fingerprint(
                 target_title=target_title,
                 candidate_url=candidate_url,
@@ -247,6 +404,10 @@ class FingerprintWorker:
                 audio_segment_seconds=self.audio_segment_seconds,
                 audio_alignment_method=self.audio_alignment_method,
                 audio_band_ratio=self.audio_band_ratio,
+                precomputed_target_video_segments=target_video_segments,
+                precomputed_target_audio_segments=target_audio_segments,
+                video_use_gpu=self.video_use_gpu,
+                video_gpu_device=self.video_gpu_device,
             )
 
         # Fallback if no target media exists: keep legacy title-token stage score.

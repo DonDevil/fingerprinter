@@ -7,11 +7,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from fingerprint.segment_fingerprint import AudioSegmentFingerprint
+from fingerprint.segment_fingerprint import VideoSegmentFingerprint
 from fingerprint.segment_fingerprint import extract_audio_segment_fingerprints
 from fingerprint.segment_fingerprint import extract_video_segment_fingerprints
+from fingerprint.segment_fingerprint import verify_audio_at_offset
 from fingerprint.video_probe import get_media_probe
 from matcher.sequence_alignment import align_audio_segments_dtw
 from matcher.sequence_alignment import align_audio_segments_offset_xcorr
+from matcher.sequence_alignment import align_audio_energy_xcorr
 from matcher.sequence_alignment import align_video_segments_constrained
 from matcher.sequence_alignment import align_video_segments_dtw
 
@@ -135,7 +139,14 @@ def _audio_digest(path: Path) -> str | None:
 def _duration_similarity(a: float | None, b: float | None) -> float:
     if a is None or b is None or a <= 0 or b <= 0:
         return 0.0
-    ratio = min(a, b) / max(a, b)
+
+    # Clip-aware policy: a short candidate can still be a valid excerpt from a full film.
+    if a <= b:
+        ratio = a / b
+        return _clip01(0.5 + (0.5 * ratio))
+
+    # If candidate is longer than target, keep strict proportional penalty.
+    ratio = b / a
     return _clip01(ratio)
 
 
@@ -182,6 +193,10 @@ def run_staged_fingerprint(
     audio_segment_seconds: float = 1.5,
     audio_alignment_method: str = "offset_xcorr",
     audio_band_ratio: float = 0.2,
+    precomputed_target_video_segments: list[VideoSegmentFingerprint] | None = None,
+    precomputed_target_audio_segments: list[AudioSegmentFingerprint] | None = None,
+    video_use_gpu: bool = False,
+    video_gpu_device: int = 0,
 ) -> PipelineResult:
     candidate = Path(candidate_path)
     target = Path(target_path)
@@ -250,15 +265,21 @@ def run_staged_fingerprint(
     candidate_tokens = _tokenize(candidate_url + " " + candidate.name)
     lexical_score = _jaccard(title_tokens, candidate_tokens)
 
-    target_video_segments = extract_video_segment_fingerprints(
-        str(target),
-        segment_seconds=max(0.1, float(target_segment_seconds)),
-        frame_sample_fps=max(0.1, float(frame_sample_fps)),
+    target_video_segments = (
+        list(precomputed_target_video_segments)
+        if precomputed_target_video_segments is not None
+        else extract_video_segment_fingerprints(
+            str(target),
+            segment_seconds=max(0.1, float(target_segment_seconds)),
+            frame_sample_fps=max(0.1, float(frame_sample_fps)),
+        )
     )
     candidate_video_segments = extract_video_segment_fingerprints(
         str(candidate),
         segment_seconds=max(0.1, float(candidate_segment_seconds)),
         frame_sample_fps=max(0.1, float(frame_sample_fps)),
+        use_gpu=bool(video_use_gpu),
+        gpu_device=int(video_gpu_device),
     )
 
     if sequence_alignment_method == "dtw":
@@ -304,10 +325,17 @@ def run_staged_fingerprint(
         )
     )
 
-    # Stage 3: audio segment fingerprinting and offset-aware alignment.
-    target_audio_segments = extract_audio_segment_fingerprints(
-        str(target),
-        segment_seconds=max(0.1, float(audio_segment_seconds)),
+    # Stage 3: audio fingerprinting.
+    # Primary: full-sweep RMS energy-envelope cross-correlation using precomputed segments.
+    # This uses zero-mean normalised xcorr across all possible offsets — decisive and fast.
+    # Fallback: DTW path over spectral segment features if requested.
+    target_audio_segments = (
+        list(precomputed_target_audio_segments)
+        if precomputed_target_audio_segments is not None
+        else extract_audio_segment_fingerprints(
+            str(target),
+            segment_seconds=max(0.1, float(audio_segment_seconds)),
+        )
     )
     candidate_audio_segments = extract_audio_segment_fingerprints(
         str(candidate),
@@ -322,24 +350,25 @@ def run_staged_fingerprint(
             band_ratio=max(0.0, float(audio_band_ratio)),
         )
     else:
-        audio_alignment = align_audio_segments_offset_xcorr(
+        # Default: RMS energy-envelope full-sweep xcorr (best discrimination).
+        audio_alignment = align_audio_energy_xcorr(
             target_audio_segments,
             candidate_audio_segments,
             audio_segment_seconds=max(0.1, float(audio_segment_seconds)),
         )
 
-    audio_score = audio_alignment.similarity
+    audio_score = _clip01(audio_alignment.similarity)
     if "audio" not in enabled:
         audio_score = 0.0
     outcomes.append(
         StageOutcome(
             stage_name="stage3_audio_fingerprint",
             score=audio_score,
-            decision=("skipped" if "audio" not in enabled else ("pass" if audio_score >= 0.5 else "weak")),
+            decision=("skipped" if "audio" not in enabled else ("pass" if audio_score >= 0.3 else "weak")),
             note=(
                 "disabled by --techniques"
                 if "audio" not in enabled
-                else "audio segment fingerprint alignment"
+                else "RMS energy-envelope cross-correlation (full sweep)"
             ),
             details={
                 "alignment_method": audio_alignment.method,
@@ -405,7 +434,18 @@ def run_staged_fingerprint(
         weighted += float(weights.get(item.stage_name, 0.0)) * float(item.score)
     piracy_score = _clip01(weighted / active_weight) if active_weight > 0 else 0.0
 
-    if piracy_score >= high_threshold:
+    strong_multimodal_clip_match = (
+        ("visual" in enabled)
+        and ("audio" in enabled)
+        and ("temporal" in enabled)
+        # audio xcorr ≥ 0.55 means energy envelopes strongly agree at the same offset
+        and (audio_score >= 0.55)
+        # video coverage gives at least marginal corroboration
+        and (sequence_alignment.similarity >= 0.05)
+        and (duration_score >= 0.45)
+    )
+
+    if piracy_score >= high_threshold or strong_multimodal_clip_match:
         final_status = "matched"
     elif piracy_score <= low_threshold:
         final_status = "no_match_pending_review"

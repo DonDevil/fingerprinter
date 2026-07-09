@@ -20,6 +20,8 @@ def test_load_settings_uses_defaults_for_missing_file(tmp_path):
     assert settings.video_fingerprint.candidate_segment_seconds == 2.0
     assert settings.video_fingerprint.candidate_segment_seconds_high_intensity == 1.0
     assert settings.video_fingerprint.frame_sample_fps == 2.0
+    assert settings.video_fingerprint.use_gpu is False
+    assert settings.video_fingerprint.gpu_device == 0
     assert settings.sequence_alignment.method == "constrained"
     assert settings.sequence_alignment.band_ratio == 0.15
     assert settings.audio_fingerprint.segment_seconds == 1.5
@@ -53,6 +55,8 @@ video_fingerprint:
     candidate_segment_seconds: 1.6
     candidate_segment_seconds_high_intensity: 0.7
     frame_sample_fps: 3
+    use_gpu: true
+    gpu_device: 1
 sequence_alignment:
     method: DTW
     band_ratio: 0.2
@@ -82,6 +86,8 @@ audio_fingerprint:
     assert settings.video_fingerprint.candidate_segment_seconds == 1.6
     assert settings.video_fingerprint.candidate_segment_seconds_high_intensity == 0.7
     assert settings.video_fingerprint.frame_sample_fps == 3
+    assert settings.video_fingerprint.use_gpu is True
+    assert settings.video_fingerprint.gpu_device == 1
     assert settings.sequence_alignment.method == "dtw"
     assert settings.sequence_alignment.band_ratio == 0.2
     assert settings.audio_fingerprint.segment_seconds == 1.2

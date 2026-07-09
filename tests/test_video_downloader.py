@@ -7,7 +7,8 @@ import tempfile
 import shutil
 import time
 import pytest
-from downloader.video_downloader import VideoDownloader
+import requests
+from downloader.video_downloader import VideoDownloader, VideoDownloadError
 
 @pytest.fixture(scope="module")
 def http_server():
@@ -59,3 +60,64 @@ def test_local_file_copy_download(tmp_path):
     assert os.path.exists(path)
     with open(path, "rb") as handle:
         assert handle.read() == b"hello-world"
+
+
+def test_tor_proxy_configuration_is_passed(monkeypatch, tmp_path):
+    captured = {}
+
+    class _Response:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def iter_content(self, chunk_size=8192):
+            yield b"payload"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def _fake_get(url, headers=None, stream=None, timeout=None, proxies=None):
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["timeout"] = timeout
+        captured["proxies"] = proxies
+        return _Response()
+
+    monkeypatch.setattr(requests, "get", _fake_get)
+
+    downloader = VideoDownloader(
+        download_dir=str(tmp_path),
+        enable_tor=True,
+        tor_proxy_url="socks5h://127.0.0.1:9999",
+    )
+    out = downloader.download("https://example.com/video.mp4", filename="tor.mp4")
+
+    assert os.path.exists(out)
+    assert captured["proxies"] == {
+        "http": "socks5h://127.0.0.1:9999",
+        "https": "socks5h://127.0.0.1:9999",
+    }
+
+
+def test_http_timeout_is_wrapped_in_download_error(monkeypatch, tmp_path):
+    def _fake_get(*_args, **_kwargs):
+        raise requests.exceptions.Timeout("timed out")
+
+    monkeypatch.setattr(requests, "get", _fake_get)
+    downloader = VideoDownloader(download_dir=str(tmp_path), request_timeout_seconds=1)
+
+    with pytest.raises(VideoDownloadError) as exc_info:
+        downloader.download("https://example.com/video.mp4", filename="timeout.mp4")
+
+    assert "Timed out while downloading" in str(exc_info.value)
+
+
+def test_unsupported_scheme_raises_download_error(tmp_path):
+    downloader = VideoDownloader(download_dir=str(tmp_path))
+    with pytest.raises(VideoDownloadError) as exc_info:
+        downloader.download("ftp://example.com/video.mp4")
+    assert "Unsupported URL scheme" in str(exc_info.value)

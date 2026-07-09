@@ -8,6 +8,25 @@ The matcher now uses segment-based video/audio fingerprints with configurable se
 - Sequence alignment with `constrained` sliding or `dtw`.
 - Audio segmentation with offset estimation via `offset_xcorr` or `dtw`.
 - High-intensity mode that switches candidate segment duration.
+- Optional NVIDIA GPU-accelerated video decode for fingerprint extraction.
+
+## GPU Acceleration (Ubuntu + NVIDIA)
+
+Video fingerprint extraction can use CUDA hardware decode through ffmpeg.
+
+Enable in config:
+
+```yaml
+video_fingerprint:
+  use_gpu: true
+  gpu_device: 0
+```
+
+Notes:
+
+- This accelerates video decode/sampling; audio feature extraction remains CPU.
+- If CUDA decode is unavailable for a file/codec, the pipeline automatically falls back to CPU ffmpeg.
+- Confirm your ffmpeg build has CUDA/NVDEC support for maximum benefit.
 
 ## Environment
 
@@ -261,6 +280,24 @@ Disable that behavior:
 ```bash
 ./.venv/bin/python -m main --no-resume-unfinished
 ```
+
+## Tor Download Support
+
+The downloader supports optional Tor SOCKS routing for HTTP/HTTPS fetches.
+
+Enable in config:
+
+```yaml
+downloader:
+  enable_tor: true
+  tor_proxy_url: socks5h://127.0.0.1:9050
+```
+
+Behavior notes:
+
+- Local file ingestion (`file://` and local paths) does not use Tor.
+- HTTP/HTTPS failures now raise detailed `VideoDownloadError` messages for easier debugging.
+- If Tor SOCKS dependencies are missing, install `PySocks` (already listed in `requirements.txt`).
 
 ## Full Flag Reference
 

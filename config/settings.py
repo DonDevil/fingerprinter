@@ -22,6 +22,7 @@ DEFAULT_RECLAIM_CLAIMED_AFTER_SECONDS = 600
 DEFAULT_DOWNLOAD_DIR = "storage/downloads"
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 30
 DEFAULT_ENABLE_TOR = False
+DEFAULT_TOR_PROXY_URL = "socks5h://127.0.0.1:9050"
 DEFAULT_METADATA_DB_PATH = "storage/processing.db"
 DEFAULT_MAX_REJECTED_FILES = 200
 DEFAULT_MAX_REJECTED_BYTES_MB = 2048
@@ -30,6 +31,8 @@ DEFAULT_TARGET_SEGMENT_SECONDS = 1.0
 DEFAULT_CANDIDATE_SEGMENT_SECONDS = 2.0
 DEFAULT_CANDIDATE_SEGMENT_SECONDS_HIGH_INTENSITY = 1.0
 DEFAULT_FRAME_SAMPLE_FPS = 2.0
+DEFAULT_VIDEO_USE_GPU = False
+DEFAULT_VIDEO_GPU_DEVICE = 0
 DEFAULT_ALIGNMENT_METHOD = "constrained"
 DEFAULT_ALIGNMENT_BAND_RATIO = 0.15
 DEFAULT_AUDIO_SEGMENT_SECONDS = 1.5
@@ -62,6 +65,7 @@ class DownloaderConfig:
     download_dir: str = DEFAULT_DOWNLOAD_DIR
     request_timeout_seconds: int = DEFAULT_REQUEST_TIMEOUT_SECONDS
     enable_tor: bool = DEFAULT_ENABLE_TOR
+    tor_proxy_url: str = DEFAULT_TOR_PROXY_URL
 
 
 @dataclass(slots=True)
@@ -78,6 +82,8 @@ class VideoFingerprintConfig:
     candidate_segment_seconds: float = DEFAULT_CANDIDATE_SEGMENT_SECONDS
     candidate_segment_seconds_high_intensity: float = DEFAULT_CANDIDATE_SEGMENT_SECONDS_HIGH_INTENSITY
     frame_sample_fps: float = DEFAULT_FRAME_SAMPLE_FPS
+    use_gpu: bool = DEFAULT_VIDEO_USE_GPU
+    gpu_device: int = DEFAULT_VIDEO_GPU_DEVICE
 
 
 @dataclass(slots=True)
@@ -173,6 +179,9 @@ def load_settings(path: str = "config.yaml") -> Settings:
             enable_tor=bool(
                 downloader_raw.get("enable_tor", DEFAULT_ENABLE_TOR)
             ),
+            tor_proxy_url=str(
+                downloader_raw.get("tor_proxy_url", DEFAULT_TOR_PROXY_URL)
+            ).strip(),
         ),
         storage_policy=StoragePolicyConfig(
             metadata_db_path=str(storage_raw.get("metadata_db_path", DEFAULT_METADATA_DB_PATH)),
@@ -197,6 +206,12 @@ def load_settings(path: str = "config.yaml") -> Settings:
             ),
             frame_sample_fps=float(
                 video_fp_raw.get("frame_sample_fps", DEFAULT_FRAME_SAMPLE_FPS)
+            ),
+            use_gpu=bool(
+                video_fp_raw.get("use_gpu", DEFAULT_VIDEO_USE_GPU)
+            ),
+            gpu_device=int(
+                video_fp_raw.get("gpu_device", DEFAULT_VIDEO_GPU_DEVICE)
             ),
         ),
         sequence_alignment=SequenceAlignmentConfig(
