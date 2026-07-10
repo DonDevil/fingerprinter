@@ -11,3 +11,4 @@ torchvision
 transformers
 Pillow
 opencv-python
+tqdm

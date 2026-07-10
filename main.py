@@ -112,6 +112,16 @@ def main():
         type=float,
         help="Override minimum average cosine required within best consecutive run",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Enable debug logging to see detailed processing information",
+    )
+    parser.add_argument(
+        "--reprocess-target",
+        action="store_true",
+        help="Force re-embedding of target video (ignore cache)",
+    )
     args = parser.parse_args()
 
     configure_logging()
@@ -123,6 +133,8 @@ def main():
         settings,
         enabled_techniques=selected_techniques,
         keep_non_matches=args.keep_non_matches,
+        debug_mode=args.debug,
+        reprocess_target=args.reprocess_target,
         dinov2_target_sample_fps_override=args.dinov2_target_sample_fps,
         dinov2_candidate_sample_fps_override=args.dinov2_candidate_sample_fps,
         dinov2_cosine_threshold_override=args.dinov2_cosine_threshold,

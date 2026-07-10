@@ -5,7 +5,7 @@ pipeline:
   # Optional reference title for Phase B quick matching.
   target_title: "Blast"
   # Reference target media used across fingerprint stages.
-  target_file_path: target/Blast.mp4
+  target_file_path: /home/darkdevil/Videos/Blast.mp4
   # Stage-2 policy thresholds for quick target matching score.
   phase_b_low_match_threshold: 0.10
   phase_b_high_match_threshold: 0.40

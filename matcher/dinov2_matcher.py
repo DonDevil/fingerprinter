@@ -245,9 +245,10 @@ def compute_candidate_to_target_metrics(
 
 
 class DinoV2Embedder:
-    def __init__(self, *, model_name: str, device: str = "auto"):
+    def __init__(self, *, model_name: str, device: str = "auto", debug_mode: bool = False):
         self.model_name = model_name
         self.device_label = device
+        self.debug_mode = bool(debug_mode)
         self._processor = None
         self._model = None
         self._torch = None
@@ -294,11 +295,16 @@ class DinoV2Embedder:
             return vec
         return vec / norm
 
-    def embed_video(self, video_path: str, *, sample_fps: float) -> DinoV2EmbeddingIndex:
+    def embed_video(self, video_path: str, *, sample_fps: float, video_type: str = "candidate") -> DinoV2EmbeddingIndex:
         try:
             import cv2
         except Exception as exc:  # pragma: no cover - integration path
             raise RuntimeError("opencv-python is required for DINOv2 video embedding extraction") from exc
+
+        try:
+            from tqdm import tqdm
+        except Exception as exc:
+            raise RuntimeError("tqdm is required for progress tracking") from exc
 
         sample_fps = max(0.1, float(sample_fps))
         cap = cv2.VideoCapture(video_path)
@@ -310,12 +316,21 @@ class DinoV2Embedder:
             if video_fps <= 0.0:
                 raise RuntimeError(f"Cannot determine FPS for video: {video_path}")
 
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
             frame_interval = max(1, int(round(video_fps / sample_fps)))
+            
+            if self.debug_mode:
+                from loguru import logger
+                logger.info("DINOv2: Processing {} video: {} (Total frames: {}, FPS: {}, Frame interval: {})", 
+                           video_type, video_path, total_frames, video_fps, frame_interval)
 
             frame_number = 0
             embeddings: list[np.ndarray] = []
             timestamps: list[float] = []
             frame_numbers: list[int] = []
+
+            # Create progress bar for frame extraction
+            pbar = tqdm(total=total_frames, desc=f"Extracting {video_type} frames", unit="frames", disable=not self.debug_mode)
 
             while True:
                 ok, frame = cap.read()
@@ -330,6 +345,14 @@ class DinoV2Embedder:
                     frame_numbers.append(int(frame_number))
 
                 frame_number += 1
+                pbar.update(1)
+            
+            pbar.close()
+
+            if self.debug_mode:
+                from loguru import logger
+                logger.info("DINOv2: Extracted {} embeddings from {} video", len(embeddings), video_type)
+
         finally:
             cap.release()
 

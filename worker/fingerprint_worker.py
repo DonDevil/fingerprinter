@@ -39,6 +39,8 @@ class FingerprintWorker:
         *,
         enabled_techniques: set[str] | None = None,
         keep_non_matches: bool = False,
+        debug_mode: bool = False,
+        reprocess_target: bool = False,
         dinov2_target_sample_fps_override: float | None = None,
         dinov2_candidate_sample_fps_override: float | None = None,
         dinov2_cosine_threshold_override: float | None = None,
@@ -53,6 +55,9 @@ class FingerprintWorker:
             raise ValueError(
                 f"Unsupported queue backend: {settings.queue.backend}. Phase A currently supports crawler backend only."
             )
+
+        self.debug_mode = bool(debug_mode)
+        self.reprocess_target = bool(reprocess_target)
 
         self.downloader = VideoDownloader(
             download_dir=settings.downloader.download_dir,
@@ -119,9 +124,12 @@ class FingerprintWorker:
         self.dinov2_embedder = DinoV2Embedder(
             model_name=self.dinov2_config.model_name,
             device=settings.dinov2.device,
+            debug_mode=self.debug_mode,
         )
         self._target_embedding_cache_key: str | None = None
         self._target_embedding_cache: DinoV2EmbeddingIndex | None = None
+        self._target_reprocess_done: bool = False  # Track if we've reprocessed in this session
+        self._cached_target_file_path: str | None = None  # Track which target file is cached
 
     @staticmethod
     def _normalize_techniques(enabled_techniques: set[str] | None) -> set[str]:
@@ -173,38 +181,144 @@ class FingerprintWorker:
         if not target_file or not target_file.exists():
             return None
 
+        target_file_resolved = str(target_file.expanduser().resolve())
         cache_key = target_embedding_cache_key(
             target_path=target_file,
             model_name=self.dinov2_config.model_name,
             sample_fps=self.dinov2_config.target_sample_fps,
         )
-        if self._target_embedding_cache_key == cache_key and self._target_embedding_cache is not None:
-            return self._target_embedding_cache
-
+        
+        if self.debug_mode:
+            logger.info("Target embedding cache key: {}", cache_key)
+            logger.info("Target file: {}", target_file_resolved)
+        
         cache_dir = self._target_embedding_cache_dir()
         cache_dir.mkdir(parents=True, exist_ok=True)
         cache_file = self._target_embedding_cache_file(cache_key)
+        meta_file = cache_file.with_suffix(".meta.json")
 
+        # Check if target file has changed by comparing with cached metadata
+        target_file_changed = False
+        if meta_file.exists():
+            try:
+                meta_data = json.loads(meta_file.read_text(encoding="utf-8"))
+                cached_target_path = meta_data.get("target_path", "")
+                if cached_target_path != target_file_resolved:
+                    target_file_changed = True
+                    if self.debug_mode:
+                        logger.info("Target file changed: was {} now {}", cached_target_path, target_file_resolved)
+            except Exception:
+                target_file_changed = True
+                if self.debug_mode:
+                    logger.info("Could not read metadata, assuming target file changed")
+
+        # Check if we need to reprocess based on --reprocess-target flag
+        should_force_reprocess = False
+        if self.reprocess_target and not self._target_reprocess_done:
+            should_force_reprocess = True
+            self._target_reprocess_done = True  # Mark that we've reprocessed once
+            if self.debug_mode:
+                logger.info("--reprocess-target flag set: forcing rebuild on first target load")
+        elif self.reprocess_target and self._target_reprocess_done:
+            if self.debug_mode:
+                logger.info("--reprocess-target flag already applied once this session, using cached embedding")
+
+        # If in-memory cache matches current target, use it
+        if (self._target_embedding_cache_key == cache_key and 
+            self._target_embedding_cache is not None and 
+            self._cached_target_file_path == target_file_resolved and
+            not should_force_reprocess):
+            if self.debug_mode:
+                logger.info("Using cached target embedding (in-memory)")
+            return self._target_embedding_cache
+
+        # If target file changed or we're forcing reprocess, delete old cache
+        if target_file_changed or should_force_reprocess:
+            if cache_file.exists():
+                try:
+                    cache_file.unlink()
+                    if self.debug_mode:
+                        logger.info("Deleted old target embedding cache: {}", cache_file)
+                except Exception as e:
+                    if self.debug_mode:
+                        logger.warning("Failed to delete old cache file: {}", e)
+            
+            if meta_file.exists():
+                try:
+                    meta_file.unlink()
+                    if self.debug_mode:
+                        logger.info("Deleted old target metadata: {}", meta_file)
+                except Exception as e:
+                    if self.debug_mode:
+                        logger.warning("Failed to delete old metadata file: {}", e)
+
+            # Rebuild the embedding
+            logger.info("Building DINOv2 target embedding for: {}", target_file)
+            index = self.dinov2_embedder.embed_video(
+                str(target_file),
+                sample_fps=self.dinov2_config.target_sample_fps,
+                video_type="target",
+            )
+            
+            if self.debug_mode:
+                logger.info("Target embedding built: {} frames extracted at {} FPS", 
+                           index.embeddings.shape[0], self.dinov2_config.target_sample_fps)
+            
+            save_embedding_index(index, cache_file)
+
+            # Write metadata with file path and modification time
+            stat = target_file.stat()
+            meta_payload = {
+                "target_path": target_file_resolved,
+                "file_size": int(stat.st_size),
+                "file_mtime": int(stat.st_mtime_ns),
+                "model_name": self.dinov2_config.model_name,
+                "target_sample_fps": float(self.dinov2_config.target_sample_fps),
+                "embedding_count": int(index.embeddings.shape[0]),
+            }
+            meta_file.write_text(json.dumps(meta_payload, sort_keys=True), encoding="utf-8")
+
+            self._target_embedding_cache_key = cache_key
+            self._target_embedding_cache = index
+            self._cached_target_file_path = target_file_resolved
+            return index
+
+        # Try to load existing cache if target file hasn't changed and no force reprocess
         if cache_file.exists():
             try:
+                if self.debug_mode:
+                    logger.info("Loading target embedding from cache file: {}", cache_file)
                 index = load_embedding_index(cache_file)
                 if index.embeddings.size > 0:
+                    if self.debug_mode:
+                        logger.info("Successfully loaded cached target embedding: {} frames", index.embeddings.shape[0])
                     self._target_embedding_cache_key = cache_key
                     self._target_embedding_cache = index
+                    self._cached_target_file_path = target_file_resolved
                     return index
-            except Exception:
-                logger.warning("Failed to load DINOv2 target embedding cache at {}", cache_file)
+            except Exception as e:
+                logger.warning("Failed to load DINOv2 target embedding cache at {}: {}", cache_file, e)
 
-        logger.info("Building DINOv2 target embedding cache for {}", target_file)
+        # If we get here and no cache exists, build it
+        logger.info("Building DINOv2 target embedding for: {}", target_file)
         index = self.dinov2_embedder.embed_video(
             str(target_file),
             sample_fps=self.dinov2_config.target_sample_fps,
+            video_type="target",
         )
+        
+        if self.debug_mode:
+            logger.info("Target embedding built: {} frames extracted at {} FPS", 
+                       index.embeddings.shape[0], self.dinov2_config.target_sample_fps)
+        
         save_embedding_index(index, cache_file)
 
-        meta_file = cache_file.with_suffix(".meta.json")
+        # Write metadata with file path and modification time
+        stat = target_file.stat()
         meta_payload = {
-            "target_path": str(target_file.expanduser().resolve()),
+            "target_path": target_file_resolved,
+            "file_size": int(stat.st_size),
+            "file_mtime": int(stat.st_mtime_ns),
             "model_name": self.dinov2_config.model_name,
             "target_sample_fps": float(self.dinov2_config.target_sample_fps),
             "embedding_count": int(index.embeddings.shape[0]),
@@ -213,6 +327,7 @@ class FingerprintWorker:
 
         self._target_embedding_cache_key = cache_key
         self._target_embedding_cache = index
+        self._cached_target_file_path = target_file_resolved
         return index
 
     def _resolve_target_file(self) -> Path:
@@ -290,8 +405,12 @@ class FingerprintWorker:
         target_file: Path,
     ) -> PipelineResult:
         if target_file and target_file.exists():
+            if self.debug_mode:
+                logger.info("Loading or building target embedding index for: {}", target_file)
+            
             target_index = self._load_or_build_target_embedding_index(target_file)
             if target_index is None:
+                logger.error("Failed to load target embedding index")
                 return PipelineResult(
                     final_status="failed",
                     piracy_score=0.0,
@@ -306,6 +425,10 @@ class FingerprintWorker:
                     ],
                 )
 
+            if self.debug_mode:
+                logger.info("Running DINOv2 fingerprint matching against {} target frames", 
+                           target_index.embeddings.shape[0])
+
             return run_dinov2_fingerprint(
                 target_title=target_title,
                 candidate_url=candidate_url,
@@ -318,6 +441,9 @@ class FingerprintWorker:
             )
 
         # Fallback if no target media exists: keep legacy title-token stage score.
+        if self.debug_mode:
+            logger.info("Using fallback title-token matching (no target file)")
+        
         stage_2 = score_title_token_overlap(
             target_title=target_title,
             candidate_text=f"{candidate_url} {Path(candidate_path).name}",
@@ -329,6 +455,9 @@ class FingerprintWorker:
             status = "no_match_pending_review"
         else:
             status = "uncertain_manual_review"
+
+        if self.debug_mode:
+            logger.info("Title-token score: {:.4f}, status: {}", score, status)
 
         return PipelineResult(
             final_status=status,
@@ -398,13 +527,21 @@ class FingerprintWorker:
         return final_status, run_id
 
     def process_job(self, job: QueueJob) -> str:
-        logger.info("Processing asset_id={} url={}", job.asset_id, job.media_url)
+        if self.debug_mode:
+            logger.info("=== Processing job: asset_id={}, URL={} ===", job.asset_id, job.media_url)
+        else:
+            logger.info("Processing asset_id={} url={}", job.asset_id, job.media_url)
 
         target_title = (self.settings.pipeline.target_title or "").strip()
         target_file = self._resolve_target_file()
         source_domain = self._infer_source_domain(job)
         if not target_title:
             target_title = Path(target_file).stem if target_file else "target"
+        
+        if self.debug_mode:
+            logger.info("Target title: {}, Target file: {}, Source domain: {}", 
+                       target_title, target_file, source_domain)
+        
         task_key = self._queue_task_key(job.asset_id)
         self.metadata_store.start_compare_task(
             task_key=task_key,
@@ -440,11 +577,23 @@ class FingerprintWorker:
             logger.info("Rejected asset_id={} reason={}", job.asset_id, non_video_reason)
             return "rejected_non_video"
 
+        if self.debug_mode:
+            logger.info("Downloading candidate video: {}", job.media_url)
         local_path = self.downloader.download(job.media_url, filename=self._build_filename(job))
         file_size_bytes = Path(local_path).stat().st_size if Path(local_path).exists() else None
+        
+        if self.debug_mode:
+            logger.info("Downloaded to: {} ({} bytes)", local_path, file_size_bytes or "N/A")
 
+        if self.debug_mode:
+            logger.info("Probing downloaded video")
         probe = get_media_probe(local_path)
         duration_seconds = probe.get("duration_seconds")
+        
+        if self.debug_mode:
+            logger.info("Video probe: duration={} sec, codec={}, audio={}", 
+                       duration_seconds, probe.get("video_codec", "N/A"), probe.get("audio_codec", "N/A"))
+        
         reject, reason = should_reject_for_short_duration(
             duration_seconds=float(duration_seconds) if duration_seconds is not None else None,
             threshold_seconds=self.settings.pipeline.short_video_threshold_seconds,
@@ -470,12 +619,18 @@ class FingerprintWorker:
             logger.info("Rejected asset_id={} reason={}", job.asset_id, reason)
             return "rejected_too_short"
 
+        if self.debug_mode:
+            logger.info("Starting fingerprint pipeline for asset_id={}", job.asset_id)
         pipeline_result = self._run_pipeline_for_candidate(
             target_title=target_title,
             candidate_url=job.media_url,
             candidate_path=local_path,
             target_file=target_file,
         )
+        
+        if self.debug_mode:
+            logger.info("Pipeline complete for asset_id={}: decision={}, score={:.4f}", 
+                       job.asset_id, pipeline_result.final_status, pipeline_result.piracy_score)
 
         final_status = pipeline_result.final_status
 
@@ -555,6 +710,9 @@ class FingerprintWorker:
         if not target_title:
             target_title = Path(target_file).stem if target_file else "target"
 
+        if self.debug_mode:
+            logger.info("=== Starting comparison for candidate: {} ===", candidate_ref)
+
         parsed = urlparse(candidate_ref)
         if parsed.scheme in {"http", "https", "file"}:
             candidate_path = self.downloader.download(candidate_ref, filename=Path(parsed.path or candidate_ref).name)
@@ -566,6 +724,9 @@ class FingerprintWorker:
             raise FileNotFoundError(f"Candidate video does not exist: {candidate_ref}")
 
         local_candidate = Path(candidate_path)
+        if self.debug_mode:
+            logger.info("Candidate file: {} (size: {} bytes)", local_candidate, local_candidate.stat().st_size if local_candidate.exists() else "N/A")
+        
         task_key = self._file_task_key(str(local_candidate), str(target_file), self.enabled_techniques)
         self.metadata_store.start_compare_task(
             task_key=task_key,
@@ -584,17 +745,29 @@ class FingerprintWorker:
             )
             return "rejected_non_video"
 
+        if self.debug_mode:
+            logger.info("Probing video file: {}", local_candidate)
         probe = get_media_probe(str(local_candidate))
         duration_seconds = probe.get("duration_seconds")
         asset_id = self._synthetic_asset_id(str(local_candidate))
         file_size_bytes = local_candidate.stat().st_size if local_candidate.exists() else None
+        
+        if self.debug_mode:
+            logger.info("Video probe complete - Duration: {} seconds, Video codec: {}, Audio codec: {}", 
+                       duration_seconds, probe.get("video_codec", "N/A"), probe.get("audio_codec", "N/A"))
 
+        if self.debug_mode:
+            logger.info("Starting fingerprint pipeline for candidate")
         pipeline_result = self._run_pipeline_for_candidate(
             target_title=target_title,
             candidate_url=candidate_url,
             candidate_path=str(local_candidate),
             target_file=target_file,
         )
+
+        if self.debug_mode:
+            logger.info("Pipeline execution complete - Decision: {}, Score: {:.4f}", 
+                       pipeline_result.final_status, pipeline_result.piracy_score)
 
         status, _ = self._persist_pipeline_result(
             asset_id=asset_id,
@@ -609,6 +782,9 @@ class FingerprintWorker:
             task_key=task_key,
         )
 
+        if self.debug_mode:
+            logger.info("=== Comparison complete for candidate: {} (Result: {}) ===", candidate_ref, status)
+
         if (not self.keep_non_matches) and status != "matched":
             self.retention_policy.delete_non_matching_assets()
         return status
@@ -617,6 +793,9 @@ class FingerprintWorker:
         base = Path(directory_path).expanduser().resolve()
         if not base.exists() or not base.is_dir():
             raise NotADirectoryError(f"Directory does not exist: {directory_path}")
+
+        if self.debug_mode:
+            logger.info("Starting directory comparison: {}", base)
 
         processed = 0
         summary: dict[str, int] = {
@@ -633,8 +812,13 @@ class FingerprintWorker:
             if not self._is_video_candidate(file_path):
                 continue
 
+            if self.debug_mode:
+                logger.info("Processing file {}/{}: {}", processed + 1, max_files or "?", file_path.name)
+
             task_key = self._file_task_key(str(file_path), str(self._resolve_target_file()), self.enabled_techniques)
             if self.metadata_store.is_compare_task_completed(task_key=task_key):
+                if self.debug_mode:
+                    logger.info("Skipping already processed: {}", file_path.name)
                 summary["skipped_completed"] += 1
                 continue
 
@@ -646,6 +830,9 @@ class FingerprintWorker:
                 summary["failed"] += 1
             finally:
                 processed += 1
+
+        if self.debug_mode:
+            logger.info("Directory comparison complete: processed={}", processed)
 
         return summary
 
