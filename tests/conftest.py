@@ -8,6 +8,7 @@ import os
 import pytest
 from redis import Redis
 
+from tests.media_test_server import MediaTestServer
 from work_queue.jobs import Job
 
 TEST_REDIS_URL = os.environ.get("FINGERPRINTER_TEST_REDIS_URL", "redis://localhost:6379/15")
@@ -45,3 +46,10 @@ def make_job():
 @pytest.fixture
 def sample_job(make_job) -> Job:
     return make_job()
+
+
+@pytest.fixture(scope="module")
+def media_server():
+    server = MediaTestServer()
+    yield server
+    server.shutdown()
