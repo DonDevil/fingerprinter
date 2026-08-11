@@ -14,3 +14,11 @@ def state_key(job_id: str) -> str:
 
 def retry_zset_key(priority: str = DEFAULT_PRIORITY) -> str:
     return f"fingerprint:retry:delayed:{priority}"
+
+
+def result_key(job_id: str) -> str:
+    return f"fingerprint:job:{job_id}:result"
+
+
+def results_stream_key(priority: str = DEFAULT_PRIORITY) -> str:
+    return f"fingerprint:results:stream:{priority}"

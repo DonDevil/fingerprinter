@@ -18,7 +18,16 @@ from redis import Redis
 from redis.exceptions import ResponseError
 
 from work_queue.jobs import Job, JobValidationError
-from work_queue.keys import CONSUMER_GROUP, DEFAULT_PRIORITY, retry_zset_key, state_key, stream_key
+from work_queue.keys import (
+    CONSUMER_GROUP,
+    DEFAULT_PRIORITY,
+    result_key,
+    results_stream_key,
+    retry_zset_key,
+    state_key,
+    stream_key,
+)
+from work_queue.results import Result, ResultRecord
 from work_queue.state import JobStateStore
 
 
@@ -89,6 +98,45 @@ redis.call('XACK', KEYS[2], ARGV[1], ARGV[2])
 return 1
 """
 
+# Atomically commits a handler's Result as the job's durable, terminal
+# outcome. Same CAS gate as _COMPLETE_IF_CURRENT, but does three writes
+# instead of one, all inside one Redis-atomic script execution: the result
+# hash, the state hash (status=completed), and an XADD onto the results
+# stream, followed by the XACK. Gating all of it — including the XADD — on
+# the same attempt check as the XACK closes the same hole Phase 2 closed
+# for plain completion: a stale worker can't write a result, can't emit a
+# stream event for one, and can't remove the current owner's PEL entry.
+#
+# KEYS: [1] state_key  [2] result_key  [3] stream_key  [4] results_stream_key
+# ARGV: [1] group  [2] entry_id  [3] expected_attempt  [4] completed_at
+#       [5] result_fields (json map)  [6] event_fields (json map)
+_COMMIT_RESULT_IF_CURRENT = """
+local current = redis.call('HGET', KEYS[1], 'attempt')
+if current == false or current ~= ARGV[3] then
+    return false
+end
+redis.call('HSET', KEYS[1], 'status', 'completed', 'completed_at', ARGV[4])
+
+local result_fields = cjson.decode(ARGV[5])
+local hset_args = {'HSET', KEYS[2]}
+for k, v in pairs(result_fields) do
+    table.insert(hset_args, k)
+    table.insert(hset_args, v)
+end
+redis.call(unpack(hset_args))
+
+local event_fields = cjson.decode(ARGV[6])
+local xadd_args = {'XADD', KEYS[4], '*'}
+for k, v in pairs(event_fields) do
+    table.insert(xadd_args, k)
+    table.insert(xadd_args, v)
+end
+local event_id = redis.call(unpack(xadd_args))
+
+redis.call('XACK', KEYS[3], ARGV[1], ARGV[2])
+return event_id
+"""
+
 # Promotes one due retry back onto the stream. ZREM-then-XADD in a single
 # script: the ZREM is the atomic "claim" of this retry (a racing/duplicate
 # promotion attempt sees removed==0 and does nothing), and because both
@@ -148,6 +196,7 @@ class Worker:
         self._redis = redis_client
         self._stream = stream_key(priority)
         self._retry_zset = retry_zset_key(priority)
+        self._results_stream = results_stream_key(priority)
         self._consumer_name = consumer_name or default_consumer_name()
         self._block_ms = block_ms
         self._lease_ms = lease_ms
@@ -165,6 +214,7 @@ class Worker:
         self._schedule_retry_script = redis_client.register_script(_SCHEDULE_RETRY_IF_CURRENT)
         self._fail_script = redis_client.register_script(_FAIL_IF_CURRENT)
         self._promote_script = redis_client.register_script(_PROMOTE_RETRY)
+        self._commit_result_script = redis_client.register_script(_COMMIT_RESULT_IF_CURRENT)
         self._ensure_group()
 
     @property
@@ -268,6 +318,45 @@ class Worker:
         )
         return bool(completed)
 
+    def commit_result(self, entry: ClaimedEntry, result: Result) -> Optional[str]:
+        """Atomically commit a handler's Result as the job's durable,
+        terminal outcome: write the result hash, mark job state completed,
+        XADD a result-stream event, and XACK the original entry — all in
+        one Redis-atomic script, gated by the same attempt fencing as
+        ack().
+
+        Returns the result-stream event id, or None if `entry.attempt` is
+        no longer current (stale worker) — in which case nothing was
+        written at all: no result, no state change, no XACK.
+        """
+        job = entry.job
+        record = ResultRecord(
+            job_id=job.job_id,
+            media_evidence_id=job.media_evidence_id,
+            target_id=job.target_id,
+            target_version=job.target_version,
+            attempt=entry.attempt,
+            worker_id=self._consumer_name,
+            result=result,
+        )
+        event_id = self._commit_result_script(
+            keys=[
+                state_key(job.job_id),
+                result_key(job.job_id),
+                self._stream,
+                self._results_stream,
+            ],
+            args=[
+                CONSUMER_GROUP,
+                entry.entry_id,
+                str(entry.attempt),
+                str(result.processing_completed_at),
+                json.dumps(record.to_hash_fields()),
+                json.dumps(record.to_event_fields()),
+            ],
+        )
+        return event_id
+
     def _backoff_seconds(self, attempt: int) -> float:
         """Exponential backoff for the attempt that just failed: base * 2^(attempt-1), capped at max."""
         delay = self._retry_base_delay_s * (2 ** (attempt - 1))
@@ -321,23 +410,31 @@ class Worker:
                 promoted += 1
         return promoted
 
-    def process_claim(self, entry: ClaimedEntry, handler: Callable[[Job], None]) -> None:
-        """Run handler on a claimed entry and finalize it: ack / retry / fail.
+    def process_claim(
+        self, entry: ClaimedEntry, handler: Callable[[Job], Optional[Result]]
+    ) -> None:
+        """Run handler on a claimed entry and finalize it: commit-result /
+        ack / retry / fail.
 
         This is the single dispatch point for "what happens after a
         handler runs" — used by run() for freshly claimed entries and by
         the stale-reclaim path alike, so a reclaimed job goes through
-        exactly the same success/transient/permanent handling as a fresh
-        claim.
+        exactly the same handling as a fresh claim. A handler that returns
+        a Result gets it committed atomically with completion
+        (commit_result); a handler that returns nothing just gets a plain
+        ack(), unchanged from Phase 1-3.
         """
         try:
-            handler(entry.job)
+            outcome = handler(entry.job)
         except TransientFailure as exc:
             self._handle_transient_failure(entry, str(exc))
         except PermanentFailure as exc:
             self._fail(entry, str(exc))
         else:
-            self.ack(entry)
+            if isinstance(outcome, Result):
+                self.commit_result(entry, outcome)
+            else:
+                self.ack(entry)
 
     def stop(self) -> None:
         """Request the run loop to exit after its current blocking read."""
