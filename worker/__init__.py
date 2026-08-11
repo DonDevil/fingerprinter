@@ -1,3 +1,3 @@
-from worker.fingerprint_worker import ClaimedEntry, Worker
+from worker.fingerprint_worker import ClaimedEntry, PermanentFailure, TransientFailure, Worker
 
-__all__ = ["Worker", "ClaimedEntry"]
+__all__ = ["Worker", "ClaimedEntry", "TransientFailure", "PermanentFailure"]

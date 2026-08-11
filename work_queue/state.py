@@ -17,6 +17,8 @@ class JobStatus:
     CLAIMED = "claimed"
     COMPLETED = "completed"
     REJECTED = "rejected"
+    RETRY_SCHEDULED = "retry_scheduled"
+    FAILED = "failed"
 
 
 class JobStateStore:
@@ -32,12 +34,6 @@ class JobStateStore:
                 "attempt": str(attempt),
                 "claimed_at": str(time.time()),
             },
-        )
-
-    def mark_completed(self, job_id: str) -> None:
-        self._redis.hset(
-            state_key(job_id),
-            mapping={"status": JobStatus.COMPLETED, "completed_at": str(time.time())},
         )
 
     def mark_rejected(self, job_id: str, reason: str) -> None:
