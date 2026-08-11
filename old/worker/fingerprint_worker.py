@@ -8,26 +8,26 @@ from urllib.parse import urlparse
 
 from loguru import logger
 
-from config.settings import Settings
-from downloader.video_downloader import VideoDownloader
-from fingerprint.video_probe import get_media_probe
-from matcher.dinov2_matcher import DinoV2Config
-from matcher.dinov2_matcher import DinoV2Embedder
-from matcher.dinov2_matcher import DinoV2EmbeddingIndex
-from matcher.dinov2_matcher import load_embedding_index
-from matcher.dinov2_matcher import run_dinov2_fingerprint
-from matcher.dinov2_matcher import save_embedding_index
-from matcher.dinov2_matcher import target_embedding_cache_key
-from matcher.duration_gate import should_reject_for_short_duration
-from matcher.media_type_gate import should_reject_non_video
-from matcher.multi_stage_fingerprint import PipelineResult, StageOutcome
-from matcher.candidate_matcher import (
+from old.config.settings import Settings
+from old.downloader.video_downloader import VideoDownloader
+from old.fingerprint.video_probe import get_media_probe
+from old.matcher.dinov2_matcher import DinoV2Config
+from old.matcher.dinov2_matcher import DinoV2Embedder
+from old.matcher.dinov2_matcher import DinoV2EmbeddingIndex
+from old.matcher.dinov2_matcher import load_embedding_index
+from old.matcher.dinov2_matcher import run_dinov2_fingerprint
+from old.matcher.dinov2_matcher import save_embedding_index
+from old.matcher.dinov2_matcher import target_embedding_cache_key
+from old.matcher.duration_gate import should_reject_for_short_duration
+from old.matcher.media_type_gate import should_reject_non_video
+from old.matcher.multi_stage_fingerprint import PipelineResult, StageOutcome
+from old.matcher.candidate_matcher import (
     score_title_token_overlap,
 )
-from work_queue.crawler_media_queue import CrawlerMediaQueue
-from work_queue.models import QueueJob
-from storage.file_retention import RejectedFileRetentionPolicy
-from storage.processing_metadata_store import ProcessingMetadataStore
+from old.work_queue.crawler_media_queue import CrawlerMediaQueue
+from old.work_queue.models import QueueJob
+from old.storage.file_retention import RejectedFileRetentionPolicy
+from old.storage.processing_metadata_store import ProcessingMetadataStore
 
 
 class FingerprintWorker:

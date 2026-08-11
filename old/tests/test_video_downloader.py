@@ -8,7 +8,7 @@ import shutil
 import time
 import pytest
 import requests
-from downloader.video_downloader import VideoDownloader, VideoDownloadError
+from old.downloader.video_downloader import VideoDownloader, VideoDownloadError
 
 @pytest.fixture(scope="module")
 def http_server():

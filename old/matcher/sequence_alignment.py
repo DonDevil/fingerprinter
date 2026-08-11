@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from fingerprint.segment_fingerprint import (
+from old.fingerprint.segment_fingerprint import (
     AudioSegmentFingerprint,
     VideoSegmentFingerprint,
     segment_hash_similarity,

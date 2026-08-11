@@ -1,6 +1,6 @@
 import sqlite3
 
-from work_queue.crawler_media_queue import CrawlerMediaQueue
+from old.work_queue.crawler_media_queue import CrawlerMediaQueue
 
 
 def _create_media_schema(conn: sqlite3.Connection) -> None:

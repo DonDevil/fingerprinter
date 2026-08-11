@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from storage.file_retention import RejectedFileRetentionPolicy
-from storage.processing_metadata_store import ProcessingMetadataStore
+from old.storage.file_retention import RejectedFileRetentionPolicy
+from old.storage.processing_metadata_store import ProcessingMetadataStore
 
 
 def test_metadata_store_records_and_lists_rejected(tmp_path):

@@ -1,8 +1,8 @@
-from fingerprint.segment_fingerprint import AudioSegmentFingerprint, VideoSegmentFingerprint
-from matcher.sequence_alignment import align_audio_segments_dtw
-from matcher.sequence_alignment import align_audio_segments_offset_xcorr
-from matcher.sequence_alignment import align_video_segments_constrained
-from matcher.sequence_alignment import align_video_segments_dtw
+from old.fingerprint.segment_fingerprint import AudioSegmentFingerprint, VideoSegmentFingerprint
+from old.matcher.sequence_alignment import align_audio_segments_dtw
+from old.matcher.sequence_alignment import align_audio_segments_offset_xcorr
+from old.matcher.sequence_alignment import align_video_segments_constrained
+from old.matcher.sequence_alignment import align_video_segments_dtw
 
 
 def _v(digest: str) -> VideoSegmentFingerprint:

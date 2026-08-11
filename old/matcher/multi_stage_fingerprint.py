@@ -7,17 +7,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from fingerprint.segment_fingerprint import AudioSegmentFingerprint
-from fingerprint.segment_fingerprint import VideoSegmentFingerprint
-from fingerprint.segment_fingerprint import extract_audio_segment_fingerprints
-from fingerprint.segment_fingerprint import extract_video_segment_fingerprints
-from fingerprint.segment_fingerprint import verify_audio_at_offset
-from fingerprint.video_probe import get_media_probe
-from matcher.sequence_alignment import align_audio_segments_dtw
-from matcher.sequence_alignment import align_audio_segments_offset_xcorr
-from matcher.sequence_alignment import align_audio_energy_xcorr
-from matcher.sequence_alignment import align_video_segments_constrained
-from matcher.sequence_alignment import align_video_segments_dtw
+from old.fingerprint.segment_fingerprint import AudioSegmentFingerprint
+from old.fingerprint.segment_fingerprint import VideoSegmentFingerprint
+from old.fingerprint.segment_fingerprint import extract_audio_segment_fingerprints
+from old.fingerprint.segment_fingerprint import extract_video_segment_fingerprints
+from old.fingerprint.segment_fingerprint import verify_audio_at_offset
+from old.fingerprint.video_probe import get_media_probe
+from old.matcher.sequence_alignment import align_audio_segments_dtw
+from old.matcher.sequence_alignment import align_audio_segments_offset_xcorr
+from old.matcher.sequence_alignment import align_audio_energy_xcorr
+from old.matcher.sequence_alignment import align_video_segments_constrained
+from old.matcher.sequence_alignment import align_video_segments_dtw
 
 TOKEN_RE = re.compile(r"[a-z0-9]+")
 ALL_TECHNIQUES = ("metadata", "visual", "audio", "temporal")

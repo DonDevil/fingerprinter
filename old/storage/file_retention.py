@@ -4,7 +4,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from storage.processing_metadata_store import ProcessingMetadataStore
+from old.storage.processing_metadata_store import ProcessingMetadataStore
 
 
 class RejectedFileRetentionPolicy:

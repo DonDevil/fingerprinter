@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import numpy as np
 
-from matcher.dinov2_matcher import DinoV2Config
-from matcher.dinov2_matcher import DinoV2EmbeddingIndex
-from matcher.dinov2_matcher import compute_candidate_to_target_metrics
-from matcher.dinov2_matcher import run_dinov2_fingerprint
+from old.matcher.dinov2_matcher import DinoV2Config
+from old.matcher.dinov2_matcher import DinoV2EmbeddingIndex
+from old.matcher.dinov2_matcher import compute_candidate_to_target_metrics
+from old.matcher.dinov2_matcher import run_dinov2_fingerprint
 
 
 def _normalize_rows(arr: np.ndarray) -> np.ndarray:

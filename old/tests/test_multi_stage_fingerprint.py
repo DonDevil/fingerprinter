@@ -1,4 +1,4 @@
-from matcher.multi_stage_fingerprint import run_staged_fingerprint
+from old.matcher.multi_stage_fingerprint import run_staged_fingerprint
 
 
 class _VideoSeg:

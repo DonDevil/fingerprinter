@@ -1,4 +1,4 @@
-from matcher.duration_gate import should_reject_for_short_duration
+from old.matcher.duration_gate import should_reject_for_short_duration
 
 
 def test_duration_gate_rejects_below_threshold():

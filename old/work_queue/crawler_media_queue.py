@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
-from work_queue.models import QueueJob
+from old.work_queue.models import QueueJob
 
 
 class CrawlerMediaQueue:

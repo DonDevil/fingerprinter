@@ -1,8 +1,8 @@
 import argparse
 
-from config.settings import load_settings
-from logger.logger import configure_logging
-from worker.fingerprint_worker import FingerprintWorker
+from old.config.settings import load_settings
+from old.logger.logger import configure_logging
+from old.worker.fingerprint_worker import FingerprintWorker
 
 
 def _parse_techniques(value: str | None) -> set[str] | None:

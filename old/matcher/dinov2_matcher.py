@@ -7,8 +7,8 @@ from typing import Any
 
 import numpy as np
 
-from matcher.multi_stage_fingerprint import PipelineResult
-from matcher.multi_stage_fingerprint import StageOutcome
+from old.matcher.multi_stage_fingerprint import PipelineResult
+from old.matcher.multi_stage_fingerprint import StageOutcome
 
 DINO_MATCH_ALGO_VERSION = "dinov2_v1"
 

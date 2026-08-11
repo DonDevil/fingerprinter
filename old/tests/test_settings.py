@@ -1,4 +1,4 @@
-from config.settings import load_settings
+from old.config.settings import load_settings
 
 
 def test_load_settings_uses_defaults_for_missing_file(tmp_path):
