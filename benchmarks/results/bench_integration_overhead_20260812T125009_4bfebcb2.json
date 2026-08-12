@@ -1,0 +1,113 @@
+{
+  "video": "bench_15s.mp4",
+  "segment_duration_s": 2.5,
+  "reps": 15,
+  "direct_handler_s": {
+    "count": 15,
+    "mean_s": 0.8950072146665965,
+    "median_s": 0.8929077159991721,
+    "p50_s": 0.8929077159991721,
+    "p95_s": 0.8993087070048205,
+    "p99_s": 0.9422471119978582,
+    "min_s": 0.8808290800006944,
+    "max_s": 0.9422471119978582,
+    "stdev_s": 0.01361546917567025,
+    "small_sample_warning": "n=15 is small; p99 in particular should be treated as indicative, not precise"
+  },
+  "full_integration_path_s": {
+    "count": 15,
+    "mean_s": 0.9132951774003838,
+    "median_s": 0.9098834690012154,
+    "p50_s": 0.9098834690012154,
+    "p95_s": 0.9327223090003827,
+    "p99_s": 0.9347485710022738,
+    "min_s": 0.9001759510065312,
+    "max_s": 0.9347485710022738,
+    "stdev_s": 0.010351343666289087,
+    "small_sample_warning": "n=15 is small; p99 in particular should be treated as indicative, not precise"
+  },
+  "submission_s": {
+    "count": 15,
+    "mean_s": 0.0004877703991951421,
+    "median_s": 0.00045471500197891146,
+    "p50_s": 0.00045471500197891146,
+    "p95_s": 0.0006888069983688183,
+    "p99_s": 0.0007348199942498468,
+    "min_s": 0.00041218200203729793,
+    "max_s": 0.0007348199942498468,
+    "stdev_s": 9.175098082005955e-05,
+    "small_sample_warning": "n=15 is small; p99 in particular should be treated as indicative, not precise"
+  },
+  "claim_s": {
+    "count": 15,
+    "mean_s": 0.0003316793983685784,
+    "median_s": 0.00031527700048172846,
+    "p50_s": 0.00031527700048172846,
+    "p95_s": 0.00039763099630363286,
+    "p99_s": 0.00041317100112792104,
+    "min_s": 0.00030012299976078793,
+    "max_s": 0.00041317100112792104,
+    "stdev_s": 3.311612674973788e-05,
+    "small_sample_warning": "n=15 is small; p99 in particular should be treated as indicative, not precise"
+  },
+  "commit_s": {
+    "count": 15,
+    "mean_s": 0.00035825473508642366,
+    "median_s": 0.0003617870024754666,
+    "p50_s": 0.0003617870024754666,
+    "p95_s": 0.00037920699833193794,
+    "p99_s": 0.0004083420062670484,
+    "min_s": 0.00031821000447962433,
+    "max_s": 0.0004083420062670484,
+    "stdev_s": 2.114438288156293e-05,
+    "small_sample_warning": "n=15 is small; p99 in particular should be treated as indicative, not precise"
+  },
+  "outcome_resolve_s": {
+    "count": 15,
+    "mean_s": 0.00025011493174436814,
+    "median_s": 0.00024114600091706961,
+    "p50_s": 0.00024114600091706961,
+    "p95_s": 0.00028221600223332644,
+    "p99_s": 0.0002857889994629659,
+    "min_s": 0.00022071199782658368,
+    "max_s": 0.0002857889994629659,
+    "stdev_s": 2.0387850791890213e-05,
+    "small_sample_warning": "n=15 is small; p99 in particular should be treated as indicative, not precise"
+  },
+  "integration_overhead_s": {
+    "count": 15,
+    "mean_s": 0.0010961400660259339,
+    "median_s": 0.001053296000463888,
+    "p50_s": 0.001053296000463888,
+    "p95_s": 0.001244334998773411,
+    "p99_s": 0.0013998159920447506,
+    "min_s": 0.000992657005554065,
+    "max_s": 0.0013998159920447506,
+    "stdev_s": 0.00010285704159827906,
+    "small_sample_warning": "n=15 is small; p99 in particular should be treated as indicative, not precise"
+  },
+  "environment": {
+    "timestamp": "2026-08-12T12:50:09+0530",
+    "git_revision": "56ab52cdc5266e04ac2986f6457407452160d273",
+    "git_dirty": true,
+    "hardware": {
+      "cpu_model": "11th Gen Intel(R) Core(TM) i5-11400H @ 2.70GHz",
+      "logical_cpus": 12,
+      "total_ram_mib": 15725.703125,
+      "gpu": "NVIDIA GeForce RTX 2050"
+    },
+    "os": {
+      "system": "Linux",
+      "release": "7.0.0-28-generic",
+      "platform": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39"
+    },
+    "software": {
+      "python": "3.12.3",
+      "torch": "2.13.0+cu130",
+      "torch_cuda_available": "False",
+      "transformers": "5.15.0",
+      "redis_py": "8.1.0",
+      "ffmpeg": "ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers"
+    }
+  }
+}
