@@ -32,7 +32,21 @@ from work_queue.state import JobStateStore
 
 
 class TransientFailure(Exception):
-    """Handler raises this for a retryable failure (schedules a retry)."""
+    """Handler raises this for a retryable failure (schedules a retry).
+
+    `error_type` (Phase 13C) is an optional, safe-to-log classification of
+    the underlying cause — conventionally the caught exception's class name
+    (e.g. "ConnectionTimeoutError") — kept separate from `message`, which
+    may embed a media URL (see `acquisition/acquirer.py`'s exception text)
+    and must never reach structured logs/metrics. Defaults to
+    "unclassified_error" when a caller doesn't supply one, so every failure
+    is still classified as *something* rather than silently dropped from
+    aggregate error-category counts.
+    """
+
+    def __init__(self, message: str, error_type: Optional[str] = None):
+        super().__init__(message)
+        self.error_type = error_type or "unclassified_error"
 
 
 class PermanentFailure(Exception):
@@ -43,7 +57,58 @@ class PermanentFailure(Exception):
     unclassified failure indistinguishable from a worker crash. Phase 2's
     XAUTOCLAIM-based recovery already handles that case, so there is no
     separate "unknown failure" path to build.
+
+    See `TransientFailure.error_type` above — same convention here.
     """
+
+    def __init__(self, message: str, error_type: Optional[str] = None):
+        super().__init__(message)
+        self.error_type = error_type or "unclassified_error"
+
+
+class WorkerObserver:
+    """No-op observability hook (Phase 13C). `Worker` calls these methods at
+    existing claim/reclaim/finalize boundaries — this base class does
+    nothing, so a `Worker` constructed without an `observer` behaves
+    identically to every pre-Phase-13C test and call site. The concrete,
+    logging/counting implementation lives in `worker/observability.py`
+    (imported nowhere in this module, to keep this file's only dependency
+    direction outward — observability code depends on this module's types,
+    never the reverse).
+
+    Every method here mirrors one lifecycle boundary `Worker` already has;
+    no new state or control flow is introduced by adding these calls.
+    """
+
+    def on_job_claimed(self, *, job: Job, attempt: int) -> None:
+        pass
+
+    def on_job_reclaimed(self, *, job: Job, attempt: int) -> None:
+        pass
+
+    def on_job_rejected(self, *, entry_id: str, error: str, source: str) -> None:
+        pass
+
+    def on_job_completed(
+        self, *, job: Job, attempt: int, latency_ms: Optional[float], decision: Optional[str] = None
+    ) -> None:
+        pass
+
+    def on_job_failed(self, *, job: Job, attempt: int, error_type: str, latency_ms: Optional[float]) -> None:
+        pass
+
+    def on_job_retry_scheduled(
+        self, *, job: Job, attempt: int, error_type: str, latency_ms: Optional[float]
+    ) -> None:
+        pass
+
+    def on_job_permanently_failed(
+        self, *, job: Job, attempt: int, error_type: str, latency_ms: Optional[float]
+    ) -> None:
+        pass
+
+    def on_loop_tick(self) -> None:
+        pass
 
 
 # Atomically finalizes a claim: completes the state hash and XACKs the entry
@@ -169,6 +234,11 @@ class ClaimedEntry:
     job: Optional[Job]
     error: Optional[str] = None
     attempt: Optional[int] = None
+    # Phase 13C: wall-clock-independent claim timestamp (time.monotonic()),
+    # used only to compute claim-to-finalize latency for observability.
+    # Optional/defaulting to None keeps every pre-existing direct
+    # ClaimedEntry(...) construction (tests, this module) unaffected.
+    claimed_at: Optional[float] = None
 
     @property
     def is_valid(self) -> bool:
@@ -192,6 +262,7 @@ class Worker:
         retry_base_delay_s: float = 1.0,
         retry_max_delay_s: float = 60.0,
         retry_batch_size: int = 50,
+        observer: Optional[WorkerObserver] = None,
     ):
         self._redis = redis_client
         self._stream = stream_key(priority)
@@ -208,6 +279,7 @@ class Worker:
         self._retry_max_delay_s = retry_max_delay_s
         self._retry_batch_size = retry_batch_size
         self._state = JobStateStore(redis_client)
+        self._observer = observer if observer is not None else WorkerObserver()
         self._stop_event = threading.Event()
         self._last_reclaim_at = 0.0
         self._complete_script = redis_client.register_script(_COMPLETE_IF_CURRENT)
@@ -253,11 +325,13 @@ class Worker:
         except JobValidationError as exc:
             self._state.mark_rejected(raw_fields.get("job_id") or entry_id, str(exc))
             self._redis.xack(self._stream, CONSUMER_GROUP, entry_id)
+            self._observer.on_job_rejected(entry_id=entry_id, error=str(exc), source="claim")
             return ClaimedEntry(entry_id=entry_id, job=None, error=str(exc))
 
         attempt = self._next_attempt(job.job_id)
         self._state.mark_claimed(job.job_id, self._consumer_name, attempt)
-        return ClaimedEntry(entry_id=entry_id, job=job, attempt=attempt)
+        self._observer.on_job_claimed(job=job, attempt=attempt)
+        return ClaimedEntry(entry_id=entry_id, job=job, attempt=attempt, claimed_at=time.monotonic())
 
     def _next_attempt(self, job_id: str) -> int:
         existing = self._state.get(job_id)
@@ -292,12 +366,14 @@ class Worker:
             except JobValidationError as exc:
                 self._state.mark_rejected(raw_fields.get("job_id") or entry_id, str(exc))
                 self._redis.xack(self._stream, CONSUMER_GROUP, entry_id)
+                self._observer.on_job_rejected(entry_id=entry_id, error=str(exc), source="reclaim")
                 results.append(ClaimedEntry(entry_id=entry_id, job=None, error=str(exc)))
                 continue
 
             attempt = self._next_attempt(job.job_id)
             self._state.mark_claimed(job.job_id, self._consumer_name, attempt)
-            results.append(ClaimedEntry(entry_id=entry_id, job=job, attempt=attempt))
+            self._observer.on_job_reclaimed(job=job, attempt=attempt)
+            results.append(ClaimedEntry(entry_id=entry_id, job=job, attempt=attempt, claimed_at=time.monotonic()))
         return results
 
     def ack(self, entry: ClaimedEntry) -> bool:
@@ -362,7 +438,16 @@ class Worker:
         delay = self._retry_base_delay_s * (2 ** (attempt - 1))
         return min(delay, self._retry_max_delay_s)
 
-    def _handle_transient_failure(self, entry: ClaimedEntry, reason: str) -> bool:
+    def _elapsed_ms(self, entry: ClaimedEntry) -> Optional[float]:
+        """Claim-to-now latency in ms, or None if `entry` predates Phase
+        13C's `claimed_at` field (e.g. a test-constructed ClaimedEntry)."""
+        if entry.claimed_at is None:
+            return None
+        return (time.monotonic() - entry.claimed_at) * 1000
+
+    def _handle_transient_failure(
+        self, entry: ClaimedEntry, reason: str, error_type: str = "unclassified_error"
+    ) -> bool:
         """Schedule a retry, or finalize as failed if max_attempts is exhausted.
 
         max_attempts is the maximum number of total processing attempts
@@ -372,7 +457,12 @@ class Worker:
         """
         job = entry.job
         if entry.attempt >= job.max_attempts:
-            return self._fail(entry, f"max_attempts ({job.max_attempts}) exhausted: {reason}")
+            failed = self._fail(entry, f"max_attempts ({job.max_attempts}) exhausted: {reason}")
+            if failed:
+                self._observer.on_job_permanently_failed(
+                    job=job, attempt=entry.attempt, error_type=error_type, latency_ms=self._elapsed_ms(entry)
+                )
+            return failed
 
         now = time.time()
         due_at = now + self._backoff_seconds(entry.attempt)
@@ -381,6 +471,10 @@ class Worker:
             keys=[state_key(job.job_id), self._stream, self._retry_zset],
             args=[CONSUMER_GROUP, entry.entry_id, str(entry.attempt), str(now), str(due_at), payload, reason],
         )
+        if scheduled:
+            self._observer.on_job_retry_scheduled(
+                job=job, attempt=entry.attempt, error_type=error_type, latency_ms=self._elapsed_ms(entry)
+            )
         return bool(scheduled)
 
     def _fail(self, entry: ClaimedEntry, reason: str) -> bool:
@@ -427,14 +521,28 @@ class Worker:
         try:
             outcome = handler(entry.job)
         except TransientFailure as exc:
-            self._handle_transient_failure(entry, str(exc))
+            self._handle_transient_failure(entry, str(exc), error_type=exc.error_type)
         except PermanentFailure as exc:
-            self._fail(entry, str(exc))
+            failed = self._fail(entry, str(exc))
+            if failed:
+                self._observer.on_job_failed(
+                    job=entry.job, attempt=entry.attempt, error_type=exc.error_type,
+                    latency_ms=self._elapsed_ms(entry),
+                )
         else:
             if isinstance(outcome, Result):
-                self.commit_result(entry, outcome)
+                event_id = self.commit_result(entry, outcome)
+                if event_id:
+                    self._observer.on_job_completed(
+                        job=entry.job, attempt=entry.attempt, latency_ms=self._elapsed_ms(entry),
+                        decision=outcome.decision,
+                    )
             else:
-                self.ack(entry)
+                completed = self.ack(entry)
+                if completed:
+                    self._observer.on_job_completed(
+                        job=entry.job, attempt=entry.attempt, latency_ms=self._elapsed_ms(entry), decision=None,
+                    )
 
     def stop(self) -> None:
         """Request the run loop to exit after its current blocking read."""
@@ -457,6 +565,7 @@ class Worker:
         stale entries and promotes due retries before blocking on new work.
         """
         while not self._stop_event.is_set():
+            self._observer.on_loop_tick()
             self._maybe_reclaim_stale(handler)
             if self._stop_event.is_set():
                 break

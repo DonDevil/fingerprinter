@@ -1,4 +1,5 @@
-"""Production worker process entrypoint (Phase 13B).
+"""Production worker process entrypoint (Phase 13B, observability in Phase
+13C).
 
 Turns `worker.fingerprint_worker.Worker` — a well-tested library class with
 no process wrapper (Phase 13 audit, §2, "PRODUCTION BLOCKER") — into an
@@ -8,19 +9,27 @@ order Phase 12 already established (Redis -> MediaAcquirer ->
 TargetRegistry -> DINOv2EmbeddingEngine -> matching handler -> Worker),
 wire SIGTERM/SIGINT to `Worker.stop()`, run until shutdown, and exit.
 
+Phase 13C adds structured JSON logging, process-local counters/latency,
+periodic health summaries, a startup configuration snapshot, and an
+optional machine-readable run record — see `worker/observability.py` and
+docs/architecture/phase-13-production-hardening.md, "Phase 13C" — without
+changing any of the above dependency wiring or claim/lease/retry semantics.
+
 Run with:
 
     python -m worker.main
 
-See docs/architecture/phase-13-production-hardening.md, "Phase 13B", for
-the full configuration reference, startup sequence, and CPU-sizing
-guidance this module implements.
+See docs/architecture/phase-13-production-hardening.md, "Phase 13B"/"Phase
+13C", for the full configuration reference, startup sequence, and
+observability schema this module implements.
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import signal
+import socket
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,8 +46,16 @@ from target.cache import FilesystemEmbeddingCache
 from target.registry import TargetRegistry
 from target.segment_cache import FilesystemSegmentEmbeddingCache
 from work_queue.keys import CONSUMER_GROUP, stream_key
-from worker.fingerprint_worker import Worker
+from worker.fingerprint_worker import Worker, default_consumer_name
 from worker.matching_handler import build_matching_handler
+from worker.observability import (
+    DEFAULT_OBSERVABILITY_INTERVAL_MS,
+    NAMESPACE,
+    ObservingWorkerObserver,
+    WorkerIdentity,
+    configure_json_logging,
+    log_event,
+)
 
 logger = logging.getLogger("worker.main")
 
@@ -118,6 +135,9 @@ class WorkerConfig:
     torch_num_threads: int = DEFAULT_TORCH_NUM_THREADS
     target_cache_path: str = DEFAULT_TARGET_CACHE_PATH
     media_max_bytes: int = DEFAULT_MAX_BYTES
+    # Phase 13C
+    observability_interval_ms: int = DEFAULT_OBSERVABILITY_INTERVAL_MS
+    run_output: Optional[str] = None
 
     @classmethod
     def from_env(cls, env: Optional[Mapping[str, str]] = None) -> "WorkerConfig":
@@ -133,6 +153,10 @@ class WorkerConfig:
             torch_num_threads=_getenv_int("TORCH_NUM_THREADS", DEFAULT_TORCH_NUM_THREADS, env),
             target_cache_path=env.get("TARGET_CACHE_PATH") or DEFAULT_TARGET_CACHE_PATH,
             media_max_bytes=_getenv_int("MEDIA_MAX_BYTES", DEFAULT_MAX_BYTES, env),
+            observability_interval_ms=_getenv_int(
+                "WORKER_OBSERVABILITY_INTERVAL_MS", DEFAULT_OBSERVABILITY_INTERVAL_MS, env
+            ),
+            run_output=env.get("WORKER_RUN_OUTPUT") or None,
         )
         config.validate()
         return config
@@ -160,6 +184,10 @@ class WorkerConfig:
             errors.append(f"TORCH_NUM_THREADS must be >= 1, got {self.torch_num_threads}")
         if self.media_max_bytes <= 0:
             errors.append(f"MEDIA_MAX_BYTES must be > 0, got {self.media_max_bytes}")
+        if self.observability_interval_ms <= 0:
+            errors.append(
+                f"WORKER_OBSERVABILITY_INTERVAL_MS must be > 0, got {self.observability_interval_ms}"
+            )
 
         if errors:
             raise ConfigError("; ".join(errors))
@@ -176,11 +204,42 @@ def _redact_redis_url(url: str) -> str:
     return urlunparse(parsed._replace(netloc=netloc))
 
 
+def _redis_db(url: str) -> str:
+    db = urlparse(url).path.lstrip("/")
+    return db or "0"
+
+
 def configure_logging() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
+    """Structured JSON logs (Phase 13C) — see worker/observability.py's
+    JsonFormatter. Every pre-existing log call in this module keeps its
+    original human-readable text under the JSON line's "message" key, so
+    substring checks written against earlier plain-text output still see
+    that text (see JsonFormatter's docstring)."""
+    configure_json_logging(level=logging.INFO)
+
+
+def config_snapshot(config: WorkerConfig, consumer_name: str) -> dict:
+    """The effective configuration this worker is actually running with
+    (Phase 13C §9) — safe to log and to embed in a run record: Redis
+    credentials are stripped, nothing else in this dict can carry a
+    secret."""
+    return {
+        "worker_id": consumer_name,
+        "redis_endpoint": _redact_redis_url(config.redis_url),
+        "redis_db": _redis_db(config.redis_url),
+        "namespace": NAMESPACE,
+        "stream": stream_key(),
+        "consumer_group": CONSUMER_GROUP,
+        "lease_ms": config.lease_ms,
+        "block_ms": config.block_ms,
+        "reclaim_interval_ms": config.reclaim_interval_ms,
+        "embedding_device": config.embedding_device,
+        "torch_num_threads": config.torch_num_threads,
+        "target_cache_path": config.target_cache_path,
+        "media_max_bytes": config.media_max_bytes,
+        "observability_interval_ms": config.observability_interval_ms,
+        "run_output": config.run_output,
+    }
 
 
 def build_redis_client(config: WorkerConfig) -> Redis:
@@ -221,13 +280,16 @@ def build_engine(config: WorkerConfig) -> DINOv2EmbeddingEngine:
     )
 
 
-def build_worker(redis_client: Redis, config: WorkerConfig) -> Worker:
+def build_worker(
+    redis_client: Redis, config: WorkerConfig, observer: Optional[ObservingWorkerObserver] = None
+) -> Worker:
     return Worker(
         redis_client,
         consumer_name=config.consumer_name,
         block_ms=config.block_ms,
         lease_ms=config.lease_ms,
         reclaim_interval_ms=config.reclaim_interval_ms,
+        observer=observer,
     )
 
 
@@ -240,7 +302,11 @@ def install_shutdown_handlers(worker: Worker) -> None:
     """
 
     def _handle_signal(signum, _frame):
-        logger.info("received %s, requesting graceful shutdown", signal.Signals(signum).name)
+        log_event(
+            logger, "worker_shutdown_requested",
+            message=f"received {signal.Signals(signum).name}, requesting graceful shutdown",
+            signal=signal.Signals(signum).name,
+        )
         worker.stop()
 
     signal.signal(signal.SIGTERM, _handle_signal)
@@ -249,11 +315,15 @@ def install_shutdown_handlers(worker: Worker) -> None:
 
 def main() -> int:
     configure_logging()
+    hostname_pid_fields = {"hostname": socket.gethostname(), "pid": os.getpid()}
 
     try:
         config = WorkerConfig.from_env()
     except ConfigError as exc:
-        logger.error("invalid configuration: %s", exc)
+        log_event(
+            logger, "worker_fatal_error", message=f"invalid configuration: {exc}",
+            level=logging.ERROR, reason="invalid_configuration", **hostname_pid_fields,
+        )
         return 1
 
     if config.max_attempts is not None:
@@ -264,48 +334,84 @@ def main() -> int:
             config.max_attempts,
         )
 
-    logger.info(
-        "starting fingerprinter worker: redis=%s device=%s torch_num_threads=%d "
-        "lease_ms=%d block_ms=%d reclaim_interval_ms=%s media_max_bytes=%d target_cache_path=%s",
-        _redact_redis_url(config.redis_url),
-        config.embedding_device,
-        config.torch_num_threads,
-        config.lease_ms,
-        config.block_ms,
-        config.reclaim_interval_ms,
-        config.media_max_bytes,
-        config.target_cache_path,
+    consumer_name = config.consumer_name or default_consumer_name()
+    snapshot = config_snapshot(config, consumer_name)
+    log_event(
+        logger, "worker_started",
+        message=(
+            f"starting fingerprinter worker: redis={snapshot['redis_endpoint']} "
+            f"device={snapshot['embedding_device']} torch_num_threads={snapshot['torch_num_threads']} "
+            f"lease_ms={snapshot['lease_ms']} block_ms={snapshot['block_ms']} "
+            f"reclaim_interval_ms={snapshot['reclaim_interval_ms']} media_max_bytes={snapshot['media_max_bytes']} "
+            f"target_cache_path={snapshot['target_cache_path']}"
+        ),
+        configuration=snapshot,
     )
 
     try:
         redis_client = build_redis_client(config)
     except RedisError as exc:
-        logger.error("could not connect to Redis at %s: %s", _redact_redis_url(config.redis_url), exc)
+        log_event(
+            logger, "worker_fatal_error",
+            message=f"could not connect to Redis at {snapshot['redis_endpoint']}: {exc}",
+            level=logging.ERROR, reason="redis_unreachable", error_type=type(exc).__name__,
+            **hostname_pid_fields,
+        )
         return 1
+
+    identity = WorkerIdentity.build(consumer_name)
+    observer = ObservingWorkerObserver(
+        identity, redis_client, stream_key(), CONSUMER_GROUP, logger,
+        health_interval_s=config.observability_interval_ms / 1000,
+    )
 
     try:
         acquirer = build_acquirer(config)
         registry = build_registry(redis_client, config)
         engine = build_engine(config)
-        handler = build_matching_handler(acquirer, engine, registry)
-        worker = build_worker(redis_client, config)
+        handler = build_matching_handler(
+            acquirer, engine, registry, stage_recorder=observer.record_stage_duration
+        )
+        worker = build_worker(redis_client, config, observer=observer)
     except Exception as exc:  # noqa: BLE001 - deliberately broad: any startup failure must exit non-zero, not hang
-        logger.error("fatal startup error (%s): %s", type(exc).__name__, exc)
+        log_event(
+            logger, "worker_fatal_error",
+            message=f"fatal startup error ({type(exc).__name__}): {exc}",
+            level=logging.ERROR, reason="component_construction_failed", error_type=type(exc).__name__,
+        )
+        if config.run_output:
+            with contextlib.suppress(Exception):
+                observer.write_run_record(
+                    config.run_output, configuration=snapshot,
+                    shutdown_reason="fatal_startup_error", clean=False,
+                )
         redis_client.close()
         return 1
 
+    if config.run_output:
+        with contextlib.suppress(Exception):
+            observer.write_startup_marker(config.run_output, snapshot)
+
     install_shutdown_handlers(worker)
-    logger.info(
-        "worker %s started (group=%s stream=%s) - startup success",
-        worker.consumer_name,
-        CONSUMER_GROUP,
-        stream_key(),
+    log_event(
+        logger, "worker_ready",
+        message=(
+            f"worker {worker.consumer_name} started (group={CONSUMER_GROUP} stream={stream_key()}) "
+            "- startup success"
+        ),
     )
 
+    shutdown_reason = "graceful_shutdown"
     try:
         worker.run(handler)
     finally:
-        logger.info("worker %s exiting", worker.consumer_name)
+        observer.emit_shutdown_summary(shutdown_reason=shutdown_reason, clean=True)
+        if config.run_output:
+            with contextlib.suppress(Exception):
+                observer.write_run_record(
+                    config.run_output, configuration=snapshot,
+                    shutdown_reason=shutdown_reason, clean=True,
+                )
         redis_client.close()
 
     return 0

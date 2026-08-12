@@ -1290,9 +1290,640 @@ without metrics emission or an operator-facing dashboard yet). Blocker #2
 additionally justified by this phase: it requires a second real worker
 process to test against for the first time, which only now exists.
 
+## 20. Phase 13C — Production observability
+
+**Implemented this phase.** Addresses §9 finding #4 / §10 blocker #4
+(observability) only. Blocker #2 (multi-host target cache) is untouched,
+per this phase's scope. No claim/lease/retry semantics, SSRF guard, or
+`worker/main.py` dependency-construction order changed.
+
+### Observability architecture
+
+One new module, `worker/observability.py` — structured JSON logging,
+process-local counters/latency, a stdlib-only resource sampler, a bounded
+Redis Streams health-snapshot reader, and `ObservingWorkerObserver`, which
+implements a new no-op `WorkerObserver` interface added to
+`worker/fingerprint_worker.py`. `Worker` calls `WorkerObserver` methods at
+its existing claim/reclaim/reject/complete/fail/retry-schedule/
+permanently-fail boundaries; the default (no `observer` passed) is a pure
+no-op, so every pre-13C `Worker(...)` call site (all of Phases 1-12's
+tests) is byte-for-byte behaviorally unchanged. `worker/main.py` is the
+only production call site that constructs a real `ObservingWorkerObserver`
+and passes it in — mirroring how Phase 13B kept `Redis(...)` construction
+to one call site. **IMPLEMENTED.**
+
+Dependency direction is one-way: `worker/observability.py` imports
+`worker.fingerprint_worker.WorkerObserver`/`work_queue.jobs.Job`;
+`worker/fingerprint_worker.py` imports nothing from `worker/observability.py`
+(confirmed by inspection — the base `WorkerObserver` class lives in
+`fingerprint_worker.py` itself, not the other way around).
+
+Pipeline-stage timing is a second, independent hook: `build_matching_handler`
+(`worker/matching_handler.py`) gained an optional `stage_recorder` callback,
+called as `stage_recorder(stage_name, duration_s)` around each of its
+existing stage boundaries. Default `None` -> no-op, so
+`tests/test_matching_handler.py`, `tests/test_integration_e2e.py`, and
+`benchmarks/bench_integration_overhead.py` (all call `build_matching_handler`
+positionally, without this new kwarg) are unaffected.
+
+**No dependency was added.** `psutil` is not installed in this project
+(`pip show psutil` -> not found, checked before writing any code this
+phase) and the task brief requires proving the stdlib can't satisfy a
+requirement before reaching for a library — it can (see "Process resource
+metrics" below), so none was added.
+
+### Event schema
+
+Structured JSON logs, one object per line, via `worker.observability.
+JsonFormatter` installed on the root logger by `worker/main.py`'s
+`configure_logging()` (extends, not replaces, the project's only logging
+stack — stdlib `logging` — per the task brief). Every event line has:
+`timestamp`, `level`, `logger`, `event`, `message`, plus whatever
+structured fields that event's call site attached. Every job-lifecycle and
+worker-lifecycle event additionally carries: `worker_id`, `hostname`,
+`pid`, `consumer_name`, `namespace` (`"fingerprint"`, the fixed Redis
+key-prefix this project has always used), `stream`, `consumer_group` — the
+full identity set §1/§13 require, attributable to exactly one process.
+**IMPLEMENTED, tested**
+(`tests/test_worker_observability.py::test_structured_event_is_valid_json_with_identity_fields`,
+`::test_worker_process_emits_worker_started_and_worker_ready_as_valid_json`).
+
+Event names actually emitted, each tied to a boundary the current code
+already observes (no invented states):
+
+| Event | Emitted by | When |
+|---|---|---|
+| `worker_started` | `worker/main.py` | after config validation, before Redis connect — carries the full config snapshot (§9 below) |
+| `worker_ready` | `worker/main.py` | after all components construct successfully, right before `worker.run()` |
+| `worker_shutdown_requested` | `worker/main.py`'s signal handler | on SIGTERM/SIGINT |
+| `worker_stopped` | `ObservingWorkerObserver.emit_shutdown_summary` | after `worker.run()` returns, in `main()`'s `finally` |
+| `worker_fatal_error` | `worker/main.py` | invalid config / Redis unreachable / component construction failure (three distinct `reason` values, see "Startup failure behavior" in §19, unchanged this phase) |
+| `job_claimed` | `Worker.claim_one` | a fresh, valid claim |
+| `job_reclaimed` | `Worker.reclaim_stale` | a valid entry recovered via XAUTOCLAIM |
+| `job_rejected` | `Worker.claim_one`/`reclaim_stale` | a malformed stream entry (schema-invalid), `source` field distinguishes claim vs reclaim |
+| `job_completed` | `Worker.process_claim` | handler returned normally and the finalize (ack or commit_result) actually took effect (not a stale no-op — see "Counters" below) |
+| `job_failed` | `Worker.process_claim` | handler raised `PermanentFailure` |
+| `job_retry_scheduled` | `Worker._handle_transient_failure` | handler raised `TransientFailure`, attempts remain |
+| `job_permanently_failed` | `Worker._handle_transient_failure` | handler raised `TransientFailure`, `max_attempts` exhausted |
+| `worker_health` | `ObservingWorkerObserver.on_loop_tick` | periodically, see §8 below |
+
+No event exists for a state this codebase cannot currently observe (e.g.
+no per-stage "cache hit vs build" event — see "Pipeline stage latency"
+measurement gap below). **IMPLEMENTED.**
+
+**What is never logged** (§1): `job.media_url`, the raw `str(exc)` failure
+reason (which `acquisition/acquirer.py` proves can embed the candidate
+URL, e.g. `"connection timeout to {url}"`), Redis credentials, and
+tracebacks are never repeated per-event (only `exc_type`, once, if
+present). The one exception is `job_rejected`'s `error` field: it carries
+`JobValidationError`'s full message, which is safe by construction — that
+message only ever names missing/invalid job-schema field names
+(`work_queue/jobs.py`), never a URL. **IMPLEMENTED, tested**
+(`test_malformed_job_rejection_increments_rejected_not_claimed` asserts
+the field name appears; no test anywhere asserts a URL appears in an
+event, and `TransientFailure`/`PermanentFailure` now carry a separate,
+safe `error_type` — see "Error classification").
+
+### Counters
+
+`WorkerCounters` (process-local, plain ints under one `threading.Lock` —
+`Worker.run()` is single-threaded, so this is defensive rather than load-
+bearing, and it also protects a periodic health read from a torn state):
+`jobs_claimed`, `jobs_reclaimed`, `jobs_completed`, `jobs_failed`,
+`jobs_rejected`, `jobs_retried`, `jobs_permanently_failed`, `active_jobs`,
+`total_job_attempts`. **IMPLEMENTED, tested** (10 of the 20 new tests in
+`tests/test_worker_observability.py` exercise these directly against real
+Redis through a real `Worker`).
+
+Update points, chosen to update only at the *actual* finalize boundary,
+not merely because a handler ran:
+
+- `jobs_claimed`/`jobs_reclaimed`/`active_jobs`/`total_job_attempts`
+  increment only for entries that parsed as a valid `Job` — a malformed
+  entry increments `jobs_rejected` (and, if it arrived via `reclaim_stale`,
+  `jobs_reclaimed` too — the stream entry genuinely was reclaimed by
+  XAUTOCLAIM before being found malformed, but it never entered "active"
+  processing, so `active_jobs` is untouched for it).
+- `jobs_completed` increments only if `Worker.ack()`/`commit_result()`
+  actually returned a truthy result — i.e., this worker's attempt was
+  still current when it finalized. A **stale** worker's finalize attempt
+  (attempt-fencing lost a race to a `XAUTOCLAIM`-based reclaim, Phase 2)
+  returns `False`/`None` and increments nothing. **Tested**
+  (`test_stale_finalize_does_not_double_count_completion`).
+- `jobs_failed` (handler raised `PermanentFailure`), `jobs_retried`
+  (`TransientFailure`, attempts remain), and `jobs_permanently_failed`
+  (`TransientFailure`, `max_attempts` exhausted) are three **distinct**
+  counters/events even though the first and third both write
+  `status=failed` to the same Redis state hash internally (`Worker._fail`)
+  — from an operator's perspective "the handler said don't retry" and "we
+  retried until we ran out of attempts" are different failure modes, and
+  the current code already knows which branch it took, so nothing had to
+  be guessed. **Tested** (`test_permanent_failure_increments_jobs_failed`,
+  `test_transient_failure_increments_jobs_retried`,
+  `test_exhausted_retries_increments_jobs_permanently_failed`).
+- `active_jobs` decrements on every one of the four terminal outcomes
+  above (completed/failed/retried/permanently-failed) — since `Worker.run()`
+  processes one job at a time synchronously, `active_jobs` is 0 or 1 from
+  any single worker's own perspective, and every test above confirms it
+  returns to 0. **Tested** (every counter test above asserts
+  `active_jobs == 0` after finalize; §15 required test #7).
+- `total_job_attempts` increments once per claim or reclaim of a valid
+  entry — equivalently, once per handler invocation attempt.
+
+New-claim vs stale-reclaim vs retry-redelivery are distinguished exactly
+as far as the current implementation allows (per the task brief's "where
+the current worker implementation allows that distinction" — no more):
+a *fresh* claim (`jobs_claimed`) and a *stale-lease reclaim*
+(`jobs_reclaimed`, via `XAUTOCLAIM`) are two different code paths and two
+different counters, already. A *retry-redelivery* (a promoted-from-ZSET
+entry coming back through `XREADGROUP`) is **not separately distinguished
+from a fresh claim** — both go through `Worker.claim_one()` and increment
+`jobs_claimed` — because the stream entry itself carries no marker saying
+"this is attempt N of a retry" versus "this is attempt 1"; only
+`entry.attempt` (already existing, Phase 1/2) distinguishes them, and that
+is preserved and logged on every `job_claimed` event. **Documented gap**,
+not invented: adding a true `job_retried_redelivery` event distinct from
+`job_claimed` would require either a new stream-entry field (touches
+`work_queue/jobs.py`, explicitly off-limits this phase) or inferring it
+from `entry.attempt > 1` at claim time, which is already fully recoverable
+from the existing `job_claimed` event's `attempt` field — so no dedicated
+event was added, to avoid a second way of saying the same thing.
+
+### Latency metrics
+
+`BoundedLatencyStats` (per-metric: exact `count`/`min`/`max`/`avg`, plus
+p50/p95/p99 approximated from a **bounded**, most-recent-2000-sample
+window — never every sample ever recorded, per §3). Two metrics,
+process-local, reset on worker restart:
+
+- `claim_to_completion_ms` — recorded on every `job_completed`.
+- `claim_to_failure_ms` — recorded on every `job_failed`,
+  `job_retry_scheduled`, and `job_permanently_failed` alike (all three are
+  "claim to non-success finalize").
+
+Measured from `entry.claimed_at` (a new, optional, default-`None` field on
+`ClaimedEntry`, set via `time.monotonic()` at claim/reclaim time — additive,
+so every pre-existing direct `ClaimedEntry(...)` construction in the test
+suite is unaffected) to the moment `Worker` calls the matching observer
+hook. **IMPLEMENTED, tested**
+(`test_successful_completion_increments_completion_counter_exactly_once_and_records_latency`;
+§15 required test #8).
+
+### Pipeline stage latency
+
+`worker/matching_handler.py`'s `handler()` now times its own five existing
+stage boundaries via the `stage_recorder` hook (no new boundaries invented,
+no refactor beyond adding `time.monotonic()` pairs around code that was
+already there):
+
+| Stage | Boundary measured |
+|---|---|
+| `media_acquisition` | `acquirer.acquire(job.media_url)` |
+| `candidate_embedding` | `engine.embed_video_segments(artifact)` on the candidate |
+| `target_resolution` | `_resolve_target_segments(...)` — see measurement gap below |
+| `matching` | `match_segments(...)` |
+| `aggregation` | `temporal_match_to_evidence` + `combine` |
+
+**Measurement gap, documented per the task brief rather than closed by
+refactoring:** `target_resolution` times the *whole* cache-lookup-or-build
+call. `TargetRegistry.get_or_build_segment_embedding` (`target/registry.py`,
+off-limits this phase except for a "very small hook", and this didn't
+justify one) does not report back whether it returned on a cache hit or
+after winning the build-on-miss lock and running a full target embedding
+pass — those two cases have very different costs (a `HGET`-equivalent read
+vs. a full DINOv2 embedding run) but are not separable from outside without
+modifying `target/registry.py`'s return contract. An operator investigating
+whether "target resolution" time is dominated by cache hits or cold builds
+must currently cross-reference `target_resolution`'s p95/max against
+whether the target cache directory (`TARGET_CACHE_PATH`) was freshly
+populated. **UNAVAILABLE**, not fabricated.
+
+Similarly, "media probing/artifact creation" (ffprobe-based validation
+inside `acquisition.acquirer.MediaAcquirer.acquire`) is **not** separable
+from "download" — both happen inside the single `acquire()` call this
+phase is allowed to time as one unit (`acquisition/` is off-limits except
+for a small hook, and none was judged necessary for this one metric).
+Folded into `media_acquisition`. **UNAVAILABLE** as a separate figure.
+
+These two stage-timing gaps directly answer the task brief's question
+"where is job time being spent?" to stage granularity (acquisition vs.
+candidate embedding vs. target resolution vs. matching vs. aggregation)
+but not to the finer "cache hit vs. build" / "download vs. probe"
+granularity — **IMPLEMENTED at stage granularity, UNAVAILABLE at finer
+granularity** without touching off-limits modules.
+
+### Error classification
+
+`_ERROR_CATEGORY_MAP` in `worker/observability.py` maps an exception's
+**type name only** (never its message — see "What is never logged" above)
+onto one of: `permanent_acquisition_failure`, `transient_acquisition_failure`,
+`media_validation_failure`, `embedding_failure`, `malformed_job`,
+`redis_coordination_failure` (the target build-lock's `TimeoutError`),
+falling back to `unclassified_error` for anything not in the table — never
+silently guessed. Powered by a small, additive change to
+`TransientFailure`/`PermanentFailure` (`worker/fingerprint_worker.py`):
+both gained an optional `error_type` constructor parameter (default
+`"unclassified_error"`), and every raise site in
+`worker/matching_handler.py` now passes `error_type=type(exc).__name__`
+alongside the **unchanged** message string — so this is purely additive:
+`TransientFailure("msg")` (every existing call site, all of
+`tests/test_retry.py`/`tests/test_integration_outcome.py`/
+`tests/test_results.py`) still works exactly as before, and the Redis
+`failure_reason` field a job's state hash has always stored is
+byte-for-byte unchanged. **IMPLEMENTED, tested**
+(`test_permanent_failure_increments_jobs_failed` asserts the exact category
+for a synthetic `NotFoundError`; `classify_error_type` is exercised
+directly).
+
+Aggregate category counts are exposed in the health summary/run record's
+`error_categories` map (§8/§11), not as a fixed dataclass field — an
+open-ended `Dict[str, int]`, since the category set is a fixed lookup
+table, not a schema.
+
+### Redis health / queue observability
+
+`worker.observability.redis_health_snapshot(redis_client, stream, group,
+consumer_name)` — three bounded Redis Streams reads, no SCAN, no per-job
+walk, no new Redis data structure (§6):
+
+- `stream_length` — `XLEN`.
+- `group_lag` / `group_pending` — from `XINFO GROUPS` (the exact same
+  `lag`/`pending` fields `integration/backpressure.py`'s
+  `count_outstanding` already reads — this function reuses the same Redis-
+  computed values, just exposes both separately instead of pre-summed).
+- `consumer_pending` — this consumer's own pending count, from
+  `XINFO CONSUMERS`.
+- `oldest_pending_idle_ms` — from a **`count=1`** `XPENDING` range read
+  (`XPENDING key group - + 1`), which returns the single oldest-by-ID
+  pending entry and its `time_since_delivered` (exactly "idle time").
+  Bounded regardless of PEL size — never a full PEL walk.
+
+Measured cost: **~0.16-0.20ms per call** (local Redis, empty-to-small
+PEL — see "Overhead" below) — cheap enough to call once per health
+interval (default 60s) on a long-running worker. **IMPLEMENTED, tested**
+(`test_redis_health_snapshot_reads_stream_and_pel_state`,
+`test_redis_health_snapshot_empty_stream`; §15 required test #10).
+
+`ObservingWorkerObserver._safe_redis_snapshot` wraps this in a
+try/except on `redis.exceptions.RedisError`, returning `None` (not
+fabricating a snapshot) and logging a `worker_health` warning if Redis is
+transiently unreachable during a health tick — a health/run-record
+`"redis": null` is a legitimate, documented "unavailable this sample", not
+a bug.
+
+**Redis-global vs. worker-local, explicitly (§13):** every field this
+function returns is **Redis-global** (the whole consumer group's state,
+not this worker's private counters) except `consumer_pending`, which is
+specific to the `consumer_name` passed in. Everything under `counters`/
+`latency`/`pipeline_stage_metrics` elsewhere in this phase is
+**worker-local**. Fleet-wide aggregation (summing `redis_health_snapshot`
+results, which would double-count `stream_length`/`group_pending` if done
+naively across workers sharing one stream) is explicitly **DEFERRED** —
+not attempted this phase.
+
+### Process resource metrics
+
+`worker.observability.ResourceSampler`, standard library only
+(`resource.getrusage`, `/proc/self/status`, `/proc/self/fd`,
+`threading.active_count()`) — **no new dependency added**; `psutil` is
+not installed in this project (confirmed via `pip show psutil` before
+writing any code this phase), and the stdlib already answers everything
+§7 asks for on this project's only deployment target (Linux):
+
+| Field | Source | Notes |
+|---|---|---|
+| `rss_current_bytes` | `/proc/self/status`'s `VmRSS` | `None` on any non-Linux platform or read failure — never guessed |
+| `rss_peak_bytes` | `resource.getrusage(RUSAGE_SELF).ru_maxrss`, running max across samples | KB->bytes on Linux; the class also handles macOS's already-bytes convention, documented in code, though this project only runs on Linux today |
+| `cpu_time_s` | `ru_utime + ru_stime` | **Cumulative** process CPU time since start — monotonically increasing, explicitly **not** a percentage |
+| `cpu_percent` | `(cpu_time delta) / (wall-clock delta)` between two consecutive samples | `None` on the first-ever sample (no prior point to diff against) — never fabricated; this is the instantaneous/sample utilization figure, kept explicitly distinct from `cpu_time_s` per the task brief's explicit warning not to confuse the two (same distinction the crawler benchmark work required) |
+| `thread_count` | `threading.active_count()` | |
+| `open_fds` | `len(os.listdir("/proc/self/fd"))` | `None` on any read failure |
+
+Sampled only on a health tick or at shutdown/run-record time (§8/§10/§11)
+— never at high frequency, never per-job. **IMPLEMENTED, tested**
+(`test_resource_sampler_collects_expected_fields`; §15 required test #11).
+
+### Health interval
+
+`WORKER_OBSERVABILITY_INTERVAL_MS` (default `60000` = 60s) — checked once
+per `Worker.run()` loop iteration via a new `observer.on_loop_tick()` call
+(one line added to `Worker.run()`'s existing `while` loop; no new thread,
+no new blocking call — `run()`'s existing `block_ms`-bounded `XREADGROUP`
+already caps loop-iteration latency at ~5s by default, so a 60s interval
+is serviced with comfortable granularity without needing a background
+timer thread). When due, `ObservingWorkerObserver.emit_health_summary()`
+gathers a fresh `redis_health_snapshot` + `ResourceSampler.sample()` +
+current counters/latency and emits one `worker_health` event — never one
+log line per job or per loop iteration. **IMPLEMENTED, tested**
+(`test_health_summary_is_emitted_with_expected_fields`,
+`test_health_summary_not_emitted_before_interval_elapses`).
+
+### Configuration snapshot
+
+`worker/main.py`'s `config_snapshot(config, consumer_name)` builds the
+dict logged as `worker_started`'s `configuration` field and embedded in
+every run record's `configuration` field: `worker_id`, `redis_endpoint`
+(credential-redacted via the existing, unmodified `_redact_redis_url`),
+`redis_db`, `namespace`, `stream`, `consumer_group`, `lease_ms`,
+`block_ms`, `reclaim_interval_ms`, `embedding_device`, `torch_num_threads`,
+`target_cache_path`, `media_max_bytes`, `observability_interval_ms`,
+`run_output`. No Redis password/token ever appears — **IMPLEMENTED,
+tested** (`test_config_snapshot_does_not_leak_redis_credentials`; §15
+required test #2).
+
+Two new environment variables, both optional, validated the same way
+every other `WorkerConfig` field is:
+
+| Variable | Default | Validation |
+|---|---|---|
+| `WORKER_OBSERVABILITY_INTERVAL_MS` | `60000` | must be `> 0` |
+| `WORKER_RUN_OUTPUT` | unset (no file written) | none — any path string; directories created on first write |
+
+### Shutdown summary
+
+`ObservingWorkerObserver.emit_shutdown_summary(shutdown_reason, clean)` —
+called from `worker/main.py`'s `finally` block after `worker.run()`
+returns — emits one `worker_stopped` event with: `uptime_s`, every
+counter, `average_job_latency_ms`/`p95_job_latency_ms`, `peak_rss_bytes`,
+`cpu_time_s`, `shutdown_reason`, `clean`. **IMPLEMENTED, tested**
+(`test_shutdown_summary_is_emitted`).
+
+Every code path that exits before `worker.run()` is ever reached (invalid
+config, Redis unreachable) logs a `worker_fatal_error` event instead and
+is clearly distinguished — `main()` never emits a `worker_stopped`/
+"graceful" event for a run that never started. The one path that
+constructs an `ObservingWorkerObserver` before failing (component
+construction failure, e.g. a model-load error) best-effort writes a run
+record with `shutdown.reason="fatal_startup_error"` and
+`shutdown.clean=false` if `WORKER_RUN_OUTPUT` is set (wrapped in
+`contextlib.suppress(Exception)` — a failure to *write the failure record*
+must never mask or replace the original fatal error's own non-zero exit).
+
+### Machine-readable run record
+
+`WORKER_RUN_OUTPUT=/path/to/run.json` (optional; unset by default — no
+file is written unless an operator asks for one). On a clean shutdown,
+`ObservingWorkerObserver.write_run_record(...)` builds and atomically
+writes (`tempfile.mkstemp` in the same directory + `os.replace`, so a
+crash mid-write can never leave a truncated/corrupt file at the real path)
+a JSON object shaped:
+
+```
+{
+  "metadata": {worker_id, hostname, pid, consumer_name, namespace, stream, consumer_group, schema_version},
+  "configuration": {...config_snapshot(), see above...},
+  "timing": {started_at, ended_at, uptime_s},
+  "counters": {...WorkerCounters, see "Counters"...},
+  "error_categories": {category: count, ...},
+  "latency": {"claim_to_completion_ms": {count,min,max,avg,p50,p95,p99,sample_window}, "claim_to_failure_ms": {...}},
+  "pipeline_stage_metrics": {"media_acquisition": {...}, "candidate_embedding": {...}, "target_resolution": {...}, "matching": {...}, "aggregation": {...}},
+  "redis": {stream_length, group_lag, group_pending, consumer_pending, oldest_pending_idle_ms} | null,
+  "resources": {rss_current_bytes, rss_peak_bytes, cpu_time_s, cpu_percent, thread_count, open_fds},
+  "shutdown": {"reason": "...", "clean": true|false}
+}
+```
+
+`null` is used for any value this run genuinely could not measure (e.g.
+`redis` if the final snapshot attempt hit a `RedisError`, `rss_current_bytes`
+on a platform without `/proc`) — never fabricated. **IMPLEMENTED, tested**
+(`test_run_json_is_generated_atomically_for_clean_shutdown`; §15 required
+test #14).
+
+### Crash semantics
+
+A `SIGKILL`/power loss/terminal crash cannot run any Python code, so no
+final run record can ever be written for that run — this module does not
+claim otherwise. Instead, `write_startup_marker(path, configuration)`
+writes `<WORKER_RUN_OUTPUT>.marker` (same atomic-write helper) once, right
+before `worker.run()` starts (only if `WORKER_RUN_OUTPUT` is set). On a
+**clean** shutdown, `write_run_record` removes that marker after
+successfully writing the real run record. The resulting, externally
+checkable states:
+
+| Marker file | Run-output file | Interpretation |
+|---|---|---|
+| absent | absent | worker never started (or `WORKER_RUN_OUTPUT` unset) |
+| present | absent | worker started, has **not** (yet, or ever) shut down cleanly — still running, or crashed |
+| absent | present, `shutdown.clean=true` | worker ran and exited cleanly |
+| present | present | a **prior** run's marker was never cleaned up by a **subsequent** crash — an operator should treat this as "crashed after at least one prior clean run", i.e. compare the run record's `timing.ended_at` against the marker's `started_at` |
+
+No Redis state is involved — this is a plain local file, per the task
+brief's explicit "keep this lightweight... do not build distributed state
+tracking in Redis". **IMPLEMENTED, tested**
+(`test_incomplete_run_is_not_falsely_marked_successful` — real `SIGKILL`
+against a real subprocess, asserts the marker survives and no `run.json`
+is ever produced; §15 required test #15).
+
+### Multi-worker / multi-host correctness
+
+Every event, health summary, and run record carries `hostname`, `pid`,
+`consumer_name`/`worker_id` (§13) — `WorkerIdentity.build()` captures these
+once at observer construction via `socket.gethostname()`/`os.getpid()`.
+`ObservingWorkerObserver`'s own counters/latency are never shared or
+aggregated across workers — each process constructs its own instance
+against its own in-memory state, matching the fact that `Worker.run()`
+already only ever coordinates through Redis, never through shared Python
+state. Explicitly, per field group:
+
+- **Worker-local**: `counters`, `latency`, `pipeline_stage_metrics`,
+  `resources` — exist only in this process's memory, reset on restart.
+- **Redis-global**: `redis_health_snapshot`'s `stream_length`, `group_lag`,
+  `group_pending` — the whole consumer group's state, visible identically
+  to every worker that queries it.
+- **Redis-global, but consumer-scoped**: `consumer_pending` — Redis-held,
+  but specific to the querying worker's own `consumer_name`.
+- **Fleet-derived** (not computed by this phase): anything requiring
+  aggregation across multiple workers' run records/health logs (e.g.
+  "total fleet throughput") — **DEFERRED**, per the task brief's explicit
+  "fleet aggregation is a future analysis concern", left as a downstream
+  log-ingestion/analysis-tool responsibility. The schema above (uniform
+  `metadata`/`counters`/`latency` shape, identical across every worker) is
+  designed to make that straightforward later, not to perform it now.
+
+### Overhead
+
+**Methodology:** a local, synthetic (no real network/embedding) A/B
+comparison — 500 iterations of `Worker.claim_one()` +
+`Worker.process_claim(entry, lambda job: None)` against the real test
+Redis (`redis://localhost:6379/15`), once with `observer=None` (baseline)
+and once with a real `ObservingWorkerObserver` writing JSON-formatted log
+lines to a discarded (`io.StringIO`) stream — so the comparison pays the
+real cost of counter updates, lock acquisition, latency-stat recording,
+and JSON serialization, not just a no-op stub. A trivial handler
+(`lambda job: None`) isolates observability's own cost from real
+acquisition/embedding cost, which this measurement deliberately excludes
+(that cost is unaffected by this phase — no `acquisition/`/`embedding/`
+code changed). Not part of the permanent test/benchmark suite, per the
+task brief's "do NOT run a large benchmark" — a one-off local script, run
+three times for stability.
+
+**Measured** (three runs, local dev machine):
+
+| Run | Baseline (no observer) | With `ObservingWorkerObserver` | Delta/job |
+|---|---|---|---|
+| 1 | 219.2us/job | 289.0us/job | 69.8us |
+| 2 | 222.9us/job | 302.2us/job | 79.2us |
+| 3 | 225.4us/job | 307.9us/job | 82.5us |
+
+`redis_health_snapshot()` (paid once per health interval, default 60s —
+not per job): **0.16-0.20ms per call**, averaged over 20 calls.
+
+**Conclusion:** ~70-83us of observability overhead per job, against a
+*synthetic, no-real-work* Redis-round-trip-only loop of ~220us/job — i.e.
+observability roughly doubles the cost of doing *nothing but Redis
+bookkeeping*. Against a **real** job, this is negligible: Phase 11 measured
+real single-worker throughput at ~1.08 jobs/s warm-cache (~926ms/job,
+dominated by CPU embedding) — 80us against 926ms is **~0.009% of a real
+job's processing time**, far below what any of this project's own
+benchmark methodology would treat as a meaningful signal versus noise.
+The periodic Redis health snapshot (~0.2ms every 60s) is likewise
+immaterial. **MEASURED**, not asserted without evidence; the target
+stated in the task brief ("negligible overhead relative to media
+acquisition/embedding") is met.
+
+### Tests
+
+New file: `tests/test_worker_observability.py` (20 tests, all passing),
+covering all 15 areas the task brief named as a minimum:
+
+| # | Area | Test(s) |
+|---|---|---|
+| 1 | Structured startup event | `test_structured_event_is_valid_json_with_identity_fields`, `test_worker_process_emits_worker_started_and_worker_ready_as_valid_json` |
+| 2 | Config snapshot doesn't leak credentials | `test_config_snapshot_does_not_leak_redis_credentials` |
+| 3 | Job claim increments counter | `test_job_claim_increments_counter` |
+| 4 | Successful completion increments completion counter exactly once | `test_successful_completion_increments_completion_counter_exactly_once_and_records_latency`, `test_stale_finalize_does_not_double_count_completion` |
+| 5 | Failure increments correct counter | `test_permanent_failure_increments_jobs_failed`, `test_transient_failure_increments_jobs_retried`, `test_exhausted_retries_increments_jobs_permanently_failed` |
+| 6 | Reclaim increments reclaim counter | `test_reclaim_increments_reclaim_counter` |
+| 7 | `active_jobs` returns to zero | asserted in every counter test above |
+| 8 | Latency is recorded | `test_successful_completion_increments_completion_counter_exactly_once_and_records_latency` |
+| 9 | Health summary is emitted | `test_health_summary_is_emitted_with_expected_fields`, `test_health_summary_not_emitted_before_interval_elapses` |
+| 10 | Redis pending/stream metrics read correctly | `test_redis_health_snapshot_reads_stream_and_pel_state`, `test_redis_health_snapshot_empty_stream` |
+| 11 | Resource metrics are collected | `test_resource_sampler_collects_expected_fields` |
+| 12 | Shutdown summary is emitted | `test_shutdown_summary_is_emitted` |
+| 13 | SIGTERM still calls `Worker.stop()`, doesn't ACK | `test_sigterm_handler_still_only_calls_stop` (regression guard specific to this phase's changes; the deeper guarantee remains covered by Phase 13B's own `test_signal_handlers_call_worker_stop_and_only_stop` and `tests/test_crash_recovery.py::test_graceful_shutdown_does_not_ack_unfinished_work`, both still passing unmodified) |
+| 14 | Run JSON generated for clean shutdown | `test_run_json_is_generated_atomically_for_clean_shutdown` |
+| 15 | Incomplete/crashed run not falsely marked successful | `test_incomplete_run_is_not_falsely_marked_successful` (real subprocess, real `SIGKILL`) |
+| extra | Malformed-job rejection doesn't inflate `jobs_claimed`, logs safely | `test_malformed_job_rejection_increments_rejected_not_claimed` |
+
+Plus `test_worker_process_emits_worker_started_and_worker_ready_as_valid_json`
+which parses the real subprocess's stdout as JSON lines end-to-end.
+
+### Testing discipline — exact commands and counts run this session
+
+```
+python -m pytest tests/test_worker_observability.py -q
+  -> 20 passed
+
+python -m pytest tests/test_worker_main.py tests/test_worker.py \
+    tests/test_crash_recovery.py tests/test_retry.py -q
+  -> 47 passed
+
+python -m pytest -q   (full suite)
+  -> 248 passed, 0 failed, 0 skipped
+```
+
+No pre-existing failures were hidden; there were none to hide (228 passed
+pre-Phase-13C, 248 passed after — the +20 delta is exactly the new file;
+every other file's test count is unchanged).
+
+### Files changed
+
+- `worker/observability.py` (new — JSON logging, counters, latency,
+  resource sampler, Redis health snapshot, `ObservingWorkerObserver`,
+  atomic run-record/marker file writes)
+- `worker/fingerprint_worker.py` (additive only: `error_type` on
+  `TransientFailure`/`PermanentFailure`, `claimed_at` on `ClaimedEntry`,
+  new no-op `WorkerObserver` base class, an `observer` constructor
+  parameter defaulting to `None`, observer calls at existing
+  claim/reclaim/finalize boundaries, one `observer.on_loop_tick()` call in
+  `run()`'s loop — no claim/lease/retry/commit logic changed)
+- `worker/matching_handler.py` (additive only: optional `stage_recorder`
+  parameter, `time.monotonic()` pairs around existing stage boundaries,
+  `error_type=type(exc).__name__` added to every existing
+  `raise Transient/PermanentFailure(...)` call — messages unchanged)
+- `worker/main.py` (JSON logging, config snapshot logging, observer
+  construction and wiring into `Worker`/`build_matching_handler`, startup
+  marker, shutdown summary + run record write, two new config variables)
+- `tests/test_worker_observability.py` (new, 20 tests)
+- `docs/architecture/phase-13-production-hardening.md` (this section)
+
+### Enabling this in a real run
+
+```
+WORKER_OBSERVABILITY_INTERVAL_MS=60000 \
+WORKER_RUN_OUTPUT=/var/run/fingerprinter/worker-1.json \
+python -m worker.main
+```
+
+Structured JSON logs go to stdout unconditionally (no flag needed — this
+phase makes JSON the worker's only log format, same as Phase 13B's plain
+logs were the only format before). `WORKER_RUN_OUTPUT` is the only opt-in:
+unset, no file is ever written, matching this phase's "no file I/O unless
+asked" default.
+
+### Known limitations
+
+- **Pipeline stage timing cannot separate cache-hit from build-on-miss**
+  inside `target_resolution`, nor "download" from "probe" inside
+  `media_acquisition`, without a hook into `target/registry.py`/
+  `acquisition/acquirer.py` this phase judged not worth the off-limits
+  exception (see "Pipeline stage latency" above). **UNAVAILABLE** at that
+  finer granularity, not fabricated.
+- **Retry-redelivery is not a distinct counter/event from a fresh claim**
+  (see "Counters" above) — recoverable from `entry.attempt` on the
+  existing `job_claimed` event, not a separate first-class metric.
+  **DEFERRED**, judged not to need its own event.
+- **Fleet-wide aggregation is not implemented** — every metric here is
+  worker-local or single-consumer-scoped (see "Multi-worker/multi-host
+  correctness"). Explicitly **DEFERRED**, per the task brief.
+- **`WORKER_RUN_OUTPUT`'s marker-vs-record reconciliation is a manual
+  operator/tooling responsibility** — this phase writes the two files
+  correctly and atomically but does not ship a reader/analyzer for them
+  (the task brief explicitly disallows building a dashboard).
+- Redis HA/TLS/connection-pool tuning, GPU-specific metrics (`nvidia-smi`/
+  CUDA memory), Kubernetes/systemd integration, and multi-host target
+  cache remain **DEFERRED**, unchanged from Phase 13B's own list — none of
+  those are in this phase's scope either.
+- The health/run-record `redis` section, when populated, reflects a
+  **single point-in-time snapshot** taken at the moment of the health tick
+  or shutdown — not a time series. An operator wanting backlog-over-time
+  needs to collect successive `worker_health` log lines (already
+  timestamped) from wherever the JSON logs are shipped to, which this
+  phase does not build a collector for (explicitly out of scope — "do not
+  create a dashboard").
+
+### Is blocker #4 resolved?
+
+**Yes, to the extent a single-worker, log/file-based observability layer
+can resolve it without a metrics backend.** Every question §7 of the
+Phase 13 audit named as unanswered is now answerable from real structured
+output this codebase produces on its own: throughput (`jobs_completed`
+count + `latency` stats over a time window of `worker_health` lines),
+backlog (`redis.stream_length`/`group_pending`/`group_lag` in the same
+lines), resource usage (`resources.rss_peak_bytes`/`cpu_percent`/
+`thread_count`), and structured, safely-loggable error detail
+(`error_type`/`error_category` per failed job, not just a Redis
+`failure_reason` string). What remains missing is exactly what the task
+brief scoped out: a metrics backend/dashboard/alerting system to *consume*
+this output automatically — this phase produces the signal, not the
+alerting pipeline on top of it, per explicit instruction ("Do NOT add a
+large monitoring framework", "Do NOT create a dashboard").
+
+### Recommendation for Phase 13D
+
+Per §17's original ordering, the one remaining blocker is **#2, the
+multi-host target cache** — now the last blocker precisely because, per
+Phase 13B's own recommendation, it needs a second real worker process to
+test against, which has existed since Phase 13B and is now additionally
+observable (a Phase 13D implementation could use this phase's
+`pipeline_stage_metrics.target_resolution` timings and `redis_health_
+snapshot` output directly to validate whatever cache-coherence fix it
+adds, rather than needing to build throwaway instrumentation for that
+validation from scratch).
+
 ---
 
 **Phase 13 audit + Phase 13A SSRF hardening + Phase 13B production worker
-entrypoint are all reflected above. The remaining blockers (#2 multi-host
-target cache, #4 observability) are unimplemented — awaiting instruction
-before starting the next one.**
+entrypoint + Phase 13C production observability are all reflected above.
+The one remaining blocker (#2, multi-host target cache) is unimplemented —
+awaiting instruction before starting it.**
