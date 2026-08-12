@@ -1,0 +1,7 @@
+# Development/test-only dependencies, on top of requirements.txt.
+#
+# Install with: pip install -r requirements.txt -r requirements-dev.txt
+
+-r requirements.txt
+
+pytest>=8,<10

@@ -1,5 +1,17 @@
+# Fingerprinter runtime dependencies.
+#
+# Verified against actual imports across acquisition/, embedding/, matching/,
+# target/, integration/, work_queue/, worker/ (see docs/installation.md for
+# how this was checked). Test-only dependencies live in requirements-dev.txt,
+# not here.
+#
+# torch/torchvision/transformers/Pillow/numpy are intentionally unpinned to a
+# specific patch version — this project has no known incompatibility with
+# recent releases of any of them, and pinning exact versions here would just
+# go stale. If you need a fully reproducible environment, freeze your own
+# working set with `pip freeze` after installing.
+
 redis>=8,<9
-pytest>=8,<10
 requests>=2.31,<3
 torch
 torchvision
