@@ -29,7 +29,17 @@ from tests.media_test_server import MIN_PNG
 
 
 def _acquirer(**overrides):
-    defaults = dict(connect_timeout_s=2.0, read_timeout_s=2.0, max_redirects=5, max_bytes=10 * 1024 * 1024)
+    # allow_private_networks=True: this suite runs entirely against the
+    # loopback tests/media_test_server.py fixture, which the SSRF guard
+    # (Phase 13A) would otherwise reject by default — a narrow, explicit
+    # test-only opt-out, not the production default.
+    defaults = dict(
+        connect_timeout_s=2.0,
+        read_timeout_s=2.0,
+        max_redirects=5,
+        max_bytes=10 * 1024 * 1024,
+        allow_private_networks=True,
+    )
     defaults.update(overrides)
     return MediaAcquirer(**defaults)
 
@@ -90,7 +100,7 @@ def test_connection_timeout_maps_to_transient():
         def get(self, *args, **kwargs):
             raise requests.exceptions.ConnectTimeout("simulated connect timeout")
 
-    acquirer = MediaAcquirer(session=FakeSession())
+    acquirer = MediaAcquirer(session=FakeSession(), allow_private_networks=True)
     with pytest.raises(ConnectionTimeoutError) as exc_info:
         acquirer.acquire("http://127.0.0.1:9/unreachable")
     assert isinstance(exc_info.value, TransientAcquisitionError)

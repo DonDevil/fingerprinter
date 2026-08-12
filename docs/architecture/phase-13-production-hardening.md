@@ -593,5 +593,303 @@ but 4 genuinely cannot be validated without 1 existing first.
 
 ---
 
-**This was an audit only. No code changed. Awaiting instruction before
-implementing any of the fixes in §13.**
+## 18. Phase 13A — SSRF hardening
+
+**Implemented this phase.** Addresses §9 finding #3 / §10 blocker #3 only
+— the other three blockers (worker entrypoint, observability, multi-host
+target cache) are untouched, per this phase's scope.
+
+### Original vulnerability
+
+`MediaAcquirer.acquire()` (`acquisition/acquirer.py`) validated URL
+*scheme* (`http`/`https` only) and re-validated it on every redirect hop,
+but never validated *where* a URL — or a redirect target reached through
+it — actually resolved to. `candidate_url` values come from crawled,
+adversarial third-party content, so a pirate site (or anyone who
+influences what the crawler discovers) fully controlled the destination
+the acquirer would connect to, including via a redirect chain the
+acquirer follows automatically.
+
+### Attack scenario
+
+1. A crawled page's `candidate_url` (or a URL it 302-redirects to) points
+   at `http://127.0.0.1:6379/`, `http://169.254.169.254/latest/meta-data/`,
+   or an RFC1918 address reachable from the fingerprinter host's network.
+2. Nothing in the old acquirer rejected this — scheme was `http`, which is
+   allowed. `_send()` would connect and stream whatever came back through
+   the same content-type/ffprobe validation as legitimate media.
+3. Depending on what's reachable, this ranges from an internal service
+   probe (port-scan-by-timing) to exfiltrating cloud metadata/credentials
+   if the response body is echoed anywhere back to the crawler pipeline.
+
+### Chosen security model
+
+Resolved-IP allowlisting by exclusion: resolve the hostname of the
+initial URL and of every redirect hop, and reject the hop before
+connecting if any resolved address is loopback, RFC1918-private,
+link-local, unspecified, multicast, or otherwise reserved. The check
+operates on the **resolved address**, never on the hostname string —
+per the task brief's explicit instruction, `hostname.startswith(...)`-
+style string matching was rejected as insufficient and is not used
+anywhere in this implementation.
+
+Default production policy (`allow_private_networks=False`, the
+constructor default) denies all of the above unconditionally. A single
+explicit, narrowly-scoped constructor flag (`allow_private_networks:
+bool = False`) is the only opt-out — it is passed `True` only by test
+fixtures that intentionally target the loopback test server
+(`tests/media_test_server.py`) and by the three loopback-only
+benchmarks; it is never the default and nothing sets it globally.
+
+### Implementation
+
+- **New module: `acquisition/ssrf_guard.py`.** `is_unsafe_address(addr)`
+  classifies one resolved IP using Python's `ipaddress` module
+  (`is_loopback`, `is_private`, `is_link_local`, `is_unspecified`,
+  `is_multicast`, `is_reserved`), plus one explicit extra range not
+  covered by stdlib (see IPv4 handling below). `resolve_addresses(...)`
+  wraps a `socket.getaddrinfo`-shaped resolver call. `validate_destination(...)`
+  resolves a hostname and raises `UnsafeDestinationError` if *any*
+  returned address is unsafe — conservative on purpose, since nothing in
+  this module controls which of several A/AAAA records the real HTTP
+  connection ends up using.
+- **`acquisition/acquirer.py`:** one new private method,
+  `_check_destination(url)`, called from the same `while True:` loop in
+  `acquire()` that already calls `_check_scheme(url)` on every iteration
+  — so it runs against the initial URL and against every redirect target
+  `current_url` is reassigned to, with zero change to the loop's control
+  flow. Two new constructor parameters: `allow_private_networks: bool =
+  False` and `resolver: Optional[Resolver] = None` (defaults to
+  `socket.getaddrinfo`; overridable for tests — see DNS handling below).
+  No existing method signature, redirect-limit logic, size-limit
+  streaming, content-type check, or ffprobe validation was touched.
+- **`acquisition/errors.py`:** one new class, `UnsafeDestinationError(PermanentAcquisitionError)`.
+
+### IPv4 handling
+
+Covered via `ipaddress.IPv4Address`'s built-in classification: loopback
+(`127.0.0.0/8`), RFC1918 private (`10.0.0.0/8`, `172.16.0.0/12`,
+`192.168.0.0/16`), link-local (`169.254.0.0/16`, including the
+`169.254.169.254` cloud-metadata address), unspecified (`0.0.0.0`),
+multicast (`224.0.0.0/4`), and reserved (`240.0.0.0/4`). One gap was
+found and closed explicitly: **`100.64.0.0/10` (RFC 6598,
+carrier-grade-NAT/shared address space) is not flagged private or
+reserved by Python 3.12's `ipaddress` module** (confirmed by direct
+interpreter check this session — MEASURED) despite never being a
+legitimate public server address; `ssrf_guard._EXTRA_UNSAFE_NETWORKS`
+adds it back explicitly. `test_carrier_grade_nat_range_rejected` in
+`tests/test_acquisition_ssrf.py` pins this.
+
+### IPv6 handling
+
+Covered via the IPv6 equivalents: loopback (`::1`), unique-local
+(`fd00::/8`, RFC 4193 — Python classifies this as `is_private`, the IPv6
+analogue of RFC1918), link-local (`fe80::/10`), unspecified (`::`), and
+multicast (`ff00::/8`). IPv4-mapped IPv6 addresses (`::ffff:127.0.0.1`)
+are unwrapped to their embedded IPv4 address before classification
+(`addr.ipv4_mapped`), rather than relying on the raw v6 flags. **MEASURED,
+this session:** Python 3.12's `ipaddress` module already marks the
+*entire* `::ffff:0:0/96` block `is_reserved=True` unconditionally (it's
+IANA special-purpose space) — so an unwrapped mapped-loopback address like
+`::ffff:127.0.0.1` was already caught (`is_reserved=True`) even without
+this module's explicit unwrap step. What the unwrap step actually fixes
+is the opposite failure mode: *without* it, `is_reserved=True` would also
+reject a mapped address embedding a genuinely public IPv4 address (e.g.
+`::ffff:8.8.8.8`), which is over-blocking, not an SSRF gap. Unwrapping and
+classifying the embedded v4 address directly gives the precise answer in
+both directions — confirmed by direct interpreter check this session
+(`::ffff:8.8.8.8` unwraps to public/safe; `::ffff:10.1.2.3` unwraps to
+private/unsafe) — and keeps the policy's "don't reject a hostname merely
+because of an unusual representation" requirement intact for this one
+edge case.
+
+### Redirect handling
+
+Unchanged mechanics (bounded by `max_redirects`, `Location` re-joined via
+`urljoin`); the only addition is that `_check_destination` now runs
+before `_send()` on *every* hop the existing loop already visits,
+including hop 2+. `test_external_url_redirecting_to_loopback_is_rejected`
+and `test_external_url_redirecting_to_private_address_is_rejected`
+(`tests/test_acquisition_ssrf.py`) prove the internal hop is rejected —
+and that the fake transport is never even called for it — without
+touching the redirect-following logic itself.
+`test_normal_redirect_between_two_public_hosts_still_functions` and
+`test_redirect_handling`/`test_final_redirected_url_is_recorded` (both
+pre-existing, `tests/test_acquisition.py`) prove ordinary redirects are
+unaffected.
+
+### DNS handling and known TOCTOU/rebinding limitation
+
+`_check_destination` re-resolves DNS itself (via the injectable
+`resolver`, defaulting to `socket.getaddrinfo`) immediately before each
+connection attempt — not once at the top of `acquire()` and reused, so a
+redirect to a different hostname gets its own fresh resolution and its
+own check.
+
+**This does not fully close DNS rebinding — classified explicitly, per
+the task brief's instruction not to claim more than is true:**
+`requests`/urllib3 performs its *own*, independent DNS resolution a
+moment later when it actually opens the socket inside `_send()`. Nothing
+in this implementation pins the real TCP connection to the address this
+module validated. An attacker who controls authoritative DNS for the
+candidate's hostname, serves a public IP to this module's lookup, and
+then serves a different (internal) IP to `requests`' lookup a few
+milliseconds later — classic DNS rebinding, typically via a very low TTL
+— is **not** defeated by this check alone.
+
+- **Classification: ACCEPTABLE LIMITATION / DEFERRED to a future phase.**
+  Closing it fully requires pinning the actual socket connection to the
+  address this module already validated — e.g. a custom
+  `requests.adapters.HTTPAdapter`/`urllib3` connection pool that connects
+  to the validated IP directly while still presenting the original
+  hostname for the `Host` header and TLS SNI/certificate verification.
+  That is a materially larger change to the HTTP transport itself, which
+  the task brief explicitly said not to undertake in this pass
+  ("do NOT perform a huge HTTP-client rewrite during this task").
+  Recorded here as **DEFERRED**, not silently absent.
+- This is a narrower window than "no protection at all": it requires the
+  attacker's DNS infrastructure to race two lookups a few milliseconds
+  apart, versus the pre-Phase-13A state where a static internal IP in a
+  redirect target worked unconditionally, every time.
+
+### Error classification / retry behavior
+
+`UnsafeDestinationError` subclasses `PermanentAcquisitionError` (not a
+new error root). `worker/acquisition_handler.py`'s existing
+`except PermanentAcquisitionError` catch-all (unchanged — it already
+matched on the base class, not each subclass by name) maps it onto
+`PermanentFailure` automatically, so a job whose URL resolves unsafely
+fails immediately with no retry — exactly the "should not retry a
+malicious URL indefinitely" requirement. A separate, pre-existing
+concern is kept separate: a hostname that fails to resolve at all
+(`socket.gaierror`) is **not** treated as an SSRF finding — it's mapped
+to `NetworkError` (transient), consistent with how a real connection-time
+DNS failure was already classified before this change.
+
+### Configuration
+
+No new configuration system. One constructor parameter
+(`allow_private_networks: bool = False`) is the entire surface;
+production callers that never set it get the safe default. No
+environment variable, config file, or allowlist of "permitted internal
+hosts" was introduced — not needed by anything in the current
+architecture (§13's required fixes list no legitimate production need for
+the fingerprinter to fetch from internal addresses).
+
+### Tests
+
+New file: `tests/test_acquisition_ssrf.py` (22 tests, all passing):
+
+| # | Test(s) | Covers |
+|---|---|---|
+| 1 | `test_ipv4_loopback_rejected` (2 cases) | IPv4 loopback |
+| 2 | `test_ipv6_loopback_rejected` | IPv6 loopback |
+| 3 | `test_rfc1918_private_ipv4_rejected` (3 cases) | RFC1918 private IPv4 |
+| 4 | `test_ipv6_private_local_address_rejected` | IPv6 unique-local (RFC 4193) |
+| 5 | `test_link_local_address_rejected` (2 cases: v4 incl. cloud metadata, v6) | Link-local |
+| 6 | `test_unspecified_address_rejected` (2 cases) | Unspecified (`0.0.0.0`, `::`) |
+| 7 | `test_multicast_and_reserved_addresses_rejected` (3 cases) | Multicast/reserved v4+v6 |
+| — | `test_carrier_grade_nat_range_rejected` | RFC 6598 CGNAT gap closed explicitly |
+| 8 | `test_normal_public_destination_remains_allowed` | Public destination still allowed |
+| 9 | `test_external_url_redirecting_to_loopback_is_rejected` | External→loopback redirect rejected |
+| 10 | `test_external_url_redirecting_to_private_address_is_rejected` | External→private redirect rejected |
+| 11 | `test_normal_redirect_between_two_public_hosts_still_functions` | Normal redirect unaffected |
+| — | `test_dns_resolution_failure_maps_to_transient_network_error` | Unresolvable host stays transient, not SSRF |
+| — | `test_normal_loopback_destination_is_allowed_when_explicitly_opted_in` | Opt-out itself still works |
+| — | `test_existing_redirect_and_content_tests_are_unaffected_by_default_policy` | Hostless/malformed URL still a plain permanent error |
+
+Direct-address cases (1, 2, 3, 4, 5, 6, 7) use literal IP URLs against a
+`_NeverCalledSession` that fails the test if `_send()` is ever reached —
+proving the check runs before any connection attempt, with zero real
+network I/O (`getaddrinfo` on a numeric address never queries DNS).
+Redirect cases (9, 10, 11) use an in-process fake `requests.Session`
+(`_ScriptedSession`) plus an injected fake `resolver` — dependency
+injection, not real DNS or a modified hosts file, per the task brief's
+explicit instruction. Point 12 ("existing media acquisition tests still
+pass") — see §Verification below; five pre-existing test files
+(`tests/test_acquisition.py`, `tests/test_integration_e2e.py`,
+`tests/test_matching_handler.py`, `tests/test_worker_acquisition.py`, and
+three loopback-only benchmark scripts) were updated to pass
+`allow_private_networks=True` explicitly, since they intentionally target
+the loopback `media_test_server.py` fixture that the new default would
+otherwise (correctly) reject.
+
+### Performance impact
+
+**MEASURED** (small controlled benchmark, this session): 2,000
+`socket.getaddrinfo("127.0.0.1", 80, proto=socket.IPPROTO_TCP)` calls
+(the literal-IP case, which never touches the network) averaged **3.13
+µs/call**. **INFERRED** for the hostname-resolution case (not separately
+benchmarked): one additional `getaddrinfo` call of the same kind
+`requests`/urllib3 already performs internally for the real connection a
+moment later — not a new category of cost, roughly doubling the number of
+DNS round-trips per hop rather than adding a new kind of work. Not
+optimized further; not a meaningful cost next to a network fetch that is
+already bounded by 5s connect / 30s read timeouts.
+
+### Verification
+
+Full commands run this session, exact counts:
+
+```
+python -m pytest tests/test_acquisition_ssrf.py -v
+  -> 22 passed
+
+python -m pytest tests/test_acquisition.py tests/test_worker_acquisition.py -v
+  -> 21 passed
+
+python -m pytest -q   (full suite)
+  -> 204 passed, 0 failed, 0 skipped
+```
+
+No pre-existing failures were hidden; there were none to hide (full suite
+was green before and after this change).
+
+### Files changed
+
+- `acquisition/ssrf_guard.py` (new)
+- `acquisition/acquirer.py` (`_check_destination`, two new constructor
+  params, one new call site in `acquire()`'s existing loop)
+- `acquisition/errors.py` (`UnsafeDestinationError`)
+- `acquisition/__init__.py` (export)
+- `tests/test_acquisition_ssrf.py` (new, 22 tests)
+- `tests/test_acquisition.py`, `tests/test_integration_e2e.py`,
+  `tests/test_matching_handler.py`, `tests/test_worker_acquisition.py`,
+  `benchmarks/bench_pipeline.py`, `benchmarks/bench_integration_overhead.py`
+  (each: pass `allow_private_networks=True` explicitly, since they target
+  the loopback test fixture)
+
+### Is the SSRF blocker resolved?
+
+**Yes, for the vulnerability as scoped and classified in §6/§9/§10**: a
+crawler-supplied `candidate_url`, or a redirect target reached through
+one, that resolves to loopback/RFC1918/link-local/unspecified/
+multicast/reserved space is now rejected by default, on the initial URL
+and every redirect hop, based on the resolved address rather than
+hostname text. This closes the specific gap §6 identified: "no IP-based
+restriction of any kind."
+
+**Not fully closed: DNS-rebinding TOCTOU** (see above) — a narrower,
+explicitly-classified residual risk (ACCEPTABLE LIMITATION / DEFERRED),
+not silently claimed as solved. Recommended for Phase 13B or a later
+pass if this system's threat model requires defeating an adversary who
+also controls low-TTL authoritative DNS for candidate hostnames.
+
+### Recommendation for Phase 13B
+
+Per §17's original ordering, the next blocker in priority is **the worker
+process entrypoint (#1)**, ideally combined with the CPU-thread-config
+plumbing (#5) since they share the same new module. This SSRF pass did
+not touch `worker/`, so that work is fully unblocked and independent of
+everything done here. If a stronger SSRF guarantee (closing the
+DNS-rebinding gap) becomes a priority before the entrypoint work, it
+would be a self-contained follow-up to `acquisition/acquirer.py` (a
+custom transport adapter pinning the validated IP) and would not require
+revisiting anything else touched in this phase.
+
+---
+
+**Phase 13 audit + Phase 13A SSRF hardening are both reflected above. The
+remaining blockers (#1 worker entrypoint, #2 multi-host target cache, #4
+observability, #5 thread-config plumbing) are unimplemented — awaiting
+instruction before starting the next one.**

@@ -49,6 +49,15 @@ class RedirectLimitExceededError(PermanentAcquisitionError):
     """The redirect chain exceeded max_redirects."""
 
 
+class UnsafeDestinationError(PermanentAcquisitionError):
+    """Resolved destination IP is loopback/private/link-local/reserved/etc.
+
+    Permanent, not transient: the URL's resolved address is inherently
+    unsafe, so retrying the same candidate cannot change the outcome (and
+    must not cause the worker to hammer the same address indefinitely).
+    """
+
+
 class _HTTPStatusMixin:
     """Carries the offending status code alongside the message."""
 

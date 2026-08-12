@@ -16,6 +16,7 @@ from acquisition.errors import (
     SizeLimitExceededError,
     TransientAcquisitionError,
     UnexpectedStatusError,
+    UnsafeDestinationError,
     UnsupportedContentTypeError,
     UnsupportedSchemeError,
 )
@@ -37,6 +38,7 @@ __all__ = [
     "RateLimitedError",
     "ServerError",
     "UnexpectedStatusError",
+    "UnsafeDestinationError",
     "UnsupportedContentTypeError",
     "SizeLimitExceededError",
     "InvalidMediaError",

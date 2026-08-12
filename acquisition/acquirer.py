@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import socket
 import tempfile
 import time
 from pathlib import Path
@@ -36,6 +37,7 @@ from acquisition.errors import (
     UnsupportedContentTypeError,
     UnsupportedSchemeError,
 )
+from acquisition.ssrf_guard import Resolver, default_resolver, validate_destination
 from acquisition.validation import probe_media
 
 DEFAULT_ALLOWED_SCHEMES: Sequence[str] = ("http", "https")
@@ -72,6 +74,8 @@ class MediaAcquirer:
         validate: bool = True,
         validator: Optional[Callable[[Path], Mapping[str, object]]] = None,
         user_agent: str = "fingerprinter-acquirer/1",
+        allow_private_networks: bool = False,
+        resolver: Optional[Resolver] = None,
     ):
         self._connect_timeout_s = connect_timeout_s
         self._read_timeout_s = read_timeout_s
@@ -85,6 +89,13 @@ class MediaAcquirer:
         self._validate = validate
         self._validator = validator or probe_media
         self._user_agent = user_agent
+        # SSRF hardening (Phase 13A): by default, reject any candidate URL —
+        # or redirect target reached through one — whose resolved address is
+        # loopback/private/link-local/reserved. `allow_private_networks` is a
+        # narrow, explicit opt-out for test/dev fixtures; it must never be
+        # the production default. See acquisition/ssrf_guard.py.
+        self._allow_private_networks = allow_private_networks
+        self._resolver = resolver or default_resolver
 
     def acquire(self, url: str) -> MediaArtifact:
         """Download `url` to a local temp file and validate it.
@@ -100,6 +111,7 @@ class MediaAcquirer:
 
         while True:
             self._check_scheme(current_url)
+            self._check_destination(current_url)
             response = self._send(current_url)
 
             if response.status_code in _REDIRECT_CODES:
@@ -149,6 +161,31 @@ class MediaAcquirer:
         scheme = urlparse(url).scheme.lower()
         if scheme not in self._allowed_schemes:
             raise UnsupportedSchemeError(f"unsupported URL scheme: {scheme!r} in {url}")
+
+    def _check_destination(self, url: str) -> None:
+        """Reject a hop whose resolved address is internal/reserved.
+
+        Applies to the initial URL and every redirect hop alike, since
+        `acquire()` calls this at the top of the same loop iteration that
+        calls `_check_scheme`. Re-resolves DNS immediately before this
+        check (not reused from a prior hop) — see
+        acquisition/ssrf_guard.py for the DNS-rebinding limitation this
+        does and does not close.
+        """
+        if self._allow_private_networks:
+            return
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if not hostname:
+            raise PermanentAcquisitionError(f"URL has no hostname: {url}")
+        try:
+            port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        except ValueError as exc:
+            raise PermanentAcquisitionError(f"malformed port in URL: {url}") from exc
+        try:
+            validate_destination(hostname, port, resolver=self._resolver)
+        except socket.gaierror as exc:
+            raise NetworkError(f"DNS resolution failed for {hostname!r}: {exc}") from exc
 
     def _send(self, url: str) -> requests.Response:
         try:

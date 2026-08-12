@@ -90,7 +90,7 @@ def run() -> dict:
     engine = DINOv2EmbeddingEngine(
         device="cpu", segment_sampling_config=SegmentSamplingConfig(segment_duration_s=SEGMENT_DURATION_S)
     )
-    acquirer = MediaAcquirer()
+    acquirer = MediaAcquirer(allow_private_networks=True)  # bench server is loopback
     handler = build_matching_handler(acquirer, engine, registry)
 
     warm_target_id = "overhead-bench-target"

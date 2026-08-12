@@ -167,7 +167,7 @@ def run_stage_latency_workload(label: str, cold: bool, reps: int) -> dict:
     engine = _build_engine(threads=0, segment_duration_s=SEGMENT_DURATION_S)
     from acquisition import MediaAcquirer
 
-    acquirer = MediaAcquirer()
+    acquirer = MediaAcquirer(allow_private_networks=True)  # bench server is loopback
 
     priority = f"bench-{label}-{uuid.uuid4().hex[:8]}"
     producer = JobProducer(redis_client, priority=priority)
@@ -348,7 +348,7 @@ def _stream_worker_proc(idx: int, redis_url: str, cache_dir: str, priority: str,
     registry = _build_registry(redis_client, Path(cache_dir))
     from acquisition import MediaAcquirer
 
-    acquirer = MediaAcquirer()
+    acquirer = MediaAcquirer(allow_private_networks=True)  # bench server is loopback
     worker = Worker(redis_client, consumer_name=f"bench-d-{idx}", priority=priority, block_ms=400)
 
     barrier.wait()

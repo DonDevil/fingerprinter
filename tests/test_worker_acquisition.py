@@ -24,7 +24,12 @@ def _worker(redis_client, **overrides):
 
 
 def _handler():
-    return build_acquisition_handler(MediaAcquirer(connect_timeout_s=2.0, read_timeout_s=2.0))
+    # allow_private_networks=True: this suite runs against the loopback
+    # media_server fixture, which Phase 13A's SSRF guard would otherwise
+    # reject by default.
+    return build_acquisition_handler(
+        MediaAcquirer(connect_timeout_s=2.0, read_timeout_s=2.0, allow_private_networks=True)
+    )
 
 
 def test_worker_acquires_media_and_commits_synthetic_result(redis_client, make_job, media_server):

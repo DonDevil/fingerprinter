@@ -64,7 +64,10 @@ def _worker(redis_client, **overrides) -> Worker:
 
 
 def _handler(engine, registry):
-    acquirer = MediaAcquirer(connect_timeout_s=5.0, read_timeout_s=5.0)
+    # allow_private_networks=True: this suite runs against the loopback
+    # media_server fixture, which Phase 13A's SSRF guard would otherwise
+    # reject by default.
+    acquirer = MediaAcquirer(connect_timeout_s=5.0, read_timeout_s=5.0, allow_private_networks=True)
     return build_matching_handler(acquirer, engine, registry)
 
 
@@ -194,7 +197,7 @@ def test_retryable_acquisition_error_end_to_end(redis_client, engine, registry):
 
     worker = _worker(redis_client)
     entry = worker.claim_one()
-    acquirer = MediaAcquirer(connect_timeout_s=1.0, read_timeout_s=1.0)
+    acquirer = MediaAcquirer(connect_timeout_s=1.0, read_timeout_s=1.0, allow_private_networks=True)
     worker.process_claim(entry, build_matching_handler(acquirer, engine, registry))
 
     view = resolve_outcome(redis_client, submission.job_id)

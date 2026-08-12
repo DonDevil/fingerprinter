@@ -108,7 +108,10 @@ def _worker(redis_client, **overrides) -> Worker:
 
 
 def _real_handler(engine, registry):
-    acquirer = MediaAcquirer(connect_timeout_s=5.0, read_timeout_s=5.0)
+    # allow_private_networks=True: this suite runs against the loopback
+    # media_server fixture, which Phase 13A's SSRF guard would otherwise
+    # reject by default.
+    acquirer = MediaAcquirer(connect_timeout_s=5.0, read_timeout_s=5.0, allow_private_networks=True)
     return build_matching_handler(acquirer, engine, registry)
 
 
