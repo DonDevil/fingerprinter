@@ -1933,4 +1933,24 @@ awaiting instruction before starting it.**
 implementation (`docs/architecture/phase-13d-distributed-target-
 artifacts.md`) — see that document for the shared-storage backend, the
 target-media fleet-accessibility fix, and the multi-host simulation test
-this section's "Recommendation for Phase 13D" anticipated.
+this section's "Recommendation for Phase 13D" anticipated. Phase 13D
+remains **IMPLEMENTED — SIMULATED MULTI-HOST; REAL MULTI-HOST VALIDATION
+REQUIRED**.
+
+**Update, Phase 13E:** Phase 13D's own full-suite run (§12 of that
+document) recorded one pre-existing test failure
+(`tests/test_worker_observability.py::
+test_health_summary_not_emitted_before_interval_elapses`), correctly
+identified as unrelated to Phase 13D's own scope but left unfixed. Phase
+13E (`docs/architecture/phase-13e-health-summary-interval-fix.md`) root-
+causes and fixes it: `ObservingWorkerObserver`'s health-emission interval
+gate (§20 above, "Health interval") compared `time.monotonic()` against a
+hardcoded `0.0` baseline instead of its own recorded startup time, so a
+worker's very first `on_loop_tick()` always emitted a `worker_health` event
+immediately regardless of the configured interval. One-line fix; full
+suite now `269 passed, 0 failed`. With this fix, every originally-audited
+production blocker (§10: worker entrypoint, multi-host target cache, SSRF,
+observability, CPU-thread plumbing) is implemented; the only remaining
+open items are real multi-host validation of Phase 13D (out of scope this
+session) and a handful of previously-identified, explicitly non-blocking
+OPERATIONAL FOLLOW-UP items (§9 findings #7-#9).

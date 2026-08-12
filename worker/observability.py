@@ -456,7 +456,7 @@ class ObservingWorkerObserver(WorkerObserver):
 
         self._started_monotonic = time.monotonic()
         self._started_at = time.time()
-        self._last_health_emit = 0.0
+        self._last_health_emit = self._started_monotonic
 
     # -- internal helpers ----------------------------------------------
 
