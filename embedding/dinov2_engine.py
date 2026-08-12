@@ -72,9 +72,12 @@ class DINOv2EmbeddingEngine:
         segment_sampling_config: Optional[SegmentSamplingConfig] = None,
         normalize: bool = True,
         local_files_only: bool = True,
+        torch_num_threads: Optional[int] = None,
     ) -> None:
         if device not in _VALID_DEVICES:
             raise ValueError(f"device must be one of {_VALID_DEVICES}, got {device!r}")
+        if torch_num_threads is not None and torch_num_threads < 1:
+            raise ValueError(f"torch_num_threads must be >= 1, got {torch_num_threads}")
 
         self.model_id = model_id
         self.model_revision = model_revision
@@ -85,6 +88,25 @@ class DINOv2EmbeddingEngine:
         self.model_version = model_revision
 
         self.device = self._resolve_device(device)
+
+        # PROVISIONAL, additive-only (default None = untouched global torch
+        # thread pool, identical to every prior phase's behavior). Phase 11
+        # benchmarking measured a severe (~15x) throughput collapse running
+        # multiple CPU worker *processes* on one host when each independently
+        # defaults to torch's own physical-core-count thread pool (N
+        # processes x torch-default threads oversubscribes the host's cores
+        # combinatorially) — see docs/architecture/phase-11-performance-
+        # benchmarks.md, "Optimizations actually implemented". This
+        # constructor param is the smallest fix that *enables* a caller
+        # deploying multiple worker processes per host to size each engine's
+        # thread pool appropriately; it does not change any default
+        # behavior for a caller that doesn't pass it, and this phase does
+        # not itself decide what value multi-worker deployments should use
+        # (that depends on worker-count-per-host, a deployment-time fact
+        # this module has no visibility into).
+        self.torch_num_threads = torch_num_threads
+        if torch_num_threads is not None:
+            torch.set_num_threads(torch_num_threads)
 
         load_start = time.monotonic()
         try:

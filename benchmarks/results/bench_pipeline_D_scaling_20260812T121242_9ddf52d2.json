@@ -1,0 +1,851 @@
+{
+  "workload": "D_different_target_scaling",
+  "environment": {
+    "timestamp": "2026-08-12T12:09:57+0530",
+    "git_revision": "aec736673b36b1e2102985a76232e1d85203eed5",
+    "git_dirty": true,
+    "hardware": {
+      "cpu_model": "11th Gen Intel(R) Core(TM) i5-11400H @ 2.70GHz",
+      "logical_cpus": 12,
+      "total_ram_mib": 15725.703125,
+      "gpu": "NVIDIA GeForce RTX 2050"
+    },
+    "os": {
+      "system": "Linux",
+      "release": "7.0.0-28-generic",
+      "platform": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39"
+    },
+    "software": {
+      "python": "3.12.3",
+      "torch": "2.13.0+cu130",
+      "torch_cuda_available": "False",
+      "transformers": "5.15.0",
+      "redis_py": "8.1.0",
+      "ffmpeg": "ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers"
+    }
+  },
+  "isolated_1thread": {
+    "thread_mode": "isolated-1thread",
+    "threads_per_worker": 1,
+    "jobs_per_worker": 3,
+    "steps": [
+      {
+        "worker_count": 1,
+        "threads_per_worker": 1,
+        "thread_mode": "isolated-1thread",
+        "jobs_per_worker": 3,
+        "total_jobs": 3,
+        "jobs_completed": 3,
+        "wall_s": 9.367172206002579,
+        "throughput_jobs_per_s": 0.32026741198134157,
+        "stage_latency": {
+          "acquire_s": {
+            "count": 3,
+            "mean_s": 0.03745833900029538,
+            "median_s": 0.03663607099588262,
+            "p50_s": 0.03663607099588262,
+            "p95_s": 0.04070645599858835,
+            "p99_s": 0.04070645599858835,
+            "min_s": 0.03503249000641517,
+            "max_s": 0.04070645599858835,
+            "stdev_s": 0.0023882442677128812,
+            "small_sample_warning": "n=3 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "candidate_embed_s": {
+            "count": 3,
+            "mean_s": 3.081634477333864,
+            "median_s": 3.0690796220005723,
+            "p50_s": 3.0690796220005723,
+            "p95_s": 3.153020532998198,
+            "p99_s": 3.153020532998198,
+            "min_s": 3.022803277002822,
+            "max_s": 3.153020532998198,
+            "stdev_s": 0.053897134952124254,
+            "small_sample_warning": "n=3 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "target_resolve_s": {
+            "count": 3,
+            "mean_s": 0.0017096386679137747,
+            "median_s": 0.001800217003619764,
+            "p50_s": 0.001800217003619764,
+            "p95_s": 0.0018212540016975254,
+            "p99_s": 0.0018212540016975254,
+            "min_s": 0.0015074449984240346,
+            "max_s": 0.0018212540016975254,
+            "stdev_s": 0.00014323023146511497,
+            "small_sample_warning": "n=3 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "match_s": {
+            "count": 3,
+            "mean_s": 0.000483767665476383,
+            "median_s": 0.0004673809962696396,
+            "p50_s": 0.0004673809962696396,
+            "p95_s": 0.0005841309975949116,
+            "p99_s": 0.0005841309975949116,
+            "min_s": 0.0003997910025645979,
+            "max_s": 0.0005841309975949116,
+            "stdev_s": 7.614328877282377e-05,
+            "small_sample_warning": "n=3 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "aggregate_s": {
+            "count": 3,
+            "mean_s": 3.849266310377667e-05,
+            "median_s": 4.0650993469171226e-05,
+            "p50_s": 4.0650993469171226e-05,
+            "p95_s": 4.169299791101366e-05,
+            "p99_s": 4.169299791101366e-05,
+            "min_s": 3.313399793114513e-05,
+            "max_s": 4.169299791101366e-05,
+            "stdev_s": 3.8129527174693643e-06,
+            "small_sample_warning": "n=3 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "commit_s": {
+            "count": 3,
+            "mean_s": 0.0003138409980844396,
+            "median_s": 0.00030435799999395385,
+            "p50_s": 0.00030435799999395385,
+            "p95_s": 0.0003422719964873977,
+            "p99_s": 0.0003422719964873977,
+            "min_s": 0.0002948929977719672,
+            "max_s": 0.0003422719964873977,
+            "stdev_s": 2.0471733673650412e-05,
+            "small_sample_warning": "n=3 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "handler_total_s": {
+            "count": 3,
+            "mean_s": 3.121331091664615,
+            "median_s": 3.1060581369965803,
+            "p50_s": 3.1060581369965803,
+            "p95_s": 3.191992471998674,
+            "p99_s": 3.191992471998674,
+            "min_s": 3.065942665998591,
+            "max_s": 3.191992471998674,
+            "stdev_s": 0.05258064128164477,
+            "small_sample_warning": "n=3 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          }
+        },
+        "resource": {
+          "sample_count": 73,
+          "duration_s": 14.624705835005443,
+          "process_cpu_percent_mean": 85.40596606929023,
+          "process_cpu_percent_peak": 249.55673607460773,
+          "system_cpu_percent_mean": 9.932259728442393,
+          "system_cpu_percent_peak": 41.84100418410041,
+          "process_rss_mib_mean": 942.2264539930555,
+          "process_rss_mib_peak": 1072.84375,
+          "gpu_util_percent_mean": null,
+          "gpu_util_percent_peak": null,
+          "gpu_vram_mib_mean": null,
+          "gpu_vram_mib_peak": null,
+          "note": "nvidia-smi unavailable or GPU sampling disabled"
+        },
+        "redis_before": {
+          "redis_version": "7.0.15",
+          "connected_clients": 1,
+          "used_memory_human": "42.44M",
+          "used_memory": 44505840,
+          "total_commands_processed": 194307,
+          "instantaneous_ops_per_sec": 0,
+          "uptime_in_seconds": 50307
+        },
+        "redis_after": {
+          "redis_version": "7.0.15",
+          "connected_clients": 1,
+          "used_memory_human": "42.45M",
+          "used_memory": 44516840,
+          "total_commands_processed": 194345,
+          "instantaneous_ops_per_sec": 1,
+          "uptime_in_seconds": 50322
+        },
+        "redis_delta": {
+          "total_commands_processed_delta": 38,
+          "used_memory_delta_bytes": 11000
+        },
+        "scaling_efficiency_vs_worker1": 1.0
+      },
+      {
+        "worker_count": 2,
+        "threads_per_worker": 1,
+        "thread_mode": "isolated-1thread",
+        "jobs_per_worker": 3,
+        "total_jobs": 6,
+        "jobs_completed": 6,
+        "wall_s": 10.018986455004779,
+        "throughput_jobs_per_s": 0.5988629715137327,
+        "stage_latency": {
+          "acquire_s": {
+            "count": 6,
+            "mean_s": 0.036894107665527066,
+            "median_s": 0.035838149498886196,
+            "p50_s": 0.03577840799698606,
+            "p95_s": 0.03921967600035714,
+            "p99_s": 0.03921967600035714,
+            "min_s": 0.035608423000667244,
+            "max_s": 0.03921967600035714,
+            "stdev_s": 0.0016441487687425826,
+            "small_sample_warning": "n=6 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "candidate_embed_s": {
+            "count": 6,
+            "mean_s": 3.299134790999233,
+            "median_s": 3.1868412514995725,
+            "p50_s": 3.1866651359960088,
+            "p95_s": 3.570285187997797,
+            "p99_s": 3.570285187997797,
+            "min_s": 3.1403033699971274,
+            "max_s": 3.570285187997797,
+            "stdev_s": 0.1926419542416571,
+            "small_sample_warning": "n=6 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "target_resolve_s": {
+            "count": 6,
+            "mean_s": 0.0019141156650827422,
+            "median_s": 0.0018718165010795929,
+            "p50_s": 0.0017985239974223077,
+            "p95_s": 0.0020924779964843765,
+            "p99_s": 0.0020924779964843765,
+            "min_s": 0.0017798560002120212,
+            "max_s": 0.0020924779964843765,
+            "stdev_s": 0.00013473172341567295,
+            "small_sample_warning": "n=6 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "match_s": {
+            "count": 6,
+            "mean_s": 0.0005361753331574922,
+            "median_s": 0.0005300554985296912,
+            "p50_s": 0.0005283229984343052,
+            "p95_s": 0.0006313120029517449,
+            "p99_s": 0.0006313120029517449,
+            "min_s": 0.0004666940003517084,
+            "max_s": 0.0006313120029517449,
+            "stdev_s": 5.785968205700532e-05,
+            "small_sample_warning": "n=6 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "aggregate_s": {
+            "count": 6,
+            "mean_s": 4.781883156586749e-05,
+            "median_s": 4.7008998080855235e-05,
+            "p50_s": 4.615099896909669e-05,
+            "p95_s": 5.355599569156766e-05,
+            "p99_s": 5.355599569156766e-05,
+            "min_s": 4.271399666322395e-05,
+            "max_s": 5.355599569156766e-05,
+            "stdev_s": 4.377832012896209e-06,
+            "small_sample_warning": "n=6 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "commit_s": {
+            "count": 6,
+            "mean_s": 0.0003524576665464944,
+            "median_s": 0.00034642399987205863,
+            "p50_s": 0.00032437600020784885,
+            "p95_s": 0.00041277799755334854,
+            "p99_s": 0.00041277799755334854,
+            "min_s": 0.0002787670018733479,
+            "max_s": 0.00041277799755334854,
+            "stdev_s": 4.802430155314681e-05,
+            "small_sample_warning": "n=6 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "handler_total_s": {
+            "count": 6,
+            "mean_s": 3.338533771167325,
+            "median_s": 3.228590375500062,
+            "p50_s": 3.2285144939960446,
+            "p95_s": 3.6087824249989353,
+            "p99_s": 3.6087824249989353,
+            "min_s": 3.178247726005793,
+            "max_s": 3.6087824249989353,
+            "stdev_s": 0.1921808094769155,
+            "small_sample_warning": "n=6 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          }
+        },
+        "resource": {
+          "sample_count": 79,
+          "duration_s": 15.831116690998897,
+          "process_cpu_percent_mean": 171.35294441722587,
+          "process_cpu_percent_peak": 349.25068962507436,
+          "system_cpu_percent_mean": 17.750210730069853,
+          "system_cpu_percent_peak": 47.7366255144033,
+          "process_rss_mib_mean": 1864.239549512987,
+          "process_rss_mib_peak": 2138.73046875,
+          "gpu_util_percent_mean": null,
+          "gpu_util_percent_peak": null,
+          "gpu_vram_mib_mean": null,
+          "gpu_vram_mib_peak": null,
+          "note": "nvidia-smi unavailable or GPU sampling disabled"
+        },
+        "redis_before": {
+          "redis_version": "7.0.15",
+          "connected_clients": 1,
+          "used_memory_human": "42.45M",
+          "used_memory": 44507616,
+          "total_commands_processed": 194379,
+          "instantaneous_ops_per_sec": 0,
+          "uptime_in_seconds": 50329
+        },
+        "redis_after": {
+          "redis_version": "7.0.15",
+          "connected_clients": 1,
+          "used_memory_human": "42.46M",
+          "used_memory": 44524992,
+          "total_commands_processed": 194454,
+          "instantaneous_ops_per_sec": 2,
+          "uptime_in_seconds": 50344
+        },
+        "redis_delta": {
+          "total_commands_processed_delta": 75,
+          "used_memory_delta_bytes": 17376
+        },
+        "scaling_efficiency_vs_worker1": 0.9349420969945919
+      },
+      {
+        "worker_count": 4,
+        "threads_per_worker": 1,
+        "thread_mode": "isolated-1thread",
+        "jobs_per_worker": 3,
+        "total_jobs": 12,
+        "jobs_completed": 12,
+        "wall_s": 11.59355667300406,
+        "throughput_jobs_per_s": 1.0350576909622873,
+        "stage_latency": {
+          "acquire_s": {
+            "count": 12,
+            "mean_s": 0.046608390832867976,
+            "median_s": 0.04612116299904301,
+            "p50_s": 0.046188622996851336,
+            "p95_s": 0.05201648899674183,
+            "p99_s": 0.05233526899974095,
+            "min_s": 0.040894165002100635,
+            "max_s": 0.05233526899974095,
+            "stdev_s": 0.0030692275624932355,
+            "small_sample_warning": "n=12 is small; p99 in particular should be treated as indicative, not precise"
+          },
+          "candidate_embed_s": {
+            "count": 12,
+            "mean_s": 3.796175952166474,
+            "median_s": 3.8009478369967837,
+            "p50_s": 3.8050812279980164,
+            "p95_s": 3.976116372999968,
+            "p99_s": 3.986542079001083,
+            "min_s": 3.606397581002966,
+            "max_s": 3.986542079001083,
+            "stdev_s": 0.1438257339966506,
+            "small_sample_warning": "n=12 is small; p99 in particular should be treated as indicative, not precise"
+          },
+          "target_resolve_s": {
+            "count": 12,
+            "mean_s": 0.002191630331556856,
+            "median_s": 0.0020482959953369573,
+            "p50_s": 0.0020518629971775226,
+            "p95_s": 0.0027371760006644763,
+            "p99_s": 0.002760599003522657,
+            "min_s": 0.0018500410005799495,
+            "max_s": 0.002760599003522657,
+            "stdev_s": 0.0003013676595873975,
+            "small_sample_warning": "n=12 is small; p99 in particular should be treated as indicative, not precise"
+          },
+          "match_s": {
+            "count": 12,
+            "mean_s": 0.0006712711656291503,
+            "median_s": 0.000557651997951325,
+            "p50_s": 0.0005602660021395423,
+            "p95_s": 0.0008737509997445159,
+            "p99_s": 0.0011268770031165332,
+            "min_s": 0.0004768710059579462,
+            "max_s": 0.0011268770031165332,
+            "stdev_s": 0.00019392686617531577,
+            "small_sample_warning": "n=12 is small; p99 in particular should be treated as indicative, not precise"
+          },
+          "aggregate_s": {
+            "count": 12,
+            "mean_s": 6.075750085680435e-05,
+            "median_s": 5.2093499107286334e-05,
+            "p50_s": 5.337200127542019e-05,
+            "p95_s": 8.240700117312372e-05,
+            "p99_s": 9.306399442721158e-05,
+            "min_s": 4.57560017821379e-05,
+            "max_s": 9.306399442721158e-05,
+            "stdev_s": 1.575173987462502e-05,
+            "small_sample_warning": "n=12 is small; p99 in particular should be treated as indicative, not precise"
+          },
+          "commit_s": {
+            "count": 12,
+            "mean_s": 0.0004437357504987934,
+            "median_s": 0.0004382504994282499,
+            "p50_s": 0.00044771299872081727,
+            "p95_s": 0.0005435109997051768,
+            "p99_s": 0.0005935890003456734,
+            "min_s": 0.0003393320002942346,
+            "max_s": 0.0005935890003456734,
+            "stdev_s": 7.048937667115055e-05,
+            "small_sample_warning": "n=12 is small; p99 in particular should be treated as indicative, not precise"
+          },
+          "handler_total_s": {
+            "count": 12,
+            "mean_s": 3.845716296831597,
+            "median_s": 3.8556918459980807,
+            "p50_s": 3.859890022999025,
+            "p95_s": 4.025972636001825,
+            "p99_s": 4.036818695996772,
+            "min_s": 3.6526247910005623,
+            "max_s": 4.036818695996772,
+            "stdev_s": 0.14531890995984578,
+            "small_sample_warning": "n=12 is small; p99 in particular should be treated as indicative, not precise"
+          }
+        },
+        "resource": {
+          "sample_count": 91,
+          "duration_s": 18.253206401997886,
+          "process_cpu_percent_mean": 347.73107070468075,
+          "process_cpu_percent_peak": 653.2478260184257,
+          "system_cpu_percent_mean": 37.86240797793874,
+          "system_cpu_percent_peak": 65.27196652719664,
+          "process_rss_mib_mean": 3679.059375,
+          "process_rss_mib_peak": 4287.44921875,
+          "gpu_util_percent_mean": null,
+          "gpu_util_percent_peak": null,
+          "gpu_vram_mib_mean": null,
+          "gpu_vram_mib_peak": null,
+          "note": "nvidia-smi unavailable or GPU sampling disabled"
+        },
+        "redis_before": {
+          "redis_version": "7.0.15",
+          "connected_clients": 1,
+          "used_memory_human": "42.45M",
+          "used_memory": 44511168,
+          "total_commands_processed": 194518,
+          "instantaneous_ops_per_sec": 0,
+          "uptime_in_seconds": 50358
+        },
+        "redis_after": {
+          "redis_version": "7.0.15",
+          "connected_clients": 1,
+          "used_memory_human": "42.48M",
+          "used_memory": 44541280,
+          "total_commands_processed": 194667,
+          "instantaneous_ops_per_sec": 3,
+          "uptime_in_seconds": 50376
+        },
+        "redis_delta": {
+          "total_commands_processed_delta": 149,
+          "used_memory_delta_bytes": 30112
+        },
+        "scaling_efficiency_vs_worker1": 0.807963636199262
+      },
+      {
+        "worker_count": 8,
+        "threads_per_worker": 1,
+        "skipped": true,
+        "reason": "skipped: available RAM 9683 MiB < required 12224 MiB (8 workers x 1400 MiB margin + 1024 MiB floor)"
+      }
+    ]
+  },
+  "default_threads": {
+    "thread_mode": "default-threads",
+    "threads_per_worker": 0,
+    "jobs_per_worker": 3,
+    "steps": [
+      {
+        "worker_count": 1,
+        "threads_per_worker": 0,
+        "thread_mode": "default-threads",
+        "jobs_per_worker": 3,
+        "total_jobs": 3,
+        "jobs_completed": 3,
+        "wall_s": 2.776799701998243,
+        "throughput_jobs_per_s": 1.0803804098081462,
+        "stage_latency": {
+          "acquire_s": {
+            "count": 3,
+            "mean_s": 0.039266393330763094,
+            "median_s": 0.03907614899799228,
+            "p50_s": 0.03907614899799228,
+            "p95_s": 0.039783173000614624,
+            "p99_s": 0.039783173000614624,
+            "min_s": 0.03893985799368238,
+            "max_s": 0.039783173000614624,
+            "stdev_s": 0.00036963020244819696,
+            "small_sample_warning": "n=3 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "candidate_embed_s": {
+            "count": 3,
+            "mean_s": 0.881801341335328,
+            "median_s": 0.8613470650016097,
+            "p50_s": 0.8613470650016097,
+            "p95_s": 0.9264880160044413,
+            "p99_s": 0.9264880160044413,
+            "min_s": 0.8575689429999329,
+            "max_s": 0.9264880160044413,
+            "stdev_s": 0.031635873321302715,
+            "small_sample_warning": "n=3 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "target_resolve_s": {
+            "count": 3,
+            "mean_s": 0.00252596633072244,
+            "median_s": 0.002327337999304291,
+            "p50_s": 0.002327337999304291,
+            "p95_s": 0.0030730699945706874,
+            "p99_s": 0.0030730699945706874,
+            "min_s": 0.002177490998292342,
+            "max_s": 0.0030730699945706874,
+            "stdev_s": 0.00039166766965136897,
+            "small_sample_warning": "n=3 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "match_s": {
+            "count": 3,
+            "mean_s": 0.0007002459994206826,
+            "median_s": 0.0007566160056740046,
+            "p50_s": 0.0007566160056740046,
+            "p95_s": 0.0007681909992243163,
+            "p99_s": 0.0007681909992243163,
+            "min_s": 0.0005759309933637269,
+            "max_s": 0.0007681909992243163,
+            "stdev_s": 8.80309061906788e-05,
+            "small_sample_warning": "n=3 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "aggregate_s": {
+            "count": 3,
+            "mean_s": 5.9755334708218775e-05,
+            "median_s": 5.559700366575271e-05,
+            "p50_s": 5.559700366575271e-05,
+            "p95_s": 7.737700070720166e-05,
+            "p99_s": 7.737700070720166e-05,
+            "min_s": 4.629199975170195e-05,
+            "max_s": 7.737700070720166e-05,
+            "stdev_s": 1.3026590981396658e-05,
+            "small_sample_warning": "n=3 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "commit_s": {
+            "count": 3,
+            "mean_s": 0.0003960036677502406,
+            "median_s": 0.0003767669986700639,
+            "p50_s": 0.0003767669986700639,
+            "p95_s": 0.00046615800238214433,
+            "p99_s": 0.00046615800238214433,
+            "min_s": 0.0003450860021985136,
+            "max_s": 0.00046615800238214433,
+            "stdev_s": 5.1264961296460825e-05,
+            "small_sample_warning": "n=3 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "handler_total_s": {
+            "count": 3,
+            "mean_s": 0.9243614699977721,
+            "median_s": 0.9042030700002215,
+            "p50_s": 0.9042030700002215,
+            "p95_s": 0.9687230529962108,
+            "p99_s": 0.9687230529962108,
+            "min_s": 0.9001582869968843,
+            "max_s": 0.9687230529962108,
+            "stdev_s": 0.03141180884085408,
+            "small_sample_warning": "n=3 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          }
+        },
+        "resource": {
+          "sample_count": 42,
+          "duration_s": 8.414758304003044,
+          "process_cpu_percent_mean": 222.55449693042505,
+          "process_cpu_percent_peak": 603.7674480084778,
+          "system_cpu_percent_mean": 24.59550906252496,
+          "system_cpu_percent_peak": 56.016597510373444,
+          "process_rss_mib_mean": 840.2411394817074,
+          "process_rss_mib_peak": 1078.0078125,
+          "gpu_util_percent_mean": null,
+          "gpu_util_percent_peak": null,
+          "gpu_vram_mib_mean": null,
+          "gpu_vram_mib_peak": null,
+          "note": "nvidia-smi unavailable or GPU sampling disabled"
+        },
+        "redis_before": {
+          "redis_version": "7.0.15",
+          "connected_clients": 1,
+          "used_memory_human": "42.44M",
+          "used_memory": 44505840,
+          "total_commands_processed": 194686,
+          "instantaneous_ops_per_sec": 0,
+          "uptime_in_seconds": 50380
+        },
+        "redis_after": {
+          "redis_version": "7.0.15",
+          "connected_clients": 1,
+          "used_memory_human": "42.45M",
+          "used_memory": 44516864,
+          "total_commands_processed": 194724,
+          "instantaneous_ops_per_sec": 1,
+          "uptime_in_seconds": 50389
+        },
+        "redis_delta": {
+          "total_commands_processed_delta": 38,
+          "used_memory_delta_bytes": 11024
+        },
+        "scaling_efficiency_vs_worker1": 1.0
+      },
+      {
+        "worker_count": 2,
+        "threads_per_worker": 0,
+        "thread_mode": "default-threads",
+        "jobs_per_worker": 3,
+        "total_jobs": 6,
+        "jobs_completed": 6,
+        "wall_s": 5.52283706599701,
+        "throughput_jobs_per_s": 1.086398155205553,
+        "stage_latency": {
+          "acquire_s": {
+            "count": 6,
+            "mean_s": 0.049587966500742674,
+            "median_s": 0.05142797250300646,
+            "p50_s": 0.05073683400405571,
+            "p95_s": 0.06308329299645266,
+            "p99_s": 0.06308329299645266,
+            "min_s": 0.03831194100348512,
+            "max_s": 0.06308329299645266,
+            "stdev_s": 0.008778888279227407,
+            "small_sample_warning": "n=6 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "candidate_embed_s": {
+            "count": 6,
+            "mean_s": 1.7513065118340212,
+            "median_s": 1.77849436050019,
+            "p50_s": 1.7668470689968672,
+            "p95_s": 1.8050422460000846,
+            "p99_s": 1.8050422460000846,
+            "min_s": 1.660568040999351,
+            "max_s": 1.8050422460000846,
+            "stdev_s": 0.054376882386397714,
+            "small_sample_warning": "n=6 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "target_resolve_s": {
+            "count": 6,
+            "mean_s": 0.0030489761690356922,
+            "median_s": 0.003151449502183823,
+            "p50_s": 0.003052559004572686,
+            "p95_s": 0.003505372005747631,
+            "p99_s": 0.003505372005747631,
+            "min_s": 0.002118139003869146,
+            "max_s": 0.003505372005747631,
+            "stdev_s": 0.0004544140679077206,
+            "small_sample_warning": "n=6 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "match_s": {
+            "count": 6,
+            "mean_s": 0.0008681688329185514,
+            "median_s": 0.0009154534964181948,
+            "p50_s": 0.000867042996105738,
+            "p95_s": 0.0010673819997464307,
+            "p99_s": 0.0010673819997464307,
+            "min_s": 0.0005704110008082353,
+            "max_s": 0.0010673819997464307,
+            "stdev_s": 0.00016178549733502335,
+            "small_sample_warning": "n=6 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "aggregate_s": {
+            "count": 6,
+            "mean_s": 7.081316531791042e-05,
+            "median_s": 7.376799840130843e-05,
+            "p50_s": 7.207800081232563e-05,
+            "p95_s": 8.416699711233377e-05,
+            "p99_s": 8.416699711233377e-05,
+            "min_s": 4.9893002142198384e-05,
+            "max_s": 8.416699711233377e-05,
+            "stdev_s": 1.1087655381947157e-05,
+            "small_sample_warning": "n=6 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "commit_s": {
+            "count": 6,
+            "mean_s": 0.0005291690007046176,
+            "median_s": 0.0005541865029954351,
+            "p50_s": 0.0005368690035538748,
+            "p95_s": 0.0006641769941779785,
+            "p99_s": 0.0006641769941779785,
+            "min_s": 0.0003827600012300536,
+            "max_s": 0.0006641769941779785,
+            "stdev_s": 0.0001055949014691453,
+            "small_sample_warning": "n=6 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          },
+          "handler_total_s": {
+            "count": 6,
+            "mean_s": 1.8048933238339184,
+            "median_s": 1.829267303004599,
+            "p50_s": 1.8253111770027317,
+            "p95_s": 1.8599079139967216,
+            "p99_s": 1.8599079139967216,
+            "min_s": 1.7030823930035695,
+            "max_s": 1.8599079139967216,
+            "stdev_s": 0.05510924710872693,
+            "small_sample_warning": "n=6 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+          }
+        },
+        "resource": {
+          "sample_count": 55,
+          "duration_s": 11.040651513998455,
+          "process_cpu_percent_mean": 583.7266217799372,
+          "process_cpu_percent_peak": 1176.957165569866,
+          "system_cpu_percent_mean": 54.30167965103666,
+          "system_cpu_percent_peak": 100.0,
+          "process_rss_mib_mean": 1767.3140914351852,
+          "process_rss_mib_peak": 2156.89453125,
+          "gpu_util_percent_mean": null,
+          "gpu_util_percent_peak": null,
+          "gpu_vram_mib_mean": null,
+          "gpu_vram_mib_peak": null,
+          "note": "nvidia-smi unavailable or GPU sampling disabled"
+        },
+        "redis_before": {
+          "redis_version": "7.0.15",
+          "connected_clients": 1,
+          "used_memory_human": "42.45M",
+          "used_memory": 44507616,
+          "total_commands_processed": 194758,
+          "instantaneous_ops_per_sec": 0,
+          "uptime_in_seconds": 50395
+        },
+        "redis_after": {
+          "redis_version": "7.0.15",
+          "connected_clients": 1,
+          "used_memory_human": "42.46M",
+          "used_memory": 44525024,
+          "total_commands_processed": 194833,
+          "instantaneous_ops_per_sec": 1,
+          "uptime_in_seconds": 50406
+        },
+        "redis_delta": {
+          "total_commands_processed_delta": 75,
+          "used_memory_delta_bytes": 17408
+        },
+        "scaling_efficiency_vs_worker1": 0.5027850122710368
+      },
+      {
+        "worker_count": 4,
+        "threads_per_worker": 0,
+        "thread_mode": "default-threads",
+        "jobs_per_worker": 3,
+        "total_jobs": 12,
+        "jobs_completed": 12,
+        "wall_s": 40.65790492499946,
+        "throughput_jobs_per_s": 0.2951455571096464,
+        "stage_latency": {
+          "acquire_s": {
+            "count": 12,
+            "mean_s": 0.06799902466749093,
+            "median_s": 0.055451661501138005,
+            "p50_s": 0.05602048700529849,
+            "p95_s": 0.11363258400524501,
+            "p99_s": 0.1198939089954365,
+            "min_s": 0.043977900000754744,
+            "max_s": 0.1198939089954365,
+            "stdev_s": 0.02752354836711602,
+            "small_sample_warning": "n=12 is small; p99 in particular should be treated as indicative, not precise"
+          },
+          "candidate_embed_s": {
+            "count": 12,
+            "mean_s": 13.158308802667307,
+            "median_s": 13.06060969650207,
+            "p50_s": 13.358011046002503,
+            "p95_s": 15.245201845995325,
+            "p99_s": 15.968155762006063,
+            "min_s": 9.665345874003833,
+            "max_s": 15.968155762006063,
+            "stdev_s": 1.6631123183873209,
+            "small_sample_warning": "n=12 is small; p99 in particular should be treated as indicative, not precise"
+          },
+          "target_resolve_s": {
+            "count": 12,
+            "mean_s": 0.004115891584660858,
+            "median_s": 0.00288684400220518,
+            "p50_s": 0.0029746680011157878,
+            "p95_s": 0.005427598996902816,
+            "p99_s": 0.01161418800620595,
+            "min_s": 0.002210313999967184,
+            "max_s": 0.01161418800620595,
+            "stdev_s": 0.0025215840384813174,
+            "small_sample_warning": "n=12 is small; p99 in particular should be treated as indicative, not precise"
+          },
+          "match_s": {
+            "count": 12,
+            "mean_s": 0.0012304178344493266,
+            "median_s": 0.0007735309991403483,
+            "p50_s": 0.0007895529997767881,
+            "p95_s": 0.0008991140057332814,
+            "p99_s": 0.006607485003769398,
+            "min_s": 0.000584112000069581,
+            "max_s": 0.006607485003769398,
+            "stdev_s": 0.0016241950117764359,
+            "small_sample_warning": "n=12 is small; p99 in particular should be treated as indicative, not precise"
+          },
+          "aggregate_s": {
+            "count": 12,
+            "mean_s": 9.428766679775435e-05,
+            "median_s": 5.7492499763611704e-05,
+            "p50_s": 5.853800394106656e-05,
+            "p95_s": 8.544499723939225e-05,
+            "p99_s": 0.000446684003691189,
+            "min_s": 4.993900074623525e-05,
+            "max_s": 0.000446684003691189,
+            "stdev_s": 0.00010674181261108667,
+            "small_sample_warning": "n=12 is small; p99 in particular should be treated as indicative, not precise"
+          },
+          "commit_s": {
+            "count": 12,
+            "mean_s": 0.0004320702494927294,
+            "median_s": 0.00043377700058044866,
+            "p50_s": 0.0004528979989117943,
+            "p95_s": 0.00048635099665261805,
+            "p99_s": 0.000584528999752365,
+            "min_s": 0.0003365560041856952,
+            "max_s": 0.000584528999752365,
+            "stdev_s": 6.614379633959558e-05,
+            "small_sample_warning": "n=12 is small; p99 in particular should be treated as indicative, not precise"
+          },
+          "handler_total_s": {
+            "count": 12,
+            "mean_s": 13.231757095083594,
+            "median_s": 13.110699670502072,
+            "p50_s": 13.40905160800321,
+            "p95_s": 15.362324150999484,
+            "p99_s": 16.029065064998576,
+            "min_s": 9.747306478995597,
+            "max_s": 16.029065064998576,
+            "stdev_s": 1.6658828716089928,
+            "small_sample_warning": "n=12 is small; p99 in particular should be treated as indicative, not precise"
+          }
+        },
+        "resource": {
+          "sample_count": 231,
+          "duration_s": 46.47657585300476,
+          "process_cpu_percent_mean": 1048.7897330742567,
+          "process_cpu_percent_peak": 1197.0517274354281,
+          "system_cpu_percent_mean": 90.49431333169017,
+          "system_cpu_percent_peak": 100.0,
+          "process_rss_mib_mean": 3987.816779891304,
+          "process_rss_mib_peak": 4303.265625,
+          "gpu_util_percent_mean": null,
+          "gpu_util_percent_peak": null,
+          "gpu_vram_mib_mean": null,
+          "gpu_vram_mib_peak": null,
+          "note": "nvidia-smi unavailable or GPU sampling disabled"
+        },
+        "redis_before": {
+          "redis_version": "7.0.15",
+          "connected_clients": 1,
+          "used_memory_human": "42.45M",
+          "used_memory": 44511168,
+          "total_commands_processed": 194897,
+          "instantaneous_ops_per_sec": 0,
+          "uptime_in_seconds": 50419
+        },
+        "redis_after": {
+          "redis_version": "7.0.15",
+          "connected_clients": 1,
+          "used_memory_human": "42.48M",
+          "used_memory": 44541376,
+          "total_commands_processed": 195046,
+          "instantaneous_ops_per_sec": 3,
+          "uptime_in_seconds": 50465
+        },
+        "redis_delta": {
+          "total_commands_processed_delta": 149,
+          "used_memory_delta_bytes": 30208
+        },
+        "scaling_efficiency_vs_worker1": 0.06829667458568096
+      }
+    ]
+  }
+}

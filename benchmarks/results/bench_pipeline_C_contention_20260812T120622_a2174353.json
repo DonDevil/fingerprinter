@@ -1,0 +1,118 @@
+{
+  "workload": "C_same_target_contention",
+  "environment": {
+    "timestamp": "2026-08-12T12:05:40+0530",
+    "git_revision": "aec736673b36b1e2102985a76232e1d85203eed5",
+    "git_dirty": true,
+    "hardware": {
+      "cpu_model": "11th Gen Intel(R) Core(TM) i5-11400H @ 2.70GHz",
+      "logical_cpus": 12,
+      "total_ram_mib": 15725.703125,
+      "gpu": "NVIDIA GeForce RTX 2050"
+    },
+    "os": {
+      "system": "Linux",
+      "release": "7.0.0-28-generic",
+      "platform": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39"
+    },
+    "software": {
+      "python": "3.12.3",
+      "torch": "2.13.0+cu130",
+      "torch_cuda_available": "False",
+      "transformers": "5.15.0",
+      "redis_py": "8.1.0",
+      "ffmpeg": "ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers"
+    }
+  },
+  "runs": [
+    {
+      "num_contenders": 4,
+      "target_id": "contend-4-01949254",
+      "wall_s": 4.007460284999979,
+      "results": [
+        {
+          "idx": 3,
+          "built": true,
+          "total_s": 3.2052825029968517,
+          "error": null
+        },
+        {
+          "idx": 1,
+          "built": false,
+          "total_s": 4.005819102007081,
+          "error": null
+        },
+        {
+          "idx": 0,
+          "built": false,
+          "total_s": 4.007182442001067,
+          "error": null
+        },
+        {
+          "idx": 2,
+          "built": false,
+          "total_s": 4.007200223000837,
+          "error": null
+        }
+      ],
+      "builds": 1,
+      "waiters": 3,
+      "builder_latency_s": 3.2052825029968517,
+      "waiter_latency": {
+        "count": 3,
+        "mean_s": 4.006733922336328,
+        "median_s": 4.007182442001067,
+        "p50_s": 4.007182442001067,
+        "p95_s": 4.007200223000837,
+        "p99_s": 4.007200223000837,
+        "min_s": 4.005819102007081,
+        "max_s": 4.007200223000837,
+        "stdev_s": 0.0006469163867102543,
+        "small_sample_warning": "n=3 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+      },
+      "errors": [],
+      "resource": {
+        "sample_count": 42,
+        "duration_s": 8.421610894001788,
+        "process_cpu_percent_mean": 238.13092722903863,
+        "process_cpu_percent_peak": 792.5283655508163,
+        "system_cpu_percent_mean": 24.121598002821976,
+        "system_cpu_percent_peak": 68.0672268907563,
+        "process_rss_mib_mean": 2610.15078125,
+        "process_rss_mib_peak": 3201.59375,
+        "gpu_util_percent_mean": null,
+        "gpu_util_percent_peak": null,
+        "gpu_vram_mib_mean": null,
+        "gpu_vram_mib_peak": null,
+        "note": "nvidia-smi unavailable or GPU sampling disabled"
+      },
+      "redis_before": {
+        "redis_version": "7.0.15",
+        "connected_clients": 1,
+        "used_memory_human": "42.45M",
+        "used_memory": 44515920,
+        "total_commands_processed": 193513,
+        "instantaneous_ops_per_sec": 9,
+        "uptime_in_seconds": 50078
+      },
+      "redis_after": {
+        "redis_version": "7.0.15",
+        "connected_clients": 1,
+        "used_memory_human": "42.44M",
+        "used_memory": 44501376,
+        "total_commands_processed": 193552,
+        "instantaneous_ops_per_sec": 4,
+        "uptime_in_seconds": 50086
+      },
+      "redis_delta": {
+        "total_commands_processed_delta": 39,
+        "used_memory_delta_bytes": -14544
+      }
+    },
+    {
+      "num_contenders": 8,
+      "skipped": true,
+      "reason": "skipped: available RAM 9198 MiB < required 12224 MiB (8 workers x 1400 MiB margin + 1024 MiB floor)"
+    }
+  ]
+}

@@ -1,0 +1,155 @@
+{
+  "workload": "E_matching_only_microbenchmark",
+  "environment": {
+    "timestamp": "2026-08-12T11:53:12+0530",
+    "git_revision": "aec736673b36b1e2102985a76232e1d85203eed5",
+    "git_dirty": true,
+    "hardware": {
+      "cpu_model": "11th Gen Intel(R) Core(TM) i5-11400H @ 2.70GHz",
+      "logical_cpus": 12,
+      "total_ram_mib": 15725.703125,
+      "gpu": "NVIDIA GeForce RTX 2050"
+    },
+    "os": {
+      "system": "Linux",
+      "release": "7.0.0-28-generic",
+      "platform": "Linux-7.0.0-28-generic-x86_64-with-glibc2.39"
+    },
+    "software": {
+      "python": "3.12.3",
+      "torch": "2.13.0+cu130",
+      "torch_cuda_available": "False",
+      "transformers": "5.15.0",
+      "redis_py": "8.1.0",
+      "ffmpeg": "ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers"
+    }
+  },
+  "embedding_dim": 768,
+  "matcher_config": {
+    "segment_similarity_threshold": 0.9,
+    "coarse_similarity_threshold": 0.6,
+    "min_matched_segments": 3,
+    "offset_tolerance_segments": 1,
+    "max_index_gap": 2
+  },
+  "note": "coarse_screen bypassed (target/candidate_coarse_vector=None) so full O(N*M) segment matrix always computes; overlap_k synthetic segments are seeded with target vectors + noise to guarantee a real matched run exercises run-extraction, not just the matrix multiply.",
+  "sizes": [
+    {
+      "target_segments": 100,
+      "candidate_segments": 100,
+      "pairwise_comparisons": 10000,
+      "reps": 5,
+      "matched_in_any_rep": true,
+      "matched_segment_overlap_designed": 50,
+      "latency": {
+        "count": 5,
+        "mean_s": 0.00403492840268882,
+        "median_s": 0.0037094260042067617,
+        "p50_s": 0.0037094260042067617,
+        "p95_s": 0.005365000004530884,
+        "p99_s": 0.005365000004530884,
+        "min_s": 0.0036841090040979907,
+        "max_s": 0.005365000004530884,
+        "stdev_s": 0.0006652192681017789,
+        "small_sample_warning": "n=5 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+      },
+      "comparisons_per_second_mean": 2478358.722136467
+    },
+    {
+      "target_segments": 500,
+      "candidate_segments": 500,
+      "pairwise_comparisons": 250000,
+      "reps": 5,
+      "matched_in_any_rep": true,
+      "matched_segment_overlap_designed": 50,
+      "latency": {
+        "count": 5,
+        "mean_s": 0.028749271798005793,
+        "median_s": 0.028897327996673994,
+        "p50_s": 0.028897327996673994,
+        "p95_s": 0.03094780499668559,
+        "p99_s": 0.03094780499668559,
+        "min_s": 0.025714039002195932,
+        "max_s": 0.03094780499668559,
+        "stdev_s": 0.0017566887253292825,
+        "small_sample_warning": "n=5 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+      },
+      "comparisons_per_second_mean": 8695872.429622421
+    },
+    {
+      "target_segments": 1000,
+      "candidate_segments": 1000,
+      "pairwise_comparisons": 1000000,
+      "reps": 5,
+      "matched_in_any_rep": true,
+      "matched_segment_overlap_designed": 50,
+      "latency": {
+        "count": 5,
+        "mean_s": 0.0591670908004744,
+        "median_s": 0.06282525900314795,
+        "p50_s": 0.06282525900314795,
+        "p95_s": 0.06325743399793282,
+        "p99_s": 0.06325743399793282,
+        "min_s": 0.04500154100242071,
+        "max_s": 0.06325743399793282,
+        "stdev_s": 0.007102774034714944,
+        "small_sample_warning": "n=5 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+      },
+      "comparisons_per_second_mean": 16901287.294523902
+    },
+    {
+      "target_segments": 2000,
+      "candidate_segments": 2000,
+      "pairwise_comparisons": 4000000,
+      "reps": 5,
+      "matched_in_any_rep": true,
+      "matched_segment_overlap_designed": 50,
+      "latency": {
+        "count": 5,
+        "mean_s": 0.13794328099902486,
+        "median_s": 0.1416945380042307,
+        "p50_s": 0.1416945380042307,
+        "p95_s": 0.15163397699507186,
+        "p99_s": 0.15163397699507186,
+        "min_s": 0.11208246599562699,
+        "max_s": 0.15163397699507186,
+        "stdev_s": 0.01354926194849024,
+        "small_sample_warning": "n=5 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+      },
+      "comparisons_per_second_mean": 28997425.398546785
+    },
+    {
+      "target_segments": 4000,
+      "candidate_segments": 4000,
+      "pairwise_comparisons": 16000000,
+      "reps": 5,
+      "matched_in_any_rep": true,
+      "matched_segment_overlap_designed": 50,
+      "latency": {
+        "count": 5,
+        "mean_s": 0.32189703219773946,
+        "median_s": 0.32557391599402763,
+        "p50_s": 0.32557391599402763,
+        "p95_s": 0.33065767499647336,
+        "p99_s": 0.33065767499647336,
+        "min_s": 0.3027089729948784,
+        "max_s": 0.33065767499647336,
+        "stdev_s": 0.009868721255507779,
+        "small_sample_warning": "n=5 is too small for p95/p99 to be statistically meaningful; reported for completeness only"
+      },
+      "comparisons_per_second_mean": 49705335.556406416
+    }
+  ],
+  "coarse_screen_only": {
+    "count": 50,
+    "mean_s": 5.109039339004085e-06,
+    "median_s": 4.715500836027786e-06,
+    "p50_s": 4.702000296674669e-06,
+    "p95_s": 6.06999674346298e-06,
+    "p99_s": 2.25569965550676e-05,
+    "min_s": 4.3149993871338665e-06,
+    "max_s": 2.25569965550676e-05,
+    "stdev_s": 2.5672040343635594e-06,
+    "small_sample_warning": null
+  }
+}

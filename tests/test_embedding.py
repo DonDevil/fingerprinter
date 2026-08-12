@@ -212,6 +212,32 @@ def test_unavailable_requested_device_fails_clearly(monkeypatch):
         DINOv2EmbeddingEngine(device="cuda")
 
 
+# Phase 11: torch_num_threads is additive-only — default (None) must not
+# touch the global torch thread pool at all, so a caller who never passes it
+# sees identical behavior to every prior phase.
+def test_torch_num_threads_defaults_to_untouched():
+    before = torch.get_num_threads()
+    DINOv2EmbeddingEngine(device="cpu", sampling_config=SamplingConfig(fps=2.0, max_frames=1))
+    assert torch.get_num_threads() == before
+
+
+def test_torch_num_threads_explicit_value_is_applied():
+    original = torch.get_num_threads()
+    try:
+        engine = DINOv2EmbeddingEngine(
+            device="cpu", sampling_config=SamplingConfig(fps=2.0, max_frames=1), torch_num_threads=1
+        )
+        assert engine.torch_num_threads == 1
+        assert torch.get_num_threads() == 1
+    finally:
+        torch.set_num_threads(original)
+
+
+def test_torch_num_threads_rejects_non_positive_value():
+    with pytest.raises(ValueError):
+        DINOv2EmbeddingEngine(device="cpu", torch_num_threads=0)
+
+
 # 12. repeated inference gives numerically consistent output
 def test_repeated_inference_gives_numerically_consistent_output(cpu_engine):
     first = cpu_engine.embed(_image_artifact())
