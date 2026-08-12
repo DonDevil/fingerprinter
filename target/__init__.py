@@ -1,5 +1,6 @@
 from target.cache import EmbeddingCacheEntry, FilesystemEmbeddingCache, TargetEmbeddingCache
 from target.identity import TargetRecord, sha256_file
+from target.lock import RedisLock
 from target.registry import TargetRegistry
 from target.segment_cache import (
     FilesystemSegmentEmbeddingCache,
@@ -20,4 +21,5 @@ __all__ = [
     "SegmentEmbeddingCache",
     "SegmentEmbeddingCacheEntry",
     "FilesystemSegmentEmbeddingCache",
+    "RedisLock",
 ]

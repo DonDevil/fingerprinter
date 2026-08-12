@@ -10,6 +10,7 @@ import http.server
 import os
 import threading
 import time
+from pathlib import Path
 
 # Smallest valid PNG: 1x1 transparent pixel, 67 bytes. Real, ffprobe-decodable.
 MIN_PNG = bytes.fromhex(
@@ -17,6 +18,11 @@ MIN_PNG = bytes.fromhex(
     "1f15c4890000000a4944415478da6360000002000155bc7d8700000000"
     "49454e44ae426082"
 )
+
+# Phase 7's real, ffmpeg-decodable 2s test clip (see tests/test_embedding.py)
+# — served over HTTP so Phase 10's worker-handler tests can exercise real
+# acquisition against a real (tiny) video, not just a synthetic MediaArtifact.
+_TINY_VIDEO_BODY = (Path(__file__).parent / "fixtures" / "tiny_video.mp4").read_bytes()
 
 _CORRUPT_BODY = os.urandom(2048)
 _LARGE_BODY = b"\x00" * 4096
@@ -35,6 +41,8 @@ class _Handler(http.server.BaseHTTPRequestHandler):
 
         if path == "/ok":
             self._send(200, MIN_PNG, "image/png")
+        elif path == "/video":
+            self._send(200, _TINY_VIDEO_BODY, "video/mp4")
         elif path.startswith("/redirect/"):
             n = int(path.rsplit("/", 1)[-1])
             target = "/ok" if n <= 0 else f"/redirect/{n - 1}"

@@ -197,7 +197,7 @@ has no dependency on how the embeddings were produced, so it can call into a rem
 embedding service exactly as easily as an in-process model.
 
 > **Phase 9 note:** the actual first implementation
-> (`docs/architecture/phase-09-temporal-video-matching.md`) matches at
+> (`docs/architecture/history/phase-09-temporal-video-matching.md`) matches at
 > *segment* granularity (not per-frame) and uses a simpler
 > dominant-offset + longest-run model instead of the L2/margin/
 > consecutive-run mechanics above — this table's frame-level thresholds

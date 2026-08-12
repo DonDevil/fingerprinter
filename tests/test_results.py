@@ -126,6 +126,35 @@ def test_processing_failure_result_is_represented_correctly(redis_client, sample
     assert state["status"] == JobStatus.COMPLETED
 
 
+def test_evidence_field_is_persisted_when_present(redis_client, sample_job):
+    """Phase 10: `Result.evidence` (JSON, populated by
+    matching.aggregation.combine) round-trips through commit_result the
+    same way summary/confidence already do."""
+    JobProducer(redis_client).enqueue(sample_job)
+    worker = _worker(redis_client)
+    entry = worker.claim_one()
+
+    evidence_json = '[{"technique": "dinov2", "matched": true}]'
+    worker.process_claim(
+        entry,
+        lambda job: _synthetic_result(ResultDecision.MATCH, evidence=evidence_json),
+    )
+
+    record = ResultStore(redis_client).get(sample_job.job_id)
+    assert record["evidence"] == evidence_json
+
+
+def test_evidence_field_absent_when_not_set(redis_client, sample_job):
+    JobProducer(redis_client).enqueue(sample_job)
+    worker = _worker(redis_client)
+    entry = worker.claim_one()
+
+    worker.process_claim(entry, lambda job: _synthetic_result(ResultDecision.MATCH))
+
+    record = ResultStore(redis_client).get(sample_job.job_id)
+    assert "evidence" not in record
+
+
 def test_result_contains_attempt_information(redis_client, sample_job):
     JobProducer(redis_client).enqueue(sample_job)
     worker = _worker(redis_client)

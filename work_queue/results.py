@@ -16,6 +16,15 @@ attempt, worker_id) that the handler doesn't own, assembled by
 didn't compute, and the schema stays usable if a later phase's handler
 combines multiple techniques into one `Result` (e.g. a `algorithm` value
 like "dinov2+phash").
+
+Phase 10 adds `evidence`: an optional JSON-encoded string carrying the
+per-technique detail (score, matcher_version, localization, ...) that
+`confidence`/`summary` alone can't hold — the `evidence json` field
+`docs/design/design-proposal-1.md` §4 specified but Phase 4 had nothing to
+populate it with yet. See `matching/aggregation.py`, which is what
+actually builds it from one or more technique-specific match results
+(currently just Phase 9's `TemporalMatchResult`; later phases' audio/OCR/
+watermark evidence folds in the same way, one list entry each).
 """
 from __future__ import annotations
 
@@ -48,6 +57,7 @@ class Result:
     processing_completed_at: float
     confidence: Optional[float] = None
     summary: Optional[str] = None
+    evidence: Optional[str] = None
 
     @property
     def processing_duration(self) -> float:
@@ -87,6 +97,8 @@ class ResultRecord:
             fields["confidence"] = str(self.result.confidence)
         if self.result.summary:
             fields["summary"] = self.result.summary
+        if self.result.evidence:
+            fields["evidence"] = self.result.evidence
         return fields
 
     def to_event_fields(self) -> dict[str, str]:

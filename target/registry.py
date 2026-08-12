@@ -14,11 +14,20 @@ same "independent collaborator" pattern, not a replacement. It defaults to
 `None` so existing `TargetRegistry(redis_client, cache)` call sites (Phase
 6/7) are unaffected; only callers that need segment-level lookups for
 matching pass one.
+
+Phase 10 adds `get_or_build_segment_embedding`: the cache-first,
+build-on-miss-under-lock resolution `docs/design/design-proposal-1.md` §8
+describes and phase-09's own doc left unwired (see its §16/§18). It takes
+a `build` callback rather than an embedding engine so this module still
+never imports torch/transformers — the caller (a worker handler) owns
+"how to embed," this module only owns "is it cached, and who gets to
+build it if not."
 """
 from __future__ import annotations
 
 import json
-from typing import Optional
+import time
+from typing import Callable, Optional, Sequence, Tuple
 
 from redis import Redis
 
@@ -29,11 +38,23 @@ from target.keys import (
     encode_content_index_member,
     target_content_index_key,
     target_embeddings_key,
+    target_lock_key,
     target_segment_embeddings_key,
     target_key,
 )
+from target.lock import RedisLock
 from target.segment_cache import SegmentEmbeddingCache, SegmentEmbeddingCacheEntry
-from target.versioning import EmbeddingSpec
+from target.versioning import EmbeddingSpec, cache_entry_key
+
+# Build-on-miss lock defaults (target/lock.py). PROVISIONAL HEURISTIC, not
+# measured against a real embedding workload — see phase-10 doc,
+# "Limitations": a full-length video's segment embedding pass can run well
+# past a short TTL, so this is deliberately generous (minutes, not
+# seconds) rather than tuned. Callers with a better estimate (e.g. from
+# target duration) should pass explicit values.
+DEFAULT_LOCK_TTL_MS = 600_000  # 10 minutes
+DEFAULT_POLL_INTERVAL_S = 1.0
+DEFAULT_POLL_TIMEOUT_S = 600.0  # 10 minutes
 
 
 class TargetRegistry:
@@ -163,3 +184,76 @@ class TargetRegistry:
             ),
         )
         return entry
+
+    def get_or_build_segment_embedding(
+        self,
+        target_id: str,
+        target_version: str,
+        spec: EmbeddingSpec,
+        build: Callable[[TargetRecord], Tuple[Sequence, Sequence[float]]],
+        lock_ttl_ms: int = DEFAULT_LOCK_TTL_MS,
+        poll_interval_s: float = DEFAULT_POLL_INTERVAL_S,
+        poll_timeout_s: float = DEFAULT_POLL_TIMEOUT_S,
+    ) -> SegmentEmbeddingCacheEntry:
+        """Cache-first, build-on-miss-under-lock resolution of a target's
+        segment embedding — `docs/design/design-proposal-1.md` §8's
+        "Build-on-miss race" guard, applied to Phase 9's segment
+        representation.
+
+        `build` is called at most once per winning caller, with the
+        already-fetched `TargetRecord` (so it never has to re-fetch what
+        this method already looked up): it must return
+        `(segments, coarse_vector)` for this exact target (e.g. by running
+        `DINOv2EmbeddingEngine.embed_video_segments` against
+        `record.media_path`). This module never imports an embedding
+        engine itself — see class docstring.
+
+        Flow: check the cache; on a hit, return immediately (no lock
+        touched at all). On a miss, try to acquire
+        `target/lock.py`'s `RedisLock` for this exact
+        `(target_id, target_version, content_sha256, spec)` key.
+        - Winner: double-checks the cache (another worker may have
+          finished between this call's first check and winning the lock),
+          builds on a second miss, registers the result, releases the
+          lock in a `finally` so a `build` exception never leaves the lock
+          held for its full TTL.
+        - Loser: polls the cache every `poll_interval_s` until it appears
+          or `poll_timeout_s` elapses, at which point it raises
+          `TimeoutError` rather than duplicating the winner's build or
+          blocking forever.
+        """
+        if self._segment_cache is None:
+            raise RuntimeError("TargetRegistry was constructed without a segment_cache; cannot build segments")
+
+        existing = self.get_compatible_segment_embedding(target_id, target_version, spec)
+        if existing is not None:
+            return existing
+
+        record = self.get_target(target_id, target_version)
+        if record is None:
+            raise KeyError(f"unknown target: {target_id!r} version {target_version!r}")
+
+        key = target_lock_key(cache_entry_key(target_id, target_version, record.content_sha256, spec))
+        lock = RedisLock(self._redis, key)
+
+        if lock.acquire(lock_ttl_ms):
+            try:
+                existing = self.get_compatible_segment_embedding(target_id, target_version, spec)
+                if existing is not None:
+                    return existing
+                segments, coarse_vector = build(record)
+                return self.register_segment_embedding(target_id, target_version, spec, segments, coarse_vector)
+            finally:
+                lock.release()
+
+        deadline = time.monotonic() + poll_timeout_s
+        while True:
+            time.sleep(poll_interval_s)
+            existing = self.get_compatible_segment_embedding(target_id, target_version, spec)
+            if existing is not None:
+                return existing
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"timed out after {poll_timeout_s}s waiting for another worker to build the segment "
+                    f"embedding for target {target_id!r} version {target_version!r}"
+                )

@@ -26,6 +26,15 @@ def target_segment_embeddings_key(target_id: str, target_version: str) -> str:
     return f"fingerprint:target:{target_id}:{target_version}:segment_embeddings"
 
 
+def target_lock_key(cache_key: str) -> str:
+    """Namespace for `target/lock.py`'s build-on-miss lock, matching
+    `docs/design/design-proposal-1.md` §8's `fingerprint:lock:target:{cache_key}`
+    convention. `cache_key` is `target.versioning.cache_entry_key(...)` —
+    the full (target_id, target_version, content_sha256, spec) identity, so
+    the lock is scoped to one exact representation, not the whole target."""
+    return f"fingerprint:lock:target:{cache_key}"
+
+
 def encode_content_index_member(target_id: str, target_version: str) -> str:
     return f"{target_id}{_CONTENT_INDEX_MEMBER_SEP}{target_version}"
 
