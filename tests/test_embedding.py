@@ -22,11 +22,12 @@ import pytest
 import torch
 
 from acquisition.artifact import MediaArtifact
-from embedding.config import IMAGE_SAMPLING_CONFIG, PreprocessingConfig, SamplingConfig
+from embedding.config import IMAGE_SAMPLING_CONFIG, PreprocessingConfig, SamplingConfig, SegmentSamplingConfig
 from embedding.dinov2_engine import DINOv2EmbeddingEngine
 from embedding.errors import DeviceUnavailableError, UnsupportedMediaError
-from embedding.frames import extract_frames, make_frames_dir
+from embedding.frames import extract_frames, extract_segment_frames, make_frames_dir
 from target.cache import FilesystemEmbeddingCache
+from target.segment_cache import FilesystemSegmentEmbeddingCache
 from target.versioning import EmbeddingSpec
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -280,3 +281,85 @@ def test_embedding_can_be_stored_and_retrieved_from_phase6_cache(cpu_engine, tmp
     assert entry is not None
     np.testing.assert_allclose(np.array(entry.vector), np.array(result.vector), rtol=0, atol=1e-9)
     assert cache.exists("target-1", "v1", "content-hash-abc", spec)
+
+
+# -- Phase 9: segment-level video embedding ---------------------------------
+#
+# Small, real-DINO tests against the existing `tiny_video.mp4` fixture (2s
+# long) — per the phase brief, "the primary Phase 9 correctness tests
+# should operate on deterministic embedding arrays, not expensive DINO
+# inference" (see tests/test_matching.py for those). This module only
+# checks that `embed_video_segments` produces the right *shape* of output
+# against real inference, not matching correctness.
+
+
+# 17. segment frame extraction spans the whole video, not a capped window
+def test_segment_frame_extraction_spans_full_duration():
+    sampling = SegmentSamplingConfig(segment_duration_s=0.5)  # 2s video -> 4 segments
+    frames_dir = make_frames_dir()
+    try:
+        frame_paths = extract_segment_frames(TINY_VIDEO, sampling, frames_dir)
+        assert len(frame_paths) == 4
+    finally:
+        for f in frames_dir.glob("*"):
+            f.unlink(missing_ok=True)
+        frames_dir.rmdir()
+
+
+# 18. video segment embedding succeeds and covers full duration
+def test_video_segment_embedding_succeeds():
+    engine = DINOv2EmbeddingEngine(device="cpu", segment_sampling_config=SegmentSamplingConfig(segment_duration_s=0.5))
+    result = engine.embed_video_segments(_video_artifact())
+
+    assert result.segment_count == 4
+    assert result.total_duration_s == pytest.approx(2.0)
+    for i, segment in enumerate(result.segments):
+        assert segment.segment_index == i
+        assert segment.start_time == pytest.approx(i * 0.5)
+        assert segment.end_time == pytest.approx((i + 1) * 0.5)
+        assert len(segment.vector) == 768
+    assert len(result.coarse_vector) == 768
+
+
+# 19. coarse vector is a re-normalized mean of the segment vectors, not a
+# separate inference pass
+def test_coarse_vector_is_pooled_from_segments():
+    engine = DINOv2EmbeddingEngine(device="cpu", segment_sampling_config=SegmentSamplingConfig(segment_duration_s=0.5))
+    result = engine.embed_video_segments(_video_artifact())
+
+    stacked = np.array([s.vector for s in result.segments])
+    expected = stacked.mean(axis=0)
+    expected = expected / np.linalg.norm(expected)
+    np.testing.assert_allclose(np.array(result.coarse_vector), expected, rtol=0, atol=1e-5)
+
+
+# 20. segment embedding result converts to a Phase 6-compatible EmbeddingSpec
+def test_segment_embedding_result_can_be_converted_to_embedding_spec():
+    engine = DINOv2EmbeddingEngine(device="cpu", segment_sampling_config=SegmentSamplingConfig(segment_duration_s=0.5))
+    result = engine.embed_video_segments(_video_artifact())
+    spec = result.to_embedding_spec()
+
+    assert isinstance(spec, EmbeddingSpec)
+    assert spec.sampling_config == result.segment_sampling_config.to_dict()
+
+
+# 21. segment embedding can be stored/retrieved from the Phase 9 segment cache
+def test_segment_embedding_can_be_stored_and_retrieved_from_segment_cache(tmp_path):
+    engine = DINOv2EmbeddingEngine(device="cpu", segment_sampling_config=SegmentSamplingConfig(segment_duration_s=0.5))
+    result = engine.embed_video_segments(_video_artifact())
+    spec = result.to_embedding_spec()
+    cache = FilesystemSegmentEmbeddingCache(tmp_path / "segment-cache")
+
+    cache.put("target-1", "v1", "content-hash-abc", spec, result.segments, result.coarse_vector)
+    entry = cache.get("target-1", "v1", "content-hash-abc", spec)
+
+    assert entry is not None
+    assert len(entry.segments) == result.segment_count
+    np.testing.assert_allclose(np.array(entry.coarse_vector), np.array(result.coarse_vector), rtol=0, atol=1e-9)
+
+
+# 22. embed_video_segments rejects non-video input
+def test_embed_video_segments_rejects_non_video_artifact():
+    engine = DINOv2EmbeddingEngine(device="cpu", segment_sampling_config=SegmentSamplingConfig(segment_duration_s=0.5))
+    with pytest.raises(UnsupportedMediaError):
+        engine.embed_video_segments(_image_artifact())

@@ -28,10 +28,15 @@ import tempfile
 from pathlib import Path
 from typing import List
 
-from embedding.config import SamplingConfig
+from embedding.config import SamplingConfig, SegmentSamplingConfig
 from embedding.errors import UnsupportedMediaError
 
 DEFAULT_FFMPEG_TIMEOUT_S = 60.0
+# Segment-mode extraction walks the whole file (no `-frames:v` cap), so a
+# short video can still take a while to decode on a slow/loaded host.
+# Generous relative to DEFAULT_FFMPEG_TIMEOUT_S because duration is no
+# longer bounded by a frame cap the way the Phase 7 path is.
+DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S = 300.0
 
 
 def extract_frames(media_path: Path, sampling: SamplingConfig, frames_dir: Path) -> List[Path]:
@@ -86,6 +91,62 @@ def extract_frames(media_path: Path, sampling: SamplingConfig, frames_dir: Path)
     frame_paths = sorted(frames_dir.glob("frame_*.png"))
     if not frame_paths:
         raise UnsupportedMediaError(f"ffmpeg produced no frames from {media_path} (empty/corrupt video)")
+    return frame_paths
+
+
+def extract_segment_frames(media_path: Path, sampling: SegmentSamplingConfig, frames_dir: Path) -> List[Path]:
+    """Extract one representative frame per `sampling.segment_duration_s`
+    window, spanning the *entire* video (no frame-count cap) — the Phase 9
+    replacement for `extract_frames`'s fixed-window sampling. Returns frame
+    file paths in presentation order; `frame_paths[i]` corresponds to the
+    segment starting at `i * sampling.segment_duration_s` seconds (see
+    `embedding.result.SegmentEmbedding`, which pairs each frame's embedding
+    with its `(segment_index, start_time, end_time)`).
+
+    Same `ffmpeg -vf fps=<rate>` mechanism as `extract_frames` (see that
+    function's docstring for the determinism argument), just with
+    `rate = 1 / segment_duration_s` and no `-frames:v` cap — ffmpeg decodes
+    until the input ends rather than until a frame count is reached.
+
+    Raises `UnsupportedMediaError` if ffmpeg exits non-zero or produces no
+    frames at all (corrupt/empty/undecodable video).
+    """
+    if sampling.segment_duration_s <= 0:
+        raise UnsupportedMediaError(f"invalid segment sampling config: segment_duration_s={sampling.segment_duration_s}")
+
+    output_pattern = str(frames_dir / "segment_%06d.png")
+    fps = 1.0 / sampling.segment_duration_s
+    cmd = [
+        "ffmpeg",
+        "-v",
+        "error",
+        "-i",
+        str(media_path),
+        "-vf",
+        f"fps={fps!r}",
+        output_pattern,
+    ]
+    try:
+        proc = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise UnsupportedMediaError(f"ffmpeg timed out extracting segment frames from {media_path}") from exc
+    except FileNotFoundError as exc:
+        raise RuntimeError("ffmpeg is not installed / not on PATH") from exc
+
+    if proc.returncode != 0:
+        raise UnsupportedMediaError(
+            f"ffmpeg failed to extract segment frames from {media_path}: "
+            f"{proc.stderr.decode('utf-8', 'replace').strip()}"
+        )
+
+    frame_paths = sorted(frames_dir.glob("segment_*.png"))
+    if not frame_paths:
+        raise UnsupportedMediaError(f"ffmpeg produced no segment frames from {media_path} (empty/corrupt video)")
     return frame_paths
 
 

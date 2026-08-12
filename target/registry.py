@@ -7,6 +7,13 @@ namespace, no embedding data. The registry composes a `TargetRegistry`
 (target identity/metadata) with an injected `TargetEmbeddingCache`
 (vector storage) — the two are independent collaborators, not one system,
 so either can be exercised/replaced without the other (see phase-06 docs).
+
+Phase 9 adds an optional, separately-injected `SegmentEmbeddingCache`
+(`target/segment_cache.py`) alongside the Phase 6 pooled-vector cache —
+same "independent collaborator" pattern, not a replacement. It defaults to
+`None` so existing `TargetRegistry(redis_client, cache)` call sites (Phase
+6/7) are unaffected; only callers that need segment-level lookups for
+matching pass one.
 """
 from __future__ import annotations
 
@@ -22,15 +29,23 @@ from target.keys import (
     encode_content_index_member,
     target_content_index_key,
     target_embeddings_key,
+    target_segment_embeddings_key,
     target_key,
 )
+from target.segment_cache import SegmentEmbeddingCache, SegmentEmbeddingCacheEntry
 from target.versioning import EmbeddingSpec
 
 
 class TargetRegistry:
-    def __init__(self, redis_client: Redis, cache: TargetEmbeddingCache):
+    def __init__(
+        self,
+        redis_client: Redis,
+        cache: TargetEmbeddingCache,
+        segment_cache: Optional[SegmentEmbeddingCache] = None,
+    ):
         self._redis = redis_client
         self._cache = cache
+        self._segment_cache = segment_cache
 
     def register_target(
         self,
@@ -105,5 +120,46 @@ class TargetRegistry:
             target_embeddings_key(target_id, target_version),
             spec.spec_key(),
             json.dumps({**spec.to_metadata_fields(), "cached_at": entry.created_at}, sort_keys=True),
+        )
+        return entry
+
+    def has_compatible_segment_embedding(self, target_id: str, target_version: str, spec: EmbeddingSpec) -> bool:
+        return self.get_compatible_segment_embedding(target_id, target_version, spec) is not None
+
+    def get_compatible_segment_embedding(
+        self, target_id: str, target_version: str, spec: EmbeddingSpec
+    ) -> Optional[SegmentEmbeddingCacheEntry]:
+        """Segment-level counterpart to `get_compatible_embedding`. Returns
+        `None` (not an error) if no `segment_cache` was configured — same
+        "answer no rather than guess" contract as the underlying cache."""
+        if self._segment_cache is None:
+            return None
+        record = self.get_target(target_id, target_version)
+        if record is None:
+            return None
+        return self._segment_cache.get(target_id, target_version, record.content_sha256, spec)
+
+    def register_segment_embedding(
+        self, target_id: str, target_version: str, spec: EmbeddingSpec, segments, coarse_vector
+    ) -> SegmentEmbeddingCacheEntry:
+        """Store the segment sequence + coarse vector and record a small,
+        vector-free metadata summary in Redis, mirroring
+        `register_embedding`. Requires a `segment_cache` to have been
+        injected at construction time."""
+        if self._segment_cache is None:
+            raise RuntimeError("TargetRegistry was constructed without a segment_cache; cannot register segments")
+        record = self.get_target(target_id, target_version)
+        if record is None:
+            raise KeyError(f"unknown target: {target_id!r} version {target_version!r}")
+
+        entry = self._segment_cache.put(target_id, target_version, record.content_sha256, spec, segments, coarse_vector)
+
+        self._redis.hset(
+            target_segment_embeddings_key(target_id, target_version),
+            spec.spec_key(),
+            json.dumps(
+                {**spec.to_metadata_fields(), "segment_count": len(entry.segments), "cached_at": entry.created_at},
+                sort_keys=True,
+            ),
         )
         return entry

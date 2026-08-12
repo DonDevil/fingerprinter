@@ -28,15 +28,21 @@ from PIL import Image, UnidentifiedImageError
 from transformers import AutoImageProcessor, AutoModel
 
 from acquisition.artifact import MediaArtifact
-from embedding.config import IMAGE_SAMPLING_CONFIG, PreprocessingConfig, SamplingConfig
+from embedding.config import IMAGE_SAMPLING_CONFIG, PreprocessingConfig, SamplingConfig, SegmentSamplingConfig
 from embedding.errors import (
     DeviceUnavailableError,
     InferenceError,
     ModelLoadError,
     UnsupportedMediaError,
 )
-from embedding.frames import extract_frames, make_frames_dir
-from embedding.result import EMBEDDING_SCHEMA_VERSION, EmbeddingResult
+from embedding.frames import extract_frames, extract_segment_frames, make_frames_dir
+from embedding.result import (
+    EMBEDDING_SCHEMA_VERSION,
+    SEGMENT_EMBEDDING_SCHEMA_VERSION,
+    EmbeddingResult,
+    SegmentEmbedding,
+    VideoSegmentEmbeddingResult,
+)
 
 # Pinned to the exact snapshot revision already validated by the old
 # prototype (see phase-07 docs) — a floating "main" would let the weights
@@ -63,6 +69,7 @@ class DINOv2EmbeddingEngine:
         device: str = "auto",
         preprocessing_config: Optional[PreprocessingConfig] = None,
         sampling_config: Optional[SamplingConfig] = None,
+        segment_sampling_config: Optional[SegmentSamplingConfig] = None,
         normalize: bool = True,
         local_files_only: bool = True,
     ) -> None:
@@ -73,6 +80,7 @@ class DINOv2EmbeddingEngine:
         self.model_revision = model_revision
         self.preprocessing_config = preprocessing_config or PreprocessingConfig()
         self.sampling_config = sampling_config or SamplingConfig()
+        self.segment_sampling_config = segment_sampling_config or SegmentSamplingConfig()
         self.normalize = normalize
         self.model_version = model_revision
 
@@ -192,6 +200,69 @@ class DINOv2EmbeddingEngine:
             aggregation_method=self.sampling_config.aggregation,
             embedding_schema_version=EMBEDDING_SCHEMA_VERSION,
             frame_vectors=tuple(tuple(float(x) for x in v) for v in frame_vectors),
+            inference_duration_s=duration,
+        )
+
+    # -- video segment path (Phase 9) -------------------------------------
+
+    def embed_video_segments(
+        self, artifact: MediaArtifact, segment_sampling_config: Optional[SegmentSamplingConfig] = None
+    ) -> VideoSegmentEmbeddingResult:
+        """Embed a video's *entire* duration as per-segment vectors — the
+        Phase 9 representation matching is built on, per Phase 8's
+        conclusion that a single pooled vector cannot support partial/
+        temporal matching. Unlike `embed()`'s video path (`_embed_video`,
+        unchanged, still governed by `SamplingConfig`'s fixed
+        fps/max_frames window for Phase 6/7 compatibility), this method
+        samples across the whole file via `extract_segment_frames`.
+
+        Raises `UnsupportedMediaError` for non-video/undecodable input,
+        same as `embed()`.
+        """
+        if not artifact.local_path.exists():
+            raise UnsupportedMediaError(f"media file does not exist: {artifact.local_path}")
+        content_type = (artifact.content_type or "").lower()
+        if not content_type.startswith("video/"):
+            raise UnsupportedMediaError(f"embed_video_segments requires a video artifact, got {artifact.content_type!r}")
+
+        config = segment_sampling_config or self.segment_sampling_config
+        start = time.monotonic()
+        frames_dir = make_frames_dir()
+        try:
+            frame_paths = extract_segment_frames(artifact.local_path, config, frames_dir)
+            segments: List[SegmentEmbedding] = []
+            for index, frame_path in enumerate(frame_paths):
+                image = self._load_image(frame_path)
+                vector = self._embed_pil_image(image)
+                segment_start = index * config.segment_duration_s
+                segment_end = segment_start + config.segment_duration_s
+                segments.append(
+                    SegmentEmbedding(
+                        segment_index=index,
+                        start_time=segment_start,
+                        end_time=segment_end,
+                        vector=tuple(float(x) for x in vector),
+                    )
+                )
+                frame_path.unlink(missing_ok=True)
+        finally:
+            shutil.rmtree(frames_dir, ignore_errors=True)
+
+        coarse_vector = self._aggregate([np.array(s.vector, dtype=np.float32) for s in segments])
+        duration = time.monotonic() - start
+        total_duration_s = segments[-1].end_time if segments else 0.0
+
+        return VideoSegmentEmbeddingResult(
+            segments=tuple(segments),
+            coarse_vector=tuple(float(x) for x in coarse_vector),
+            model_id=self.model_id,
+            model_version=self.model_version,
+            dimensionality=len(coarse_vector),
+            normalized=self.normalize,
+            preprocessing_config=self.preprocessing_config,
+            segment_sampling_config=config,
+            total_duration_s=total_duration_s,
+            embedding_schema_version=SEGMENT_EMBEDDING_SCHEMA_VERSION,
             inference_duration_s=duration,
         )
 

@@ -196,6 +196,15 @@ consistency) → combine with global accepted-ratio → threshold into `matched`
 has no dependency on how the embeddings were produced, so it can call into a remote GPU
 embedding service exactly as easily as an in-process model.
 
+> **Phase 9 note:** the actual first implementation
+> (`docs/architecture/phase-09-temporal-video-matching.md`) matches at
+> *segment* granularity (not per-frame) and uses a simpler
+> dominant-offset + longest-run model instead of the L2/margin/
+> consecutive-run mechanics above — this table's frame-level thresholds
+> were never implemented as such; see the phase-09 doc for what was
+> actually built and why, and for that implementation's own (still
+> unvalidated) threshold values.
+
 ---
 
 ## 7. Failure / Retry Model

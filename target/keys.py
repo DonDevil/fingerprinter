@@ -22,6 +22,10 @@ def target_embeddings_key(target_id: str, target_version: str) -> str:
     return f"fingerprint:target:{target_id}:{target_version}:embeddings"
 
 
+def target_segment_embeddings_key(target_id: str, target_version: str) -> str:
+    return f"fingerprint:target:{target_id}:{target_version}:segment_embeddings"
+
+
 def encode_content_index_member(target_id: str, target_version: str) -> str:
     return f"{target_id}{_CONTENT_INDEX_MEMBER_SEP}{target_version}"
 

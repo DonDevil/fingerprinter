@@ -80,3 +80,55 @@ class SamplingConfig:
 # image inputs so "no sampling was applied" is explicit and cacheable,
 # never implicit/missing.
 IMAGE_SAMPLING_CONFIG = SamplingConfig(fps=0.0, max_frames=1, frame_selection="single_image", aggregation="none")
+
+
+# Phase 8 concluded (docs/architecture/history/phase-08-video-representation-investigation.md,
+# "Recommended sampling strategy") that `SamplingConfig` above — fixed fps,
+# hard-capped `max_frames`, always starting at t=0 — cannot support
+# temporal/partial-clip matching: for any video longer than
+# `max_frames / fps` seconds it only ever looks at a fixed opening window.
+# `SegmentSamplingConfig` is the Phase 9 replacement *for the matching
+# path*: uniform sampling across the *entire* video, chunked into
+# fixed-duration segments, one representative frame per segment. It is a
+# new, additive config (not a change to `SamplingConfig`) so Phase 7's
+# existing pooled-vector contract/cache keys are untouched — see
+# docs/architecture/phase-09-temporal-video-matching.md, "Segment
+# representation decision".
+@dataclass(frozen=True)
+class SegmentSamplingConfig:
+    """Deterministic segment-level video sampling rule.
+
+    `segment_duration_s` is the ARCHITECTURAL knob Phase 8 deferred
+    ("exact segment duration"). The default below is a PROVISIONAL
+    heuristic (no labeled dataset exists yet to calibrate against the
+    shortest pirated clip length worth detecting) — see the phase-09 doc
+    for the full justification. Callers needing a different tradeoff
+    should pass an explicit value rather than relying on the default.
+
+    `frame_selection="segment_start"`: one frame is sampled at the start
+    of each `segment_duration_s` window (via `ffmpeg -vf
+    fps=1/segment_duration_s`, which samples from t=0 in presentation
+    order with no frame cap — see `embedding/frames.py:extract_segment_frames`).
+    This is intra-segment sampling density = 1 (a single representative
+    frame per segment, not a multi-frame mean-pool within the segment) —
+    the simplest option Phase 8 left open ("Deferred decisions"), chosen
+    for architectural simplicity, not because it was measured against the
+    mean-pool-within-segment alternative.
+    """
+
+    segment_duration_s: float = 5.0
+    frame_selection: str = "segment_start"
+
+    def to_dict(self) -> dict:
+        return {
+            "segment_duration_s": self.segment_duration_s,
+            "frame_selection": self.frame_selection,
+        }
+
+
+# Provisional default segment duration in seconds. Exposed as a module
+# constant (not just the dataclass default) so callers/tests/docs can
+# reference "the current provisional default" by name instead of a bare
+# literal. NOT empirically validated — see phase-09 doc, "Threshold
+# status".
+DEFAULT_SEGMENT_DURATION_S = 5.0
