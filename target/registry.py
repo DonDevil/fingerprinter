@@ -44,6 +44,7 @@ from target.keys import (
 )
 from target.lock import RedisLock
 from target.segment_cache import SegmentEmbeddingCache, SegmentEmbeddingCacheEntry
+from target.shared_storage import SharedTargetMediaStore
 from target.versioning import EmbeddingSpec, cache_entry_key
 
 # Build-on-miss lock defaults (target/lock.py). PROVISIONAL HEURISTIC, not
@@ -63,10 +64,12 @@ class TargetRegistry:
         redis_client: Redis,
         cache: TargetEmbeddingCache,
         segment_cache: Optional[SegmentEmbeddingCache] = None,
+        media_store: Optional[SharedTargetMediaStore] = None,
     ):
         self._redis = redis_client
         self._cache = cache
         self._segment_cache = segment_cache
+        self._media_store = media_store
 
     def register_target(
         self,
@@ -78,8 +81,18 @@ class TargetRegistry:
         """Compute content identity from the file's bytes (never its
         filename/path) and upsert the (target_id, target_version) record.
         Re-registering the same (target_id, target_version) preserves the
-        original `created_at` and only advances `updated_at`."""
+        original `created_at` and only advances `updated_at`.
+
+        Phase 13D: if a `media_store` was injected, the media bytes are
+        also published into shared storage, content-addressed by
+        `content_sha256` -- this is what lets a build-on-miss winner on a
+        *different* host than whichever one ran registration still read the
+        target's media (audit §3.5; see `target/shared_storage.py`'s
+        `SharedTargetMediaStore`). A no-op collaborator (`media_store=None`,
+        the default) leaves this call exactly as before Phase 13D."""
         content_sha256 = sha256_file(media_path)
+        if self._media_store is not None:
+            self._media_store.publish(content_sha256, media_path)
         existing = self.get_target(target_id, target_version)
         created_at = existing.created_at if existing is not None else None
 

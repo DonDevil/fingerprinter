@@ -31,10 +31,15 @@ from redis.exceptions import ResponseError
 
 from tests.conftest import TEST_REDIS_URL
 from work_queue.keys import CONSUMER_GROUP, stream_key
+from target.cache import FilesystemEmbeddingCache
+from target.segment_cache import FilesystemSegmentEmbeddingCache
+from target.shared_cache import SharedFilesystemEmbeddingCache, SharedFilesystemSegmentEmbeddingCache
 from worker.main import (
     ConfigError,
     WorkerConfig,
     build_engine,
+    build_media_store,
+    build_registry,
     build_worker,
     install_shutdown_handlers,
 )
@@ -59,6 +64,7 @@ def test_config_defaults_when_env_is_empty():
     assert config.embedding_device == "auto"
     assert config.torch_num_threads == 1
     assert config.target_cache_path == "./target_cache"
+    assert config.shared_artifact_store_path is None
     assert config.media_max_bytes == 100 * 1024 * 1024
 
 
@@ -73,6 +79,7 @@ def test_config_overrides_from_env():
         "EMBEDDING_DEVICE": "cpu",
         "TORCH_NUM_THREADS": "4",
         "TARGET_CACHE_PATH": "/var/lib/fingerprinter/targets",
+        "SHARED_ARTIFACT_STORE_PATH": "/mnt/shared/fingerprinter-targets",
         "MEDIA_MAX_BYTES": "1048576",
     }
 
@@ -87,6 +94,7 @@ def test_config_overrides_from_env():
     assert config.embedding_device == "cpu"
     assert config.torch_num_threads == 4
     assert config.target_cache_path == "/var/lib/fingerprinter/targets"
+    assert config.shared_artifact_store_path == "/mnt/shared/fingerprinter-targets"
     assert config.media_max_bytes == 1048576
 
 
@@ -153,6 +161,67 @@ def test_default_torch_num_threads_is_one_not_unbounded():
     exact footgun Phase 13 audit blocker #5 names."""
     config = WorkerConfig.from_env({})
     assert config.torch_num_threads == 1
+
+
+# ---------------------------------------------------------------------------
+# Phase 13D — build_registry()/build_media_store() backend selection.
+# shared_artifact_store_path unset must keep exactly the pre-Phase-13D,
+# host-local backend; set, it must switch to the shared backend and never
+# silently fall back if that path is unreachable.
+# ---------------------------------------------------------------------------
+
+
+def test_build_registry_uses_filesystem_backend_by_default(redis_client, tmp_path):
+    config = WorkerConfig.from_env({"TARGET_CACHE_PATH": str(tmp_path / "target_cache")})
+    registry = build_registry(redis_client, config)
+
+    assert isinstance(registry._cache, FilesystemEmbeddingCache)
+    assert isinstance(registry._segment_cache, FilesystemSegmentEmbeddingCache)
+
+
+def test_build_registry_uses_shared_backend_when_configured(redis_client, tmp_path):
+    config = WorkerConfig.from_env(
+        {
+            "TARGET_CACHE_PATH": str(tmp_path / "target_cache"),
+            "SHARED_ARTIFACT_STORE_PATH": str(tmp_path / "shared"),
+        }
+    )
+    registry = build_registry(redis_client, config)
+
+    assert isinstance(registry._cache, SharedFilesystemEmbeddingCache)
+    assert isinstance(registry._segment_cache, SharedFilesystemSegmentEmbeddingCache)
+    assert registry._media_store is not None
+
+
+def test_build_media_store_is_none_without_shared_artifact_store_path(tmp_path):
+    config = WorkerConfig.from_env({"TARGET_CACHE_PATH": str(tmp_path / "target_cache")})
+    assert build_media_store(config) is None
+
+
+def test_build_media_store_configured_when_shared_artifact_store_path_set(tmp_path):
+    config = WorkerConfig.from_env({"SHARED_ARTIFACT_STORE_PATH": str(tmp_path / "shared")})
+    assert build_media_store(config) is not None
+
+
+def test_main_returns_nonzero_when_shared_artifact_store_unreachable(monkeypatch, tmp_path):
+    """Fail-fast, not a silent fallback to the host-local cache (audit
+    §11): a worker configured to require shared storage that turns out to
+    be unreachable must refuse to start, not quietly run single-host."""
+    import worker.main as main_module
+
+    blocked = tmp_path / "not-a-directory"
+    blocked.write_text("occupied by a file, not a directory")
+
+    monkeypatch.setattr(
+        main_module.os,
+        "environ",
+        {
+            "REDIS_URL": TEST_REDIS_URL,
+            "SHARED_ARTIFACT_STORE_PATH": str(blocked / "child"),
+        },
+    )
+
+    assert main_module.main() == 1
 
 
 # ---------------------------------------------------------------------------

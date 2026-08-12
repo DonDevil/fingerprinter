@@ -124,7 +124,8 @@ def run_instrumented(
         def build(record):
             build_ran["flag"] = True
             b0 = time.monotonic()
-            target_result = engine.embed_video_segments(_target_artifact(record))
+            target_artifact, _ = _target_artifact(record)
+            target_result = engine.embed_video_segments(target_artifact)
             build_ran["duration_s"] = time.monotonic() - b0
             return target_result.segments, target_result.coarse_vector
 

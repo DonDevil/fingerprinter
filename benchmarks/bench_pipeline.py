@@ -107,7 +107,8 @@ def _prewarm_target(registry, engine, target_id: str, version: str) -> float:
     spec = _embedding_spec_for(engine)
 
     def build(record):
-        r = engine.embed_video_segments(_target_artifact(record))
+        target_artifact, _ = _target_artifact(record)
+        r = engine.embed_video_segments(target_artifact)
         return r.segments, r.coarse_vector
 
     t0 = time.monotonic()
@@ -254,7 +255,8 @@ def _contention_worker_proc(idx: int, redis_url: str, cache_dir: str, target_id:
 
     def build(record):
         build_ran["flag"] = True
-        r = engine.embed_video_segments(_target_artifact(record))
+        target_artifact, _ = _target_artifact(record)
+        r = engine.embed_video_segments(target_artifact)
         return r.segments, r.coarse_vector
 
     barrier.wait()

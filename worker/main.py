@@ -45,6 +45,8 @@ from embedding.dinov2_engine import DINOv2EmbeddingEngine
 from target.cache import FilesystemEmbeddingCache
 from target.registry import TargetRegistry
 from target.segment_cache import FilesystemSegmentEmbeddingCache
+from target.shared_cache import SharedFilesystemEmbeddingCache, SharedFilesystemSegmentEmbeddingCache
+from target.shared_storage import SharedArtifactStore, SharedTargetMediaStore
 from work_queue.keys import CONSUMER_GROUP, stream_key
 from worker.fingerprint_worker import Worker, default_consumer_name
 from worker.matching_handler import build_matching_handler
@@ -134,6 +136,15 @@ class WorkerConfig:
     embedding_device: str = "auto"
     torch_num_threads: int = DEFAULT_TORCH_NUM_THREADS
     target_cache_path: str = DEFAULT_TARGET_CACHE_PATH
+    # Phase 13D: unset (the default) keeps the pre-Phase-13D, single-host
+    # behavior (FilesystemEmbeddingCache/FilesystemSegmentEmbeddingCache
+    # rooted at target_cache_path, host-local, NOT multi-host-safe — see
+    # docs/architecture/phase-13d-distributed-target-artifacts.md). Set to
+    # a directory on a genuinely shared mount (NFS, cluster filesystem) to
+    # enable the shared, multi-host-safe backend. Deliberately independent
+    # of target_cache_path/REDIS_URL — this is its own infrastructure
+    # dependency, not implied by either.
+    shared_artifact_store_path: Optional[str] = None
     media_max_bytes: int = DEFAULT_MAX_BYTES
     # Phase 13C
     observability_interval_ms: int = DEFAULT_OBSERVABILITY_INTERVAL_MS
@@ -152,6 +163,7 @@ class WorkerConfig:
             embedding_device=env.get("EMBEDDING_DEVICE") or "auto",
             torch_num_threads=_getenv_int("TORCH_NUM_THREADS", DEFAULT_TORCH_NUM_THREADS, env),
             target_cache_path=env.get("TARGET_CACHE_PATH") or DEFAULT_TARGET_CACHE_PATH,
+            shared_artifact_store_path=env.get("SHARED_ARTIFACT_STORE_PATH") or None,
             media_max_bytes=_getenv_int("MEDIA_MAX_BYTES", DEFAULT_MAX_BYTES, env),
             observability_interval_ms=_getenv_int(
                 "WORKER_OBSERVABILITY_INTERVAL_MS", DEFAULT_OBSERVABILITY_INTERVAL_MS, env
@@ -236,6 +248,7 @@ def config_snapshot(config: WorkerConfig, consumer_name: str) -> dict:
         "embedding_device": config.embedding_device,
         "torch_num_threads": config.torch_num_threads,
         "target_cache_path": config.target_cache_path,
+        "shared_artifact_store_path": config.shared_artifact_store_path,
         "media_max_bytes": config.media_max_bytes,
         "observability_interval_ms": config.observability_interval_ms,
         "run_output": config.run_output,
@@ -266,7 +279,40 @@ def build_acquirer(config: WorkerConfig) -> MediaAcquirer:
     return MediaAcquirer(max_bytes=config.media_max_bytes)
 
 
+def build_media_store(config: WorkerConfig) -> Optional[SharedTargetMediaStore]:
+    """Phase 13D: `None` unless `shared_artifact_store_path` is configured
+    — see that field's docstring. Raises (does not silently degrade) if
+    the configured path is unreachable, matching `build_registry`'s own
+    fail-fast behavior — both are caught by `main()`'s existing startup
+    error handling."""
+    if not config.shared_artifact_store_path:
+        return None
+    store = SharedArtifactStore(Path(config.shared_artifact_store_path))
+    return SharedTargetMediaStore(store)
+
+
 def build_registry(redis_client: Redis, config: WorkerConfig) -> TargetRegistry:
+    """Phase 13D: `shared_artifact_store_path` unset (default) keeps the
+    original, single-host-only backend (`FilesystemEmbeddingCache`/
+    `FilesystemSegmentEmbeddingCache`, host-local disk under
+    `target_cache_path`) exactly as before Phase 13D. Set, it switches to
+    the shared, multi-host-safe backend (`SharedFilesystemEmbeddingCache`/
+    `SharedFilesystemSegmentEmbeddingCache`) rooted at that path instead —
+    which MUST be a genuinely shared mount across every worker host, or
+    this only looks fixed (see `target/shared_storage.py`'s module
+    docstring and docs/architecture/phase-13d-distributed-target-
+    artifacts.md). If that path can't be created/accessed,
+    `SharedArtifactStore.__init__` raises `SharedArtifactStoreError`
+    immediately — a worker that can't reach its shared storage fails to
+    start rather than silently falling back to a host-local cache and
+    claiming to be distributed (audit §11)."""
+    if config.shared_artifact_store_path:
+        store = SharedArtifactStore(Path(config.shared_artifact_store_path))
+        media_store = SharedTargetMediaStore(store)
+        pooled_cache = SharedFilesystemEmbeddingCache(store, prefix="pooled")
+        segment_cache = SharedFilesystemSegmentEmbeddingCache(store, prefix="segments")
+        return TargetRegistry(redis_client, pooled_cache, segment_cache, media_store=media_store)
+
     base = Path(config.target_cache_path)
     pooled_cache = FilesystemEmbeddingCache(base / "pooled")
     segment_cache = FilesystemSegmentEmbeddingCache(base / "segments")
@@ -368,9 +414,10 @@ def main() -> int:
     try:
         acquirer = build_acquirer(config)
         registry = build_registry(redis_client, config)
+        media_store = build_media_store(config)
         engine = build_engine(config)
         handler = build_matching_handler(
-            acquirer, engine, registry, stage_recorder=observer.record_stage_duration
+            acquirer, engine, registry, stage_recorder=observer.record_stage_duration, media_store=media_store
         )
         worker = build_worker(redis_client, config, observer=observer)
     except Exception as exc:  # noqa: BLE001 - deliberately broad: any startup failure must exit non-zero, not hang

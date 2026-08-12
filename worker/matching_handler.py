@@ -46,7 +46,7 @@ from __future__ import annotations
 import mimetypes
 import time
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, Tuple
 
 from acquisition import MediaAcquirer, PermanentAcquisitionError, TransientAcquisitionError
 from acquisition.artifact import MediaArtifact
@@ -57,22 +57,46 @@ from matching.config import MatcherConfig
 from matching.matcher import match_segments
 from target.identity import TargetRecord
 from target.registry import TargetRegistry
+from target.shared_storage import SharedArtifactStoreError, SharedTargetMediaStore
 from work_queue.jobs import Job
 from work_queue.results import Result, ResultDecision
 from worker.fingerprint_worker import PermanentFailure, TransientFailure
 
 
-def _target_artifact(record: TargetRecord) -> MediaArtifact:
+def _target_artifact(
+    record: TargetRecord, media_store: Optional[SharedTargetMediaStore] = None
+) -> Tuple[MediaArtifact, bool]:
     """Wraps a registered target's on-disk media as a `MediaArtifact` so
     the same `DINOv2EmbeddingEngine.embed_video_segments` call path used
     for candidates also embeds targets — one embedding code path, not two.
     `content_type` is guessed from the file extension (targets don't carry
     a stored content_type, unlike an acquired `MediaArtifact`); this
     handler only supports video targets, so anything that doesn't guess to
-    `video/*` will correctly fail `embed_video_segments`'s own check."""
-    content_type = mimetypes.guess_type(record.media_path)[0] or "video/mp4"
-    return MediaArtifact(
-        local_path=Path(record.media_path),
+    `video/*` will correctly fail `embed_video_segments`'s own check.
+
+    Phase 13D (audit §3.5): `record.media_path` is a path on whichever host
+    ran registration, which may not be this host. If it's absent locally
+    and a `media_store` was injected, fetch a temp copy from shared storage
+    (content-addressed by `record.content_sha256`) instead — the second
+    return value tells the caller whether that temp copy needs cleanup
+    (`record.media_path` itself is a persistent, caller-owned file and must
+    never be deleted; a fetched temp copy is this call's own responsibility,
+    mirroring `MediaArtifact.cleanup()`'s "caller owns lifetime" contract).
+    `media_store=None` (the default) leaves this function's behavior
+    exactly as before Phase 13D: pass the path straight through and let
+    `embed_video_segments` raise `UnsupportedMediaError` on its own
+    existence check if it's missing."""
+    local_path = Path(record.media_path)
+    is_temp = False
+    if media_store is not None and not local_path.exists():
+        fetched = media_store.fetch_to_temp(record.content_sha256, suffix=local_path.suffix)
+        if fetched is not None:
+            local_path = fetched
+            is_temp = True
+
+    content_type = mimetypes.guess_type(str(local_path))[0] or "video/mp4"
+    artifact = MediaArtifact(
+        local_path=local_path,
         original_url=f"local-target://{record.target_id}/{record.target_version}",
         final_url=f"local-target://{record.target_id}/{record.target_version}",
         content_type=content_type,
@@ -80,6 +104,7 @@ def _target_artifact(record: TargetRecord) -> MediaArtifact:
         checksum_sha256=record.content_sha256,
         acquisition_duration_s=0.0,
     )
+    return artifact, is_temp
 
 
 def _noop_stage_recorder(stage: str, duration_s: float) -> None:
@@ -92,6 +117,7 @@ def build_matching_handler(
     registry: TargetRegistry,
     matcher_config: Optional[MatcherConfig] = None,
     stage_recorder: Optional[Callable[[str, float], None]] = None,
+    media_store: Optional[SharedTargetMediaStore] = None,
 ) -> Callable[[Job], Result]:
     """Returns a handler for `Worker.process_claim`/`Worker.run`.
 
@@ -113,6 +139,11 @@ def build_matching_handler(
     `target/registry.py` — a known measurement gap, documented rather than
     solved by refactoring. Defaults to a no-op so every existing call site
     (tests, benchmarks) is unaffected.
+
+    `media_store` (Phase 13D, optional) lets a build-on-miss winner fetch a
+    target's media from shared storage when it's absent on this host — see
+    `_target_artifact`. `None` (the default) leaves target-build behavior
+    exactly as before Phase 13D, so every existing call site is unaffected.
     """
     matcher_config = matcher_config or MatcherConfig()
     record_stage = stage_recorder or _noop_stage_recorder
@@ -154,7 +185,9 @@ def build_matching_handler(
             record_stage("candidate_embedding", time.monotonic() - stage_started)
 
             stage_started = time.monotonic()
-            target_entry = _resolve_target_segments(engine, registry, job.target_id, job.target_version, candidate)
+            target_entry = _resolve_target_segments(
+                engine, registry, job.target_id, job.target_version, candidate, media_store
+            )
             record_stage("target_resolution", time.monotonic() - stage_started)
 
             stage_started = time.monotonic()
@@ -181,12 +214,17 @@ def build_matching_handler(
     return handler
 
 
-def _resolve_target_segments(engine, registry, target_id, target_version, candidate):
+def _resolve_target_segments(engine, registry, target_id, target_version, candidate, media_store=None):
     spec = candidate.to_embedding_spec()
 
     def build(record):
-        target_result = engine.embed_video_segments(_target_artifact(record))
-        return target_result.segments, target_result.coarse_vector
+        artifact, is_temp = _target_artifact(record, media_store)
+        try:
+            target_result = engine.embed_video_segments(artifact)
+            return target_result.segments, target_result.coarse_vector
+        finally:
+            if is_temp:
+                artifact.cleanup()
 
     try:
         return registry.get_or_build_segment_embedding(target_id, target_version, spec, build)
@@ -204,3 +242,11 @@ def _resolve_target_segments(engine, registry, target_id, target_version, candid
             f"target {target_id!r} version {target_version!r} embedding failed: {exc}",
             error_type=type(exc).__name__,
         ) from exc
+    except SharedArtifactStoreError as exc:
+        # Phase 13D: the shared artifact store (embedding cache and/or
+        # target media) was unreachable — an infra blip, not a fact about
+        # this job or this target. Retry through the existing job retry
+        # machinery rather than treating it as a permanent routing/media
+        # problem (audit §11: never silently fall back to a host-local
+        # cache and call the result distributed).
+        raise TransientFailure(str(exc), error_type=type(exc).__name__) from exc

@@ -1927,3 +1927,10 @@ validation from scratch).
 entrypoint + Phase 13C production observability are all reflected above.
 The one remaining blocker (#2, multi-host target cache) is unimplemented —
 awaiting instruction before starting it.**
+
+**Update, Phase 13D:** blocker #2 has a deeper audit
+(`docs/architecture/phase-13d-multi-host-target-cache-audit.md`) and an
+implementation (`docs/architecture/phase-13d-distributed-target-
+artifacts.md`) — see that document for the shared-storage backend, the
+target-media fleet-accessibility fix, and the multi-host simulation test
+this section's "Recommendation for Phase 13D" anticipated.

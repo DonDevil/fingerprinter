@@ -72,7 +72,8 @@ def _build_registry(redis_client: Redis, cache_dir: Path) -> TargetRegistry:
 def _prewarm_target(registry: TargetRegistry, engine: DINOv2EmbeddingEngine, target_id: str, version: str) -> None:
     registry.register_target(target_id, version, str(VIDEO_PATH))
     record = registry.get_target(target_id, version)
-    result = engine.embed_video_segments(_target_artifact(record))
+    target_artifact, _ = _target_artifact(record)
+    result = engine.embed_video_segments(target_artifact)
     registry.register_segment_embedding(target_id, version, result.to_embedding_spec(), result.segments, result.coarse_vector)
 
 
