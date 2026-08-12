@@ -31,7 +31,7 @@ don't yet).
 
 ## 2. Pipeline overview
 
-```
+```text
 Redis Stream (fingerprint:jobs:stream:{priority})
         │  XREADGROUP (consumer group "fingerprinter-workers")
         ▼

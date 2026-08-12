@@ -118,11 +118,11 @@ share one Redis server.
 Logical database numbers *are* used to separate environments during
 development/testing:
 
-| Use              | Redis URL                        | Configured in |
-|------------------|-----------------------------------|----------------|
+| Use | Redis URL | Configured in |
+| ------------------ | ----------------------------------- | ---------------- |
 | Production/dev worker | `redis://localhost:6379/0` (default) | `REDIS_URL` env var, see `docs/usage.md` |
-| Automated tests   | `redis://localhost:6379/15` | `tests/conftest.py`, override with `FINGERPRINTER_TEST_REDIS_URL` |
-| Benchmarks        | `redis://localhost:6379/14` | `benchmarks/*.py` (`BENCH_REDIS_URL` constant) |
+| Automated tests | `redis://localhost:6379/15` | `tests/conftest.py`, override with `FINGERPRINTER_TEST_REDIS_URL` |
+| Benchmarks | `redis://localhost:6379/14` | `benchmarks/*.py` (`BENCH_REDIS_URL` constant) |
 
 Do not point a real worker's `REDIS_URL` at db 14 or 15 — the test suite
 and benchmarks both `FLUSHDB` their database before and after every
@@ -142,10 +142,10 @@ document or provide that hardening itself.
 
 `EMBEDDING_DEVICE` selects the DINOv2 inference device:
 
-| Value  | Behavior |
-|--------|----------|
-| `auto` (default) | CUDA if `torch.cuda.is_available()`, else CPU |
-| `cpu`  | Always CPU |
+| Value  | Behavior                                                                                      |
+|--------|----------                                                                                     |
+| `auto` |(default) CUDA if `torch.cuda.is_available()`, else CPU                                        |
+| `cpu`  | Always CPU                                                                                    |
 | `cuda` | CUDA required; raises `DeviceUnavailableError` at worker startup if no CUDA device is visible |
 
 Install `torch`/`torchvision` with CUDA support the normal PyTorch way

@@ -141,7 +141,7 @@ dev machine, not measured against a real target-library workload.
 acquirer, engine, registry, matcher_config=None) -> Callable[[Job],
 Result]`, matching `Worker.process_claim`'s handler contract:
 
-```
+```text
 claim -> acquire candidate (Phase 5) -> embed candidate segments (Phase 9 engine)
        -> resolve target segments (cache-first, build-on-miss, §4)
        -> match_segments (Phase 9)
@@ -228,7 +228,7 @@ actually need an answer, since it's the first phase with a real handler
 that can fail mid-pipeline.
 
 | Failure | Mapping | Why |
-|---|---|---|
+| --- | --- | --- |
 | Acquisition transient/permanent | `TransientFailure`/`PermanentFailure` | Unchanged from Phase 5. |
 | Candidate embedding fails (`UnsupportedMediaError`/`InferenceError` on the *candidate*) | `Result(decision=PROCESSING_FAILURE)` | `work_queue.results.Result`'s own docstring names exactly this ("corrupt media, algorithm error") as what `PROCESSING_FAILURE` exists for — a completed job with unusable evidence is more useful downstream (crawler sees a definitive record) than a silent terminal failure with none at all. **Diverges from `embedding/errors.py`'s Phase-7 table**, which was written before `PROCESSING_FAILURE` had anywhere to be written to. |
 | Target embedding fails while building the segment cache (`UnsupportedMediaError` -> `PermanentFailure`, `InferenceError` -> `TransientFailure`) | per `embedding/errors.py`'s table, applied literally | Not the candidate's fault and not evidence about it — an operational/config problem (broken target registration) that fails identically for every job against this target until ops fixes it. Belongs at the job/worker level, not folded into a per-candidate `Result`. |
@@ -243,7 +243,7 @@ Phase 9 already flagged as provisional (`matching/config.py`). New
 non-numeric/architectural decisions, all **PROVISIONAL**:
 
 | Decision | Status | Note |
-|---|---|---|
+| --- | --- | --- |
 | `lock_ttl_ms=600_000` | PROVISIONAL HEURISTIC | Not measured against a real embedding workload; see §4's limitation. |
 | `poll_interval_s=1.0` / `poll_timeout_s=600.0` | PROVISIONAL HEURISTIC | Symmetric with `lock_ttl_ms` by construction, not independently justified. |
 | "matched if any technique matched" (§7) | ARCHITECTURAL, PROVISIONAL | The disjunction rule itself is a product decision (recall over precision when combining independent techniques); no cross-technique calibration data exists to validate it against, and only one technique exists to test it with today. |

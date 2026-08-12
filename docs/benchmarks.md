@@ -16,7 +16,7 @@ measured once, not a live/current SLA.
 ## What each benchmark measures
 
 | Script | Measures | Redis? | Network? |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `python -m benchmarks.bench_embedding` | `DINOv2EmbeddingEngine.embed_video_segments`: model-load time, cold vs. steady-state inference, separated per phase-11's "never mix cold and warm into one number" rule | No | No |
 | `python -m benchmarks.bench_matching` | `matching.matcher.match_segments` in isolation against synthetic embedding arrays at increasing sizes — is O(N·M) dense cosine matching material next to DINOv2 inference cost? | No | No |
 | `python -m benchmarks.bench_integration_overhead` | The cost `integration.submission.FingerprintJobSubmitter` + the full Redis Streams claim/commit path add on top of a bare handler call — isolates queue/submission overhead from DINOv2 inference cost | Yes (`db 14`) | Loopback only |

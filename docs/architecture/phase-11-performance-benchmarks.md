@@ -32,7 +32,7 @@ machine — **not** a production fleet node. See §20 for what that does and
 does not license inferring about multi-host behavior.
 
 | | |
-|---|---|
+| --- | --- |
 | CPU | Intel Core i5-11400H, 6 physical cores / 12 logical (hyperthreaded) |
 | RAM | 15.7 GiB total, ~9.4–10.0 GiB available at benchmark time (rest in buff/cache + other running processes) |
 | GPU | NVIDIA GeForce RTX 2050, 4096 MiB VRAM — **present but not usable by torch in this environment**, see §3 |
@@ -78,7 +78,7 @@ default-off constructor parameter as a direct result of what these
 benchmarks found — see §22.
 
 | File | Purpose |
-|---|---|
+| --- | --- |
 | `benchmarks/common.py` | Stopwatch, `/proc`-based CPU%/RSS sampling, `nvidia-smi`-based GPU sampling, latency statistics, environment capture, JSON result writer |
 | `benchmarks/gen_test_video.py` | Deterministic synthetic benchmark videos (ffmpeg `testsrc2`, no external asset) |
 | `benchmarks/file_server.py` | Minimal loopback static-file HTTP server for realistic (non-mocked) acquisition |
@@ -123,7 +123,7 @@ Two synthetic videos (`benchmarks/fixtures/`, generated via
 fixtures — see `benchmarks/gen_test_video.py`):
 
 | File | Duration | Resolution | fps | Size |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | `bench_15s.mp4` | 15s | 320x240 | 24 | 1.34 MiB |
 | `bench_60s.mp4` | 60s | 320x240 | 24 | 5.41 MiB |
 
@@ -218,7 +218,7 @@ must not become the bottleneck" instruction) — plus direct
 in isolation, no acquisition, no Redis. **MEASURED**, `benchmarks/results/bench_embedding_20260812T115617_ced8245e.json`.
 
 | Video | Threads | Model load | First (cold) call | Steady-state mean | Steady p95 | Segments | Throughput |
-|---|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- | --- |
 | 15s | 6 (torch default) | 0.12s | 0.867s | **0.850s** | 0.859s | 6 | 7.06 segments/s, 17.64 video-s/s |
 | 15s | 1 | 0.05s | 3.069s | **3.089s** | 3.101s | 6 | 1.94 segments/s, 4.86 video-s/s |
 | 60s | 6 (torch default) | 0.047s | 1.744s | **1.724s** | 1.732s | 12 (`segment_duration_s=5.0`, production default) | 6.96 segments/s, 34.80 video-s/s |
@@ -253,7 +253,7 @@ A direct calibration of `DINOv2EmbeddingEngine._embed_pil_image` alone
 (single 240x320 synthetic frame, warm, averaged over 8 calls):
 
 | torch threads | mean per-frame time |
-|---|---|
+| --- | --- |
 | 6 (default, = physical core count) | 127ms |
 | 1 | 493ms |
 
@@ -276,7 +276,7 @@ bypassed so every run pays the full O(N×M) cost. **MEASURED**,
 `benchmarks/results/bench_matching_20260812T115316_0e2935c6.json`.
 
 | Target x Candidate | Comparisons | Mean | p95 | Comparisons/s |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | 100x100 | 10,000 | 4.03ms | 5.37ms | 2.48M/s |
 | 500x500 | 250,000 | 28.75ms | 30.95ms | 8.70M/s |
 | 1000x1000 | 1,000,000 | 59.17ms | 63.26ms | 16.90M/s |
@@ -304,7 +304,7 @@ pre-warmed once (`prewarm_build_s=0.921s`, excluded from stats below).
 **MEASURED**, `benchmarks/results/bench_pipeline_A_warm_*.json`.
 
 | Stage | Mean | p95 | Min | Max | % of handler_total |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | `claim_s` (Redis XREADGROUP) | 0.35ms | 0.46ms | 0.31ms | 0.49ms | 0.04% |
 | `acquire_s` (loopback HTTP + ffprobe validation) | 41.53ms | 43.10ms | 35.83ms | 45.79ms | 4.6% |
 | `candidate_embed_s` (DINOv2, 6 segments) | 860.81ms | 896.86ms | 838.84ms | 902.86ms | **95.1%** |
@@ -327,7 +327,7 @@ fresh target, single worker, no contention. **MEASURED**,
 `benchmarks/results/bench_pipeline_B_cold_*.json`.
 
 | Stage | Mean | p95 | Min | Max |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | `acquire_s` | 40.35ms | 43.03ms | 38.51ms | 43.03ms |
 | `candidate_embed_s` | 937.76ms | 1130.30ms | 858.50ms | 1130.30ms |
 | `target_resolve_s` (lock acquire + build + register) | 959.90ms | 1425.46ms | 883.06ms | 1425.46ms |
@@ -355,7 +355,7 @@ never-before-seen target. **MEASURED**,
 `benchmarks/results/bench_pipeline_C_contention_*.json`.
 
 | Contenders | Builds | Waiters | Builder latency | Waiter mean latency | Note |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | 4 | **1** | 3 | 3.205s | 4.007s | ran to completion |
 | 8 | — | — | — | — | **skipped**: available RAM 9198 MiB < required 12224 MiB (8 x 1400 MiB margin + 1024 MiB floor) |
 
@@ -377,7 +377,7 @@ flagged in Phase 10 as a provisional heuristic, "not measured against a
 real embedding workload."
 
 | | |
-|---|---|
+| --- | --- |
 | Observed max build time (this phase, n=8 cold-cache reps + n=4 contention) | 3.205s |
 | Observed p95 build time (8 cold-cache samples) | ~1.42s |
 | Current `lock_ttl_ms` | 600,000ms (600s) |
@@ -416,7 +416,7 @@ this phase.
 ## 18. Target-cache effectiveness
 
 | | |
-|---|---|
+| --- | --- |
 | Cache hit cost (warm `target_resolve_s`) | 2.14ms mean |
 | Cache miss + build cost (cold `target_resolve_s`) | 959.90ms mean |
 | Work the cache removes per hit | ~958ms (essentially one full DINOv2 embedding pass) |
@@ -448,7 +448,7 @@ design (that's Workload C). **MEASURED**,
 ### 19a. `isolated-1thread` (each worker process pinned to 1 torch thread)
 
 | Workers | Throughput (jobs/s) | Scaling efficiency vs. 1 worker | `candidate_embed_s` mean | Peak RSS (sum) | Peak process CPU% (sum) |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | 1 | 0.320 | 1.00 | 3082ms | 1073 MiB | 250% |
 | 2 | 0.599 | 0.94 | 3299ms | 2139 MiB | 349% |
 | 4 | 1.035 | 0.81 | 3796ms | 4287 MiB | 653% |
@@ -465,7 +465,7 @@ recorded verbatim in the JSON).
 ### 19b. `default-threads` (each worker process uses torch's own default — 6 threads, = physical core count)
 
 | Workers | Threads used | Total threads in flight | Throughput (jobs/s) | Scaling efficiency vs. 1 worker | `candidate_embed_s` mean |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | 1 | 6 | 6 | 1.080 | 1.00 | 882ms |
 | 2 | 6 | 12 (= all logical CPUs) | 1.086 | 0.50 | 1751ms |
 | 4 | 6 | 24 (2x logical CPU oversubscription) | **0.295** | **0.068** | **13,158ms** |
@@ -544,7 +544,7 @@ needle on single-job latency at today's scale.
 Classified per the phase brief's P0–P3 scheme:
 
 | Finding | Classification | Reasoning |
-|---|---|---|
+| --- | --- | --- |
 | CPU thread-pool oversubscription across concurrent worker processes (§19b) causes 15x per-job slowdown and net-negative scaling | **P1 — demonstrated performance bottleneck** | Directly measured, severe, reproducible; fixable with a minimal, additive, zero-default-behavior-change API surface |
 | No pipeline optimization opportunity found in acquisition/matching/Redis/target-cache stages (§14, §13, §11, §18) | N/A — nothing to fix | Each is already under 5% of job latency; optimizing further would be exactly the "microbenchmark-level, not actual-bottleneck" work the phase brief warns against |
 | Segment JSON storage format (`target/segment_cache.py`) | **P3 — speculative/future** | Not shown to matter at any tested scale (§18); that module's own docstring already names the trigger condition ("if Phase 11 benchmarks show JSON (de)serialization cost dominates") — this phase's data says it doesn't |
@@ -597,7 +597,7 @@ set_num_threads`), so the quantitative before/after *is* §19a vs. §19b —
 re-stated for clarity:
 
 | | Before (no supported way to control this from the engine) | After (via `torch_num_threads=1`) |
-|---|---|---|
+| --- | --- | --- |
 | 4 workers, per-job embed time | 13,158ms | 3,796ms (**3.5x faster**) |
 | 4 workers, throughput | 0.295 jobs/s | 1.035 jobs/s (**3.5x higher**) |
 | 4 workers, scaling efficiency vs. 1 worker | 0.068 (net negative) | 0.81 (near-linear) |

@@ -21,7 +21,7 @@ structured `worker_fatal_error` log line if anything is invalid.
 ### Environment variables
 
 | Variable | Purpose | Default | Required |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `REDIS_URL` | Redis connection URL (`redis://`, `rediss://`, or `unix://`) | `redis://localhost:6379/0` | No |
 | `WORKER_CONSUMER_NAME` | Redis Streams consumer name for this process | `worker-{hostname}-{pid}-{thread_id}` | No |
 | `WORKER_LEASE_MS` | How long a claimed job may go unacked before another worker may `XAUTOCLAIM` it | `30000` | No |

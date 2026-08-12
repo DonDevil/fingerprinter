@@ -42,7 +42,7 @@ Unchanged from `docs/architecture/phase-12-crawler-fingerprinter-integration.md`
 §3/§7 — restated only as the baseline this audit measures against:
 
 | Layer | Module | State |
-|---|---|---|
+| --- | --- | --- |
 | Job contract | `work_queue/jobs.py` | Complete, schema-versioned |
 | Producer | `work_queue/producer.py`, `integration/submission.py` | Complete |
 | Worker | `worker/fingerprint_worker.py` | Complete as a *library class* — no process wrapper |
@@ -58,7 +58,7 @@ Unchanged from `docs/architecture/phase-12-crawler-fingerprinter-integration.md`
 
 **MEASURED (file inventory):**
 
-```
+```text
 find . -iname "*entrypoint*" -o -iname "*__main__*" -o -iname "run_worker*" -o -iname "worker_main*"
   -> (no matches outside old/)
 grep -rl "if __name__" **/*.py
@@ -80,6 +80,7 @@ is a well-built library class (`run()`, `stop()`, `claim_one()`,
 `reclaim_stale()`, `promote_due_retries()` are all correct and covered by
 `tests/test_worker.py`, `tests/test_crash_recovery.py` — see below). But a
 library class is not a deployable unit. Nothing in this repo:
+
 - constructs a `Redis` client with production-appropriate connection
   settings (pool size, `retry_on_timeout`, `health_check_interval` — none
   of these are referenced anywhere in production code; every call site
@@ -242,6 +243,7 @@ lock at all" (N immediate parallel duplicate builds, no stalling) or "a
 truly shared cache" (1 build, N fast hits).
 
 **Classification:**
+
 - Single-host deployment (the only kind validated through Phase 1-12):
   **CORRECT.** The lock, the cache, and the registry all behave exactly
   as documented and tested.
@@ -318,6 +320,7 @@ VALIDATION**, unchanged from Phase 12 §25.
 phase's finding, confirming nothing about the environment changed.
 
 **Code inspection, `embedding/dinov2_engine.py:56-143`:**
+
 - `device="cpu"` → `torch.device("cpu")`, unconditional.
 - `device="cuda"` → raises `DeviceUnavailableError` immediately if
   `torch.cuda.is_available()` is `False`, rather than silently falling
@@ -356,7 +359,7 @@ blocker in the sense of "known broken"; a blocker in the sense of
 system, with one clear gap.
 
 | Concern | Finding | Classification |
-|---|---|---|
+| --- | --- | --- |
 | Connect/read timeouts | `(connect_timeout_s=5.0, read_timeout_s=30.0)` passed to every `requests` call, both defaults finite | CORRECT |
 | Redirects | Bounded (`max_redirects=5`, default), scheme re-checked on *every* hop (`_check_scheme` inside the `while True` loop, `acquirer.py:101-119`) — a redirect cannot smuggle a `file://`/`ftp://` hop past the scheme allowlist | CORRECT |
 | Size limit | Enforced against actual streamed bytes (`total += len(chunk)` inside the write loop), never trusts `Content-Length` — a server that lies about `Content-Length` or omits it entirely still gets cut off at `max_bytes` (100 MiB default) | CORRECT |
@@ -390,7 +393,7 @@ brief's explicit instruction** ("do not access random external websites")
 
 **MEASURED (inventory + code inspection).**
 
-```
+```text
 grep -rl "import logging\|logger\." **/*.py   -> zero matches in production code
 grep -rn "print(" **/*.py (excluding tests)   -> only benchmarks/*.py
 find . -iname "*cli*" -o -iname "*admin*" -o -iname "*metrics*" -o -iname "*dashboard*" -o -iname "*health*"
@@ -401,7 +404,7 @@ find . -iname "*cli*" -o -iname "*admin*" -o -iname "*metrics*" -o -iname "*dash
 ships (all via raw `redis-cli`, nothing packaged):**
 
 | Question | Answer available? | How |
-|---|---|---|
+| --- | --- | --- |
 | Is a specific job pending/claimed/retrying/done? | Yes | `HGETALL fingerprint:job:{job_id}:state`, or `integration.outcome.resolve_outcome()` if called from Python |
 | What did a completed job decide? | Yes | `HGETALL fingerprint:job:{job_id}:result` |
 | Queue backlog size (lag + pending)? | Yes | `XINFO GROUPS fingerprint:jobs:stream:{priority}` — exactly what `integration.backpressure.count_outstanding` already reads |
@@ -429,7 +432,7 @@ Synthesizing §2-§7 against the specific distributed-systems properties a
 crawler-driven, multi-host deployment needs:
 
 | Property | Status | Evidence |
-|---|---|---|
+| --- | --- | --- |
 | At-most-once job claim (no two workers process the same stream entry concurrently) | CORRECT | `XREADGROUP`/CAS-fenced Lua scripts, Phase 1-3, re-verified this session via `test_worker.py`/`test_crash_recovery.py` passing |
 | Crash-safe reclaim (a dead worker's job is recovered, not lost) | CORRECT | `XAUTOCLAIM`-based `reclaim_stale()`, Phase 2, re-verified this session |
 | At-least-once, deduplicated submission | CORRECT | `SET NX` marker + deterministic `job_id`, Phase 12, re-verified this session |
@@ -449,7 +452,7 @@ backend, acquirer host validation).
 ## 9. Findings table (all findings, most severe first)
 
 | # | Area | Finding | Classification |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 1 | Worker/deployment | No worker process entrypoint exists anywhere in the repo; the system cannot be run in production today | PRODUCTION BLOCKER |
 | 2 | Target cache | Build-on-miss lock is fleet-wide (Redis-correct) but the cache it protects is host-local; multi-host losers stall up to 10 min per job before duplicating the build anyway | PRODUCTION BLOCKER (multi-host only; single-host CORRECT) |
 | 3 | Media acquisition | No SSRF / internal-network-resolution protection on outbound candidate URL fetches (including redirect targets) | PRODUCTION BLOCKER |
@@ -495,6 +498,7 @@ backend, acquirer host validation).
   defect.
 
 ## 12. Deferred work (explicitly out of scope for Phase 13 audit and for
+
 the fixes that would follow it, restated/confirmed from Phase 12 §26,
 still true)
 
@@ -509,10 +513,11 @@ still true)
 - GPU load/throughput benchmarking (blocked on hardware access).
 
 ## 13. Required fixes (files that would need modification — for a future
+
 implementation step; **nothing here was implemented this phase**)
 
 | Blocker | Files needing changes | Nature of change |
-|---|---|---|
+| --- | --- | --- |
 | #1 No entrypoint | New: `worker/main.py` (or similar) | New module: parse config/env, construct `Redis`/`DINOv2EmbeddingEngine`/`MediaAcquirer`/`TargetRegistry`/`Worker`, wire `SIGTERM`/`SIGINT` → `worker.stop()`, run `worker.run(handler)`, structured startup-failure logging |
 | #2 Multi-host cache | New: e.g. `target/redis_cache.py` (or object-storage-backed) implementing `TargetEmbeddingCache`/`SegmentEmbeddingCache`; **no change needed** to `target/registry.py`, `worker/matching_handler.py`, or the lock — the `ABC` boundary already isolates this (confirmed §3) | New backend implementation only |
 | #3 SSRF | `acquisition/acquirer.py` (`_send`/`_check_scheme` or a new pre-connect hook), possibly `acquisition/validation.py` | Add resolved-IP validation before connecting on the initial request *and* every redirect hop — reject loopback/link-local/private/reserved ranges by default, configurable allowlist for legitimate internal test targets |
@@ -522,7 +527,7 @@ implementation step; **nothing here was implemented this phase**)
 ## 14. Tests needed for each fix (for the future implementation step)
 
 | Fix | Tests needed |
-|---|---|
+| --- | --- |
 | #1 Entrypoint | Process starts, connects, claims a job end-to-end (extends existing e2e pattern); SIGTERM during an in-flight job does not ack it (mirrors `test_graceful_shutdown_does_not_ack_unfinished_work` at the process level, e.g. via `subprocess`); startup failure (bad Redis URL / bad model path) exits non-zero with a clear error, does not hang |
 | #2 Shared cache backend | Same contract tests `FilesystemEmbeddingCache`/`FilesystemSegmentEmbeddingCache` already have, run against the new backend (interface parity); a genuine two-Redis-client (simulating two hosts) test proving a build on "host A" becomes visible to "host B" without a timeout — the test this audit could not run because no second cache implementation exists yet |
 | #3 SSRF | Loopback/private/link-local URL rejected before any request is sent; a redirect chain that starts external and 302s to an internal address is rejected at the redirect hop, not just the initial URL; legitimate external URL still succeeds (regression guard against over-blocking) |
@@ -781,7 +786,7 @@ the fingerprinter to fetch from internal addresses).
 New file: `tests/test_acquisition_ssrf.py` (22 tests, all passing):
 
 | # | Test(s) | Covers |
-|---|---|---|
+| --- | --- | --- |
 | 1 | `test_ipv4_loopback_rejected` (2 cases) | IPv4 loopback |
 | 2 | `test_ipv6_loopback_rejected` | IPv6 loopback |
 | 3 | `test_rfc1918_private_ipv4_rejected` (3 cases) | RFC1918 private IPv4 |
@@ -831,7 +836,7 @@ already bounded by 5s connect / 30s read timeouts.
 
 Full commands run this session, exact counts:
 
-```
+```text
 python -m pytest tests/test_acquisition_ssrf.py -v
   -> 22 passed
 
@@ -892,7 +897,7 @@ revisiting anything else touched in this phase.
 ## 19. Phase 13B — Production worker entrypoint
 
 **Implemented this phase.** Addresses §9 findings #1 and #5 / §10 blockers
-#1 and #5 only. Blockers #2 (multi-host target cache) and #4
+ #1 and #5 only. Blockers #2 (multi-host target cache) and #4
 (observability) are untouched, per this phase's scope.
 
 ### Process architecture
@@ -903,7 +908,7 @@ dependency order Phase 12's tests and benchmarks already use (confirmed by
 inspecting `tests/test_matching_handler.py` and
 `benchmarks/bench_pipeline.py` before writing this):
 
-```
+```text
 Redis client (this module's own Redis(...)/from_url(...) call site)
   -> MediaAcquirer(max_bytes=...)
   -> TargetRegistry(redis_client,
@@ -926,7 +931,7 @@ docstring already specified the pipeline it expects to be driven by.
 
 ### Exact command to start a worker
 
-```
+```text
 python -m worker.main
 ```
 
@@ -936,7 +941,7 @@ is no required CLI argument.
 ### Configuration
 
 | Variable | Default | Maps to |
-|---|---|---|
+| --- | --- | --- |
 | `REDIS_URL` | `redis://localhost:6379/0` | `Redis.from_url(...)` |
 | `WORKER_CONSUMER_NAME` | unset -> `Worker`'s own `default_consumer_name()` | `Worker(consumer_name=...)` |
 | `WORKER_LEASE_MS` | `30000` (mirrors `Worker.__init__`'s own default) | `Worker(lease_ms=...)` |
@@ -974,7 +979,7 @@ client, unchanged. Connection settings, checked against the installed
 redis-py version (8.1.0) before use rather than assumed:
 
 | Setting | Value | Why |
-|---|---|---|
+| --- | --- | --- |
 | `decode_responses` | `True` | Every existing production/test call site (`tests/conftest.py`, `benchmarks/bench_pipeline.py`) uses this; `Job.from_stream_fields`, `JobStateStore`, etc. all assume `str`, not `bytes`, fields. Confirmed by grep before use — this is not a new convention. |
 | `socket_connect_timeout` | `5.0s` | Bounds how long startup can hang if Redis is unreachable — fixed, not exposed as an env var, to keep the configuration surface minimal per this phase's scope. |
 | `socket_timeout` | `10.0s` | Bounds any single blocking Redis call other than `XREADGROUP`'s own explicit `block_ms` argument. |
@@ -1102,7 +1107,7 @@ was run in this phase (out of scope, per the task brief).
 **CPU sizing rule an operator must apply manually (not automated by this
 entrypoint):**
 
-```
+```text
 worker processes per host  x  TORCH_NUM_THREADS per process  <=  host's physical core count
 ```
 
@@ -1157,7 +1162,7 @@ was found, not proven impossible by a dedicated stress test).
 New file: `tests/test_worker_main.py` (24 tests, all passing):
 
 | Area | Test(s) |
-|---|---|
+| --- | --- |
 | Config defaults | `test_config_defaults_when_env_is_empty` |
 | Config overrides | `test_config_overrides_from_env` |
 | Invalid config -> `ConfigError` | `test_invalid_config_raises_config_error` (parametrized, 11 cases) |
@@ -1204,7 +1209,7 @@ of the SSRF default — neither was judged worth doing in this pass.
 
 ### Testing discipline — exact commands and counts run this session
 
-```
+```text
 python -m pytest tests/test_worker_main.py -q
   -> 24 passed
 
@@ -1352,7 +1357,7 @@ Event names actually emitted, each tied to a boundary the current code
 already observes (no invented states):
 
 | Event | Emitted by | When |
-|---|---|---|
+| --- | --- | --- |
 | `worker_started` | `worker/main.py` | after config validation, before Redis connect — carries the full config snapshot (§9 below) |
 | `worker_ready` | `worker/main.py` | after all components construct successfully, right before `worker.run()` |
 | `worker_shutdown_requested` | `worker/main.py`'s signal handler | on SIGTERM/SIGINT |
@@ -1477,7 +1482,7 @@ no refactor beyond adding `time.monotonic()` pairs around code that was
 already there):
 
 | Stage | Boundary measured |
-|---|---|
+| --- | --- |
 | `media_acquisition` | `acquirer.acquire(job.media_url)` |
 | `candidate_embedding` | `engine.embed_video_segments(artifact)` on the candidate |
 | `target_resolution` | `_resolve_target_segments(...)` — see measurement gap below |
@@ -1591,7 +1596,7 @@ writing any code this phase), and the stdlib already answers everything
 §7 asks for on this project's only deployment target (Linux):
 
 | Field | Source | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `rss_current_bytes` | `/proc/self/status`'s `VmRSS` | `None` on any non-Linux platform or read failure — never guessed |
 | `rss_peak_bytes` | `resource.getrusage(RUSAGE_SELF).ru_maxrss`, running max across samples | KB->bytes on Linux; the class also handles macOS's already-bytes convention, documented in code, though this project only runs on Linux today |
 | `cpu_time_s` | `ru_utime + ru_stime` | **Cumulative** process CPU time since start — monotonically increasing, explicitly **not** a percentage |
@@ -1635,7 +1640,7 @@ Two new environment variables, both optional, validated the same way
 every other `WorkerConfig` field is:
 
 | Variable | Default | Validation |
-|---|---|---|
+| --- | --- | --- |
 | `WORKER_OBSERVABILITY_INTERVAL_MS` | `60000` | must be `> 0` |
 | `WORKER_RUN_OUTPUT` | unset (no file written) | none — any path string; directories created on first write |
 
@@ -1668,7 +1673,7 @@ writes (`tempfile.mkstemp` in the same directory + `os.replace`, so a
 crash mid-write can never leave a truncated/corrupt file at the real path)
 a JSON object shaped:
 
-```
+```text
 {
   "metadata": {worker_id, hostname, pid, consumer_name, namespace, stream, consumer_group, schema_version},
   "configuration": {...config_snapshot(), see above...},
@@ -1701,7 +1706,7 @@ successfully writing the real run record. The resulting, externally
 checkable states:
 
 | Marker file | Run-output file | Interpretation |
-|---|---|---|
+| --- | --- | --- |
 | absent | absent | worker never started (or `WORKER_RUN_OUTPUT` unset) |
 | present | absent | worker started, has **not** (yet, or ever) shut down cleanly — still running, or crashed |
 | absent | present, `shutdown.clean=true` | worker ran and exited cleanly |
@@ -1760,7 +1765,7 @@ three times for stability.
 **Measured** (three runs, local dev machine):
 
 | Run | Baseline (no observer) | With `ObservingWorkerObserver` | Delta/job |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 1 | 219.2us/job | 289.0us/job | 69.8us |
 | 2 | 222.9us/job | 302.2us/job | 79.2us |
 | 3 | 225.4us/job | 307.9us/job | 82.5us |
@@ -1787,7 +1792,7 @@ New file: `tests/test_worker_observability.py` (20 tests, all passing),
 covering all 15 areas the task brief named as a minimum:
 
 | # | Area | Test(s) |
-|---|---|---|
+| --- | --- | --- |
 | 1 | Structured startup event | `test_structured_event_is_valid_json_with_identity_fields`, `test_worker_process_emits_worker_started_and_worker_ready_as_valid_json` |
 | 2 | Config snapshot doesn't leak credentials | `test_config_snapshot_does_not_leak_redis_credentials` |
 | 3 | Job claim increments counter | `test_job_claim_increments_counter` |
@@ -1810,7 +1815,7 @@ which parses the real subprocess's stdout as JSON lines end-to-end.
 
 ### Testing discipline — exact commands and counts run this session
 
-```
+```text
 python -m pytest tests/test_worker_observability.py -q
   -> 20 passed
 
@@ -1849,7 +1854,7 @@ every other file's test count is unchanged).
 
 ### Enabling this in a real run
 
-```
+```text
 WORKER_OBSERVABILITY_INTERVAL_MS=60000 \
 WORKER_RUN_OUTPUT=/var/run/fingerprinter/worker-1.json \
 python -m worker.main

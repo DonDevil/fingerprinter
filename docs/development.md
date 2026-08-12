@@ -2,7 +2,7 @@
 
 ## Repository structure
 
-```
+```text
 acquisition/    HTTP(S) media download, SSRF guard, ffprobe validation
 embedding/      DINOv2 model wrapper, frame extraction, embedding config
 matching/       Segment matching, aggregation, matcher config/thresholds

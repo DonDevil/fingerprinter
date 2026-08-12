@@ -83,7 +83,7 @@ Other facts load-bearing for this phase's design:
 it; full detail lives in the Phase 1-11 docs and code.
 
 | Layer | Module | Role |
-|---|---|---|
+| --- | --- | --- |
 | Job contract | `work_queue/jobs.py` | `Job` dataclass <-> Redis Stream fields |
 | Redis keys | `work_queue/keys.py`, `target/keys.py` | `fingerprint:*` namespace (§7) |
 | Producer | `work_queue/producer.py` | Fire-and-forget `XADD` — "library used by crawler" per `docs/design/design-proposal-1.md` §2 |
@@ -160,7 +160,7 @@ additive field.
 for except an explicit schema version:
 
 | Brief's wishlist field | `Job` field (existing, unless noted) |
-|---|---|
+| --- | --- |
 | `job_id` | `job_id` — now derived deterministically, see §9 |
 | `schema_version` | `schema_version` **(new this phase)** |
 | `candidate_url` | `media_url` (brief's vocabulary; not renamed — see §5a) |
@@ -257,7 +257,7 @@ both into `FingerprintOutcome`, exactly the mapping table this phase's
 brief's "Result contract" section calls for:
 
 | `JobStatus` | `ResultDecision` (if completed) | `FingerprintOutcome` | Terminal? |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | *(no state hash yet)* | — | `PENDING` | no |
 | `claimed` | — | `PENDING` | no |
 | `retry_scheduled` | — | `RETRYABLE_ERROR` | no |
@@ -294,7 +294,7 @@ classification").
 inspection** (not modified this phase) + **this phase's one addition**.
 
 | Namespace | Owner | Examples | Purpose |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `crawler:*` | crawler (`core/redis_frontier.py`) | `crawler:urls:known`, `crawler:domain:{d}:queue`, `crawler:inflight` | URL frontier — unrelated to fingerprinting |
 | `evidence:*` | crawler (`storage/redis_media_evidence_store.py`) | `evidence:asset:{aid}`, `evidence:jobs:queue`, `evidence:result:{aid}` | Crawler's own media-evidence/job tracking (§2, §4) |
 | `fingerprint:jobs:stream:{priority}` | fingerprinter, Phase 1 | — | Job stream (per-priority, §12) |
@@ -330,7 +330,7 @@ against the same Redis server in the same CI run.
 through the new `integration.submission.FingerprintJobSubmitter` instead
 of a bare `JobProducer.enqueue()`:
 
-```
+```text
 synthetic/real crawler candidate
         |
         v
@@ -401,7 +401,7 @@ mechanisms, each closing a different duplicate-delivery window:
 **Deterministic identity across the pipeline** (brief's checklist):
 
 | Identity | Mechanism |
-|---|---|
+| --- | --- |
 | Job identity | `job_id` — deterministic hash (above) |
 | Candidate identity | `candidate_url`, part of the hash input |
 | Target identity | `(target_id, target_version)`, part of the hash input, unchanged from Phase 6-10 |
@@ -429,7 +429,7 @@ Failure classification (brief's checklist, all pre-existing except the
 `FingerprintOutcome` mapping in §6):
 
 | Condition | Existing mapping | `FingerprintOutcome` |
-|---|---|---|
+| --- | --- | --- |
 | HTTP 404/403/410, unsupported scheme, unsupported content-type | `PermanentAcquisitionError` -> `PermanentFailure` (Phase 5) | `PERMANENT_ERROR` |
 | Connect/read timeout, DNS/connection reset, 429/5xx | `TransientAcquisitionError` -> `TransientFailure` (Phase 5) | `RETRYABLE_ERROR` until attempts exhausted, then `PERMANENT_ERROR` |
 | Invalid/corrupt media (fails `ffprobe`) | `InvalidMediaError` -> `PermanentAcquisitionError` (Phase 5) | `PERMANENT_ERROR` |
@@ -452,7 +452,8 @@ combination, synthetically).
 **CURRENT IMPLEMENTATION**, mandatory per the brief.
 `integration/backpressure.py::count_outstanding()` reads `XINFO GROUPS`
 for the target priority stream and sums `lag` (not-yet-claimed backlog)
-+ `pending` (claimed-but-not-yet-acked in-flight work) — both numbers
+
+- `pending` (claimed-but-not-yet-acked in-flight work) — both numbers
 Redis Streams already tracks for `Worker.reclaim_stale()`'s own
 `XAUTOCLAIM` call, so this adds no new bookkeeping structure.
 `FingerprintJobSubmitter.submit()` rejects with
@@ -668,7 +669,7 @@ established convention.
 **MEASURED**, `tests/test_integration_e2e.py`. Exactly the flow the brief
 specifies:
 
-```
+```text
 synthetic crawler candidate (FingerprintCandidate)
         |
         v
@@ -713,7 +714,7 @@ integration-layer delta, using the same `bench_15s.mp4` fixture and
 directly comparable.
 
 | Path | Mean total | What it includes |
-|---|---|---|
+| --- | --- | --- |
 | A. Direct handler invocation | 919.56 ms | `build_matching_handler(...)`'s handler called as a plain function — acquisition + DINOv2 + match + aggregate, no Redis Streams/submission/outcome layer at all |
 | B. Full crawler-integration path | 931.77 ms | submission (validate + backpressure + dedup) + claim + *same handler* + commit + outcome resolution |
 | **Integration overhead (B - A stages only)** | **1.13 ms** | submission (0.485 ms) + commit (0.372 ms) + outcome read (0.272 ms); claim (0.355 ms) shown separately below |
@@ -722,7 +723,7 @@ n=15 reps, warm target cache (prewarmed once, excluded from timing, same
 methodology as phase-11 §14's Workload A). Breakdown:
 
 | Stage | Mean |
-|---|---|
+| --- | --- |
 | `submission_s` (validate + `XINFO GROUPS` backpressure read + `SET NX` dedup marker + `XADD`) | 0.485 ms |
 | `claim_s` (`XREADGROUP`) | 0.355 ms |
 | `commit_s` (Lua commit script) | 0.372 ms |
@@ -766,7 +767,7 @@ information).
 re-run unchanged (§24 has exact counts).
 
 | File | Covers |
-|---|---|
+| --- | --- |
 | `tests/test_integration_submission.py` (12 tests) | Candidate validation (invalid schema), job creation matching the candidate, priority stream routing, identical-candidate-same-job_id, duplicate suppression (idempotency), different-target-version-is-a-different-job, submission marker namespace, backpressure rejection + recovery + resubmission, namespace isolation from `crawler:*`/`evidence:*` |
 | `tests/test_integration_outcome.py` (11 tests) | Every `JobStatus`/`ResultDecision` combination -> `FingerprintOutcome`: pending (unclaimed/claimed), retryable, permanent (worker failure, max-attempts-exhausted, processing-failure result), skipped (malformed entry, plain-ack-no-result), match, no_match, correlation fields |
 | `tests/test_integration_e2e.py` (7 tests) | Full local flow with real CPU DINOv2 + real HTTP acquisition: self-match (MATCH), genuine NO_MATCH (distinct synthetic video content), target-version mismatch (PERMANENT_ERROR), retryable acquisition error (unreachable host), permanent acquisition error (404), worker-crash lease recovery, multiple workers processing distinct jobs without duplication |
@@ -795,14 +796,14 @@ Brief's 15-item checklist, cross-referenced:
 
 Focused (new) suite:
 
-```
+```text
 pytest -q tests/test_integration_submission.py tests/test_integration_outcome.py tests/test_integration_e2e.py
 30 passed in 10.16s
 ```
 
 Full repository suite (152 pre-Phase-12 + 30 new):
 
-```
+```text
 pytest -q
 182 passed in 32.39s
 ```

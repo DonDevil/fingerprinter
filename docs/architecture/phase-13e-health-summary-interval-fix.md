@@ -126,7 +126,7 @@ provide together.
 
 **MEASURED, this session:**
 
-```
+```text
 # Before fix (confirms the bug, matches Phase 13D's own recorded finding)
 python -m pytest -q
   -> 268 passed, 1 failed
@@ -190,7 +190,7 @@ limitations" section, unaffected by this phase.
 ## 12. Updated Phase 13 status
 
 | Item | Status |
-|---|---|
+| --- | --- |
 | 13A — SSRF protection | COMPLETE |
 | 13B — production entrypoint | COMPLETE |
 | 13C — observability | COMPLETE |

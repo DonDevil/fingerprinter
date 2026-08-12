@@ -112,7 +112,7 @@ being an invisible property of *which path happened to be configured*.
 
 ## 4. Final architecture
 
-```
+```text
 Host A                                    Host B
   |                                         |
   +-- TargetRegistry -----+                 +-- TargetRegistry -----+
@@ -300,7 +300,7 @@ One new environment variable, deliberately independent of `REDIS_URL` and
 configuration"):
 
 | Variable | Default | Effect |
-|---|---|---|
+| --- | --- | --- |
 | `SHARED_ARTIFACT_STORE_PATH` | unset | Unset: `build_registry()` constructs the original `FilesystemEmbeddingCache`/`FilesystemSegmentEmbeddingCache` pair rooted at `TARGET_CACHE_PATH` — single-host-only, exactly the pre-Phase-13D behavior, unchanged. Set to a directory: `build_registry()` constructs `SharedFilesystemEmbeddingCache`/`SharedFilesystemSegmentEmbeddingCache`/`SharedTargetMediaStore` rooted there instead — **this path MUST be a genuinely shared mount (NFS, cluster filesystem) across every worker host in the fleet.** This codebase cannot verify that at runtime; it can only verify the path is reachable at startup (§9). |
 
 No credentials, bucket names, hostnames, or cloud endpoints were added —
@@ -320,7 +320,7 @@ field, `build_registry`/`build_media_store` backend selection, fail-fast
 on an unreachable configured path).
 
 | Requirement (task brief §6/§7) | Test |
-|---|---|
+| --- | --- |
 | Two independent registries, separate local state, shared Redis + shared backend, concurrent same-target request -> exactly one build | `test_two_independent_registries_share_one_build_simulated_multi_host` |
 | Second registry observes first registry's result without rebuilding (sequential) | `test_second_registry_pure_cache_hit_after_first_registry_builds` |
 | A. Cache hit | `test_cache_hit_returns_existing_entry_without_rebuild` |
@@ -346,7 +346,7 @@ unaffected by this phase's additive changes) and both re-run clean (§13).
 
 ### Results
 
-```
+```text
 tests/test_shared_target_storage.py ................       16 passed
 tests/test_worker_main.py           .............................  29 passed
 tests/test_segment_cache.py         ..............               14 passed
@@ -378,7 +378,7 @@ directory, per the task brief's "do not run huge benchmark matrices"
 constraint. A focused, synthetic (no DINOv2/torch) comparison script was
 run once from the scratch directory:
 
-```
+```text
 cache-hit latency (local filesystem, n=50):  mean=1.932ms  median=1.572ms
 cache-hit latency (shared storage,   n=50):  mean=1.973ms  median=1.716ms
 
@@ -426,11 +426,13 @@ against.
 ## 14. Production changes (exact diff surface)
 
 **New files:**
+
 - `target/shared_storage.py` — `SharedArtifactStore`, `SharedArtifactStoreError`, `SharedTargetMediaStore`.
 - `target/shared_cache.py` — `SharedFilesystemEmbeddingCache`, `SharedFilesystemSegmentEmbeddingCache`.
 
 **Modified, additive-only (all new parameters default to the pre-existing
 behavior):**
+
 - `target/registry.py` — `TargetRegistry.__init__` gains `media_store: Optional[SharedTargetMediaStore] = None`; `register_target()` publishes media when one is configured.
 - `worker/matching_handler.py` — `_target_artifact()` now returns `(MediaArtifact, is_temp: bool)` instead of `MediaArtifact` (see below), accepts an optional `media_store`; `build_matching_handler()` gains `media_store: Optional[SharedTargetMediaStore] = None`; `_resolve_target_segments()` threads it through and gains an `except SharedArtifactStoreError` clause.
 - `worker/main.py` — new `shared_artifact_store_path` config field (+ `SHARED_ARTIFACT_STORE_PATH` env var, + `config_snapshot()` field); new `build_media_store()`; `build_registry()` branches on the new config field; `main()` constructs and threads the media store through to `build_matching_handler()`.

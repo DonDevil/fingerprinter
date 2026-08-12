@@ -47,7 +47,7 @@ environment this sandbox does not have).
 
 ## 1. Current target-cache architecture
 
-```
+```text
 worker/main.py: build_registry(redis_client, config)
   |
   v
@@ -95,7 +95,7 @@ Phase 13B's own confirmation that `Redis(...)` has exactly one call site.
 ## 2. Storage / ownership map
 
 | State item | Lives in | Shared same-host (2 processes) | Shared cross-host | Authoritative | Can go stale | Two workers create simultaneously? |
-|---|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- | --- |
 | `TargetRecord` (identity, `media_path`, `content_sha256`, timestamps) | Redis Hash (`target_key`) | Yes | Yes | Yes | No (re-registration overwrites; `created_at` preserved) | Yes — `HSET` is last-writer-wins, no lock; benign (Phase 6 doc §"Limitations" already accepts this for identical bytes) |
 | Content-hash index (`target_content_index_key`) | Redis Set | Yes | Yes | Yes | No | Yes — `SADD` is idempotent, no lock needed |
 | Embedding metadata summary (`target_embeddings_key`, `target_segment_embeddings_key`) | Redis Hash | Yes | Yes | **No — write-only.** Nothing in `TargetRegistry` ever reads it back for a hit/miss decision (VERIFIED, `target/registry.py:150-161` has no reference to `target_segment_embeddings_key`) | N/A (never consulted, so "staleness" is undefined for it) | Yes — `HSET`, no lock |
@@ -210,7 +210,7 @@ named in `phase-13-production-hardening.md` or `phase-11-performance-benchmarks.
 ## 4. Redis coordination vs. cache storage — explicit distinction
 
 | | Redis-backed? | What it actually holds |
-|---|---|---|
+| --- | --- | --- |
 | Distributed **coordination** (who builds) | **Yes** | `target_lock_key` — a token, nothing else. Fleet-wide correct as a primitive (§6). |
 | Distributed **cache storage** (the vector bytes) | **No** | Filesystem only, per-host. The `target_embeddings_key`/`target_segment_embeddings_key` hashes are metadata *about* what's cached (spec fields, segment count, `cached_at`) — never the vector, and never read back by any code path that decides hit/miss. |
 
@@ -366,6 +366,7 @@ either "no lock at all" or "a genuinely shared cache."
   (see §9 for this test's actual scope/limits).
 
 **Explicit distinction the task brief requires:**
+
 - Lock prevents duplicate computation: **yes, within the lock's live
   window**, and only for hosts that actually reach the point of losing the
   *acquire* race while the winner is still building — a host that arrives
@@ -432,7 +433,7 @@ Every assumption below is implicit in `TARGET_CACHE_PATH` meaning "a local
 directory on whichever host reads this env var":
 
 | Assumption | Holds for single host? | Holds for multi-process, same host? | Holds across hosts? |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Same filesystem | trivially yes | yes (same mount) | **No, unless deliberately shared** |
 | Same mount | trivially yes | yes | **No by default** |
 | Same path string means the same bytes | yes | yes | **No** — `TARGET_CACHE_PATH=/data/target_cache` is just a string; nothing checks or enforces that two hosts' `/data/target_cache` refer to the same storage |
@@ -473,7 +474,7 @@ are never the same directory even by coincidence).
 ## 9. Existing test coverage
 
 | Test file | What it covers | Classification |
-|---|---|---|
+| --- | --- | --- |
 | `tests/test_target_lock.py` (7 tests) | `RedisLock` acquire/release/TTL/CAS-release semantics, one shared `redis_client` fixture, sequential (not concurrent) calls except implicitly via the TTL-expiry test | **single-process** |
 | `tests/test_target_build_on_miss.py::test_concurrent_miss_builds_only_once` | Two `threading.Thread`s calling `get_or_build_segment_embedding` | **single-process, multi-thread, one shared `TargetRegistry` instance and one shared filesystem cache directory** (`registry` fixture, `tmp_path`-scoped, constructed once and passed to both threads) — **not** even "two independent same-host processes/registries," let alone multi-host |
 | `tests/test_target_build_on_miss.py` (remaining 6 tests) | Cache-hit-skips-build, build-once-and-registers, unknown-target KeyError, missing-segment-cache RuntimeError, build-exception-releases-lock, lock-wait-timeout | **single-process**, one shared registry/cache throughout |
@@ -575,7 +576,7 @@ per the task brief.**
 ## 11. Candidate architectures
 
 | | A. Shared filesystem/object storage | B. Redis-backed embedding cache | C. Redis coordination + per-host filesystem (current) | D. Hybrid: Redis coordination/metadata + shared object storage |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | Multi-host correctness | Yes, if the mount/store is genuinely shared and read-after-write consistent | Yes | **No — this is the current, broken state**, kept only as the baseline row | Yes — mechanically the same correctness property as A, described with the coordination/storage roles made explicit |
 | Duplicate computation | Eliminated once storage is genuinely shared (same "one build, N hits" property Workload C already proved *within* a host) | Eliminated | **Not eliminated — the entire finding of this audit** | Eliminated |
 | Cache durability | As durable as the chosen backend (object storage: typically very high; NFS: depends on operator's storage backend) | As durable as Redis's own persistence config (AOF/RDB) — **this system does not currently rely on Redis for durable data**, only ephemeral coordination/small state; embeddings would be the first genuinely durable *data* asset stored there, a different operational category than job/lock state | Durable per-host, permanently invisible cross-host (not a durability problem, a visibility problem) | Same as A |
