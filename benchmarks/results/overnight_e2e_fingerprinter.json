@@ -1,0 +1,89 @@
+{
+  "configuration": {
+    "block_ms": 5000,
+    "consumer_group": "fingerprinter-workers",
+    "embedding_device": "auto",
+    "lease_ms": 900000,
+    "media_max_bytes": 104857600,
+    "namespace": "fingerprint",
+    "observability_interval_ms": 60000,
+    "reclaim_interval_ms": 300000,
+    "redis_db": "0",
+    "redis_endpoint": "redis://localhost:6379/0",
+    "run_output": "./benchmarks/results/overnight_e2e_fingerprinter.json",
+    "shared_artifact_store_path": null,
+    "stream": "fingerprint:jobs:stream:default",
+    "target_cache_path": "./target_cache",
+    "torch_num_threads": 6,
+    "worker_id": "overnight-worker-1"
+  },
+  "counters": {
+    "active_jobs": 0,
+    "jobs_claimed": 0,
+    "jobs_completed": 0,
+    "jobs_failed": 0,
+    "jobs_permanently_failed": 0,
+    "jobs_reclaimed": 0,
+    "jobs_rejected": 0,
+    "jobs_retried": 0,
+    "total_job_attempts": 0
+  },
+  "error_categories": {},
+  "latency": {
+    "claim_to_completion_ms": {
+      "avg": null,
+      "count": 0,
+      "max": null,
+      "min": null,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "sample_window": 0
+    },
+    "claim_to_failure_ms": {
+      "avg": null,
+      "count": 0,
+      "max": null,
+      "min": null,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "sample_window": 0
+    }
+  },
+  "metadata": {
+    "consumer_group": "fingerprinter-workers",
+    "consumer_name": "overnight-worker-1",
+    "hostname": "Ubuntu-24-04",
+    "namespace": "fingerprint",
+    "pid": 29695,
+    "schema_version": 1,
+    "stream": "fingerprint:jobs:stream:default",
+    "worker_id": "overnight-worker-1"
+  },
+  "pipeline_stage_metrics": {},
+  "redis": {
+    "consumer_pending": 0,
+    "group_lag": 0,
+    "group_pending": 0,
+    "oldest_pending_idle_ms": null,
+    "stream_length": 0
+  },
+  "resources": {
+    "cpu_percent": 61.0,
+    "cpu_time_s": 27.194,
+    "open_fds": 38,
+    "rss_current_bytes": 847241216,
+    "rss_peak_bytes": 1192734720,
+    "thread_count": 2
+  },
+  "shutdown": {
+    "clean": true,
+    "reason": "graceful_shutdown"
+  },
+  "timing": {
+    "ended_at": 1787712726.2822416,
+    "started_at": 1787692446.9760432,
+    "uptime_s": 20279.306
+  }
+}

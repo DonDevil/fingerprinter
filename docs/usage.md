@@ -80,6 +80,17 @@ wait
 
 ## Register a target
 
+There is no environment variable for the target film — `WorkerConfig.from_env`
+(see the table above) is infra/tuning only, and a worker process is
+target-agnostic: it just processes whatever jobs arrive on the Redis stream.
+The target film is specified in two separate steps instead:
+
+1. Register the target movie once per `(target_id, target_version)` via
+   `TargetRegistry.register_target`, below.
+2. Reference that `target_id`/`target_version` on each job you submit (see
+   "Submit a synthetic/test job" below) — this is what tells a given job
+   which registered target to match its candidate against.
+
 Before any job can match, the target it's being checked against must be
 registered. There is no CLI for this — call `TargetRegistry.register_target`
 directly (this mirrors how the registry is meant to be driven: by whatever
