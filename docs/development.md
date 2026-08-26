@@ -125,10 +125,12 @@ is required or attempted by the test suite itself once weights are
 cached.
 
 Current baseline on this repository (this documentation pass, single
-run): **269 passed, 0 failed, 0 skipped**, wall time ~126s. If you see a
-different total after a fresh `pip install`, that's a signal something in
-your environment differs from the one this baseline was recorded
-against — check Redis reachability and cached model weights first.
+run): **369 passed, 0 failed, 0 skipped**, wall time ~55s (CPU-only
+torch). If you see a different total after a fresh `pip install`, that's a
+signal something in your environment differs from the one this baseline
+was recorded against — check Redis reachability and cached model weights
+first. Wall time varies by hardware/device (`EMBEDDING_DEVICE`); the count
+should not.
 
 Run a single file or test:
 

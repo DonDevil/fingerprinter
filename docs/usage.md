@@ -271,7 +271,7 @@ python -m pytest tests/test_crash_recovery.py -q
 python -m pytest tests/test_worker_main.py::test_config_validation_error_exits_nonzero -q
 ```
 
-Current baseline on this repository: **348 passed, 0 failed** (see
+Current baseline on this repository: **369 passed, 0 failed** (see
 `docs/development.md` for the exact run this is drawn from).
 
 ## Run a controlled pipeline test / benchmark

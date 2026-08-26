@@ -652,17 +652,23 @@ the `SREM` fix to `target_content_index_key`.
 | `tests/test_target_service.py` | New | 40 | `TargetService`: identifier validation (parametrized valid/invalid ids and versions), media validation (missing/directory/empty/unreadable), create idempotency/conflict/new-version paths, metadata validation, all five methods' pass-through and error-translation behavior |
 | `tests/test_target_cli.py` | New | 13 | Every subcommand in human and `--json` mode, exit codes (0/1/2), `reindex --dry-run` → real → idempotent |
 | `tests/test_matching_handler.py` | +1 test, 0 modified | 1 | Deleted-target job fails identically to a never-registered-target job (§9) |
+| `tests/test_embedding_lazy_import.py` | New (§18 follow-up) | 9 | `embedding/__init__.py`'s lazy `DINOv2EmbeddingEngine` exposure: subprocess-verified absence of `torch`/`transformers`/`numpy`/`PIL` after importing `target.cli`/`target.registry`/`target.service`/`embedding`, a full CLI command cycle in a subprocess, lazy-attribute correctness, `AttributeError` for unknown names |
+| `tests/test_target_crash_safety.py` | New (§19 follow-up) | 12 | Fault-injected partial failures in `register_target`/`update_target_metadata`/`delete_target` and the cache/shared-media `delete()` primitives — see §19 |
 
 **Full-suite results**, run against real Redis (test db 15, the existing
 `redis_client` fixture):
 
-- Baseline (before this implementation): **269 passed, 0 failed** —
-  matches the count `docs/usage.md` already documented.
-- After implementation: **348 passed, 0 failed** (269 + 79 new).
+- Baseline (before the first implementation pass): **269 passed, 0
+  failed** — matches the count `docs/usage.md` already documented.
+- After the first implementation pass: **348 passed, 0 failed** (269 + 79
+  new).
+- After the follow-up pass (§18/§19): **369 passed, 0 failed** (348 + 21
+  new).
 - Re-verified from a completely fresh, independently created virtualenv
-  after implementation: **348 passed, 0 failed** again.
+  after each pass: same counts, both times.
 
-No existing test was modified or weakened.
+No existing test was modified or weakened at any point across either
+pass.
 
 ## 14. Deviations from the design document
 
@@ -693,30 +699,17 @@ design's description — only which file the logic lives in changed, in
 favor of the design's own stronger, more repeated principle (CLI stays
 Redis-free).
 
-### 14.3 The CLI's "avoid the heavy ML stack" goal only partially holds
+### 14.3 The CLI's "avoid the heavy ML stack" goal — resolved in a follow-up pass
 
-Verified from source, not assumed: `target/registry.py` unconditionally
-imports `target.segment_cache`, which unconditionally imports
-`embedding.result.SegmentEmbedding`. Importing `embedding.result` first
-executes `embedding/__init__.py` (Python always runs a package's `__init__`
-before a submodule), and `embedding/__init__.py` eagerly imports
-`embedding.dinov2_engine` — which imports `torch`, `numpy`, `transformers`,
-and `PIL` at module scope. So constructing a `TargetRegistry` at all — with
-or without going through `worker.main` — already pulls in the full ML
-stack, regardless of what `target/cli.py` itself imports.
-
-This means avoiding `import worker.main` (done, exactly as instructed)
-does not, by itself, make `python -m target.cli list` avoid a torch import
-today. The instruction to avoid `worker.main` was still followed exactly
-(and remains the correct choice — it keeps `target/cli.py` free of
-`worker/main.py`'s worker-process-specific configuration surface, and
-would immediately start paying off if `embedding/__init__.py`'s eager
-import were ever made lazy), but the stated benefit ("the CLI must remain
-lightweight") is not fully realized by this change alone. Fixing
-`embedding/__init__.py`'s import eagerness is a one-line, low-risk change
-but sits outside every file this phase's scope named
-(`target/*`, `docs/usage.md`), so it was not made. Flagged here rather
-than silently claimed as achieved.
+The gap described in this section (as originally written, at the end of
+the first implementation pass) has since been closed in a follow-up pass.
+`embedding/__init__.py` now exposes `DINOv2EmbeddingEngine`/
+`DEFAULT_MODEL_ID`/`DEFAULT_MODEL_REVISION` lazily via a PEP 562 module
+`__getattr__` instead of importing them eagerly at package-import time —
+see §18 below for the full account, and §19 for the verification that
+`python -m target.cli` now runs its entire command cycle with zero
+`torch`/`transformers`/`numpy`/`PIL` in `sys.modules`, proven from a
+virtualenv containing only `redis`.
 
 ## 15. Backward compatibility
 
@@ -750,11 +743,25 @@ than silently claimed as achieved.
   garbage-collection," never "delete something still referenced," so this
   was deliberately not built. Flagged as an open question in the design
   document, not resolved here.
-- `docs/development.md` still cites the pre-implementation test count
-  ("269 passed"); out of this phase's file scope (not named in the
-  design's implementation file list), left unchanged.
-- See §14.3 for the CLI's partial (not full) avoidance of the heavy ML
-  import chain.
+- **A narrow, self-healing `delete_target` crash window, found and
+  documented by §19's fault-injection tests:** if the process is killed (or
+  the Redis connection drops) *exactly* between the two `SREM` calls
+  (content-index, list-index) and the pipelined `DEL` that follows, the
+  target becomes invisible to `list_targets()`/`find_by_content_hash()` but
+  still resolves via a direct `get_target()`, because the record hash
+  itself was never deleted in that window. This is narrower than a general
+  transaction problem — it is one specific, small gap between two
+  already-committed `SREM`s and one not-yet-attempted pipeline — and it is
+  fully self-healing: calling `delete_target()` again (an operator retry,
+  or an automated one) completes the delete correctly, because
+  `get_target()` still finds the record to delete. See
+  `tests/test_target_crash_safety.py::test_delete_target_crash_between_index_removal_and_hash_deletion_is_retry_safe`.
+  Not fixed here (no code changed to close it) — reordering would mean
+  deleting the record hash *before* the index `SREM`s, which is itself
+  worth an explicit design decision (it changes which artifact is "the
+  source of truth for existence" during the operation) rather than a
+  silent adjustment during a test-writing pass. Flagged for the next
+  design review to decide on, not resolved unilaterally.
 
 ## 17. Explicit non-goals (confirmed absent)
 
@@ -766,3 +773,167 @@ index, no object-storage/S3 backend, no binary cache format, no automatic
 startup migration/scan, no changes to `worker/*`, `work_queue/*`,
 `matching/*`, `integration/*`, or any crawler code (none exists in this
 repository).
+
+## 18. Follow-up pass: eliminating the eager ML import chain
+
+### 18.1 The problem, precisely
+
+Verified from source: `target/registry.py` unconditionally imports
+`target.segment_cache`, which unconditionally imports
+`embedding.result.SegmentEmbedding`. Importing any submodule of a package
+always runs that package's `__init__.py` first — and, before this pass,
+`embedding/__init__.py` unconditionally imported `embedding.dinov2_engine`,
+which imports `torch`, `numpy`, `transformers`, and `PIL` at module scope.
+So constructing a `TargetRegistry` — and therefore running `target.cli` at
+all, or `target.service`, or anything that touches the target lifecycle —
+pulled in the full ML inference stack, even for an operation like
+`target.cli list` that reads three small Redis hashes and touches no
+embedding.
+
+Grepped before making any change: nothing in this repository does
+`import embedding` followed by attribute access (`embedding.
+DINOv2EmbeddingEngine`, etc.) — every actual caller
+(`worker/main.py`, `worker/matching_handler.py`, every benchmark, every
+`test_embedding*`/`test_matching*` test) already does
+`from embedding.dinov2_engine import ...` directly, a submodule import that
+doesn't depend on anything `embedding/__init__.py` re-exports. The eager
+re-export in `embedding/__init__.py` was therefore paying an import-time
+cost that nothing in the codebase's actual call sites needed paid eagerly.
+
+### 18.2 The fix
+
+One file changed: `embedding/__init__.py`. `PreprocessingConfig`/
+`SamplingConfig`/`SegmentSamplingConfig`/`IMAGE_SAMPLING_CONFIG`/
+`DEFAULT_SEGMENT_DURATION_S` (from `embedding.config`), `EmbeddingResult`/
+`SegmentEmbedding`/`VideoSegmentEmbeddingResult`/
+`SEGMENT_EMBEDDING_SCHEMA_VERSION` (from `embedding.result`), and every
+`*Error` class (from `embedding.errors`) stay exactly as eagerly imported
+as before — none of those three submodules import anything heavy
+(verified: `embedding/config.py` imports only `dataclasses`/`typing`;
+`embedding/errors.py` imports nothing beyond `__future__`;
+`embedding/result.py` imports only `embedding.config` plus stdlib). Only
+`DINOv2EmbeddingEngine`, `DEFAULT_MODEL_ID`, and `DEFAULT_MODEL_REVISION`
+— the three names that come from `embedding.dinov2_engine` — became lazy,
+via a PEP 562 module-level `__getattr__`:
+
+```python
+_LAZY_DINOV2_ATTRS = frozenset({"DINOv2EmbeddingEngine", "DEFAULT_MODEL_ID", "DEFAULT_MODEL_REVISION"})
+
+def __getattr__(name: str):
+    if name in _LAZY_DINOV2_ATTRS:
+        from embedding import dinov2_engine
+        return getattr(dinov2_engine, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+```
+
+`__all__` is unchanged — the same names are still declared as this
+package's public surface, and `from embedding import DINOv2EmbeddingEngine`
+(or `embedding.DINOv2EmbeddingEngine`) still works, resolving to the exact
+same class object as `from embedding.dinov2_engine import
+DINOv2EmbeddingEngine` (asserted by
+`tests/test_embedding_lazy_import.py::test_lazy_dinov2_engine_attribute_still_resolves`)
+— it is just resolved on first access instead of at package-import time.
+An unrecognized attribute still raises `AttributeError`, not silently
+returning `None` or swallowing the lookup.
+
+This is why the fix satisfies "preserve all existing target behavior and
+APIs": nothing that worked before behaves differently now, including the
+one hypothetical caller pattern (`from embedding import X`) that the
+package's own `__all__` had always advertised as supported but that no
+code in this repository actually used.
+
+### 18.3 Why not go further (and why that's the right stopping point)
+
+This phase did not touch `embedding/dinov2_engine.py`, `embedding/
+config.py`, `embedding/errors.py`, `embedding/result.py`, `embedding/
+frames.py`, or any file outside `embedding/__init__.py` itself. The
+instruction was explicit: inspect the dependency graph first, make the
+smallest safe change, do not refactor the embedding subsystem broadly.
+Once the graph was traced (§18.1) it was clear exactly one file needed to
+change, and changing it in the smallest possible way (lazy re-export,
+not deleting the re-export or restructuring `dinov2_engine.py` itself)
+was sufficient to fully solve the stated problem — verified in §19.
+
+### 18.4 Verification
+
+**Proof the CLI now avoids the ML stack, from a virtualenv containing only
+`redis` (no numpy, no torch, no transformers, no Pillow installed at
+all):**
+
+```
+$ pip list
+Package Version
+------- -------
+redis   8.1.0
+
+$ REDIS_URL=... TARGET_CACHE_PATH=... python -m target.cli add movie.mp4 --id proof --version v1 --json
+{"content_sha256": "...", "status": "ok", "target_id": "proof", ...}
+$ python -m target.cli list --json
+[{"target_id": "proof", ...}]
+$ python -m target.cli delete proof --version v1 --json
+{"status": "deleted", "target_id": "proof", "target_version": "v1"}
+```
+
+Every command succeeded — `add`, `list`, `delete` — with nothing beyond
+`redis` installed. This is not merely "the import doesn't crash"; it is
+the entire operator lifecycle running for real against real Redis with the
+ML stack physically absent.
+
+**Proof for a fully-installed environment too** (where the absence has to
+be checked by inspecting `sys.modules`, since nothing *prevents* torch
+from being imported if some other code path wanted it — the check is
+"target-lifecycle code doesn't", not "torch can't be imported at all"):
+`tests/test_embedding_lazy_import.py` spawns a fresh `subprocess` per
+assertion (never an in-process check — by the time any single test runs in
+the shared pytest session, other collected test modules have almost
+certainly already imported torch, which would make an in-process
+`sys.modules` check pass trivially regardless of whether the import graph
+under test is actually torch-free) and asserts `torch`/`transformers`/
+`numpy`/`PIL` are absent from that subprocess's `sys.modules` after:
+importing `target.cli`, importing `target.registry`, importing
+`target.service`, importing the bare `embedding` package, and running a
+full `add`/`list`/`get`/`update-metadata`/`delete` cycle through
+`target.cli.main()`. All 9 tests in that file pass, including this exact
+verification.
+
+## 19. Follow-up pass: crash/partial-failure test coverage
+
+`tests/test_target_crash_safety.py` (12 tests) injects a failure at a
+specific point inside a real `TargetRegistry` call — never by editing
+production code, only by monkeypatching one Redis client method, one cache
+method, or one shared-media-store method to raise partway through — and
+asserts on the actual resulting state, cross-checked against what §7's
+walkthrough and the design document already claimed. Coverage:
+
+- **`register_target`:** lock is released (and the identity is not stuck)
+  when the Redis write itself fails; an `on_conflict="reject"` conflict
+  leaves no trace anywhere, not the record, not either index; a crash
+  between the content-index `SADD` (committed) and the list-index `SADD`
+  (never ran) leaves a target that is gettable and findable by content hash
+  but invisible to `list_targets()` — and `reindex()` repairs it, proving
+  the pre-existing migration tool doubles as a crash-recovery tool for this
+  exact gap.
+- **`update_target_metadata`:** lock released and no partial metadata
+  persisted when the write fails.
+- **`delete_target`:** a cache-deletion failure (step 3/4 of §7.7) leaves
+  every Redis-visible piece of state completely untouched, and the delete
+  is safely retryable; a failure of the pipelined `DEL` after the two
+  `SREM`s already committed produces the narrow, self-healing partial state
+  documented in §16; a shared-media-store failure after every Redis
+  mutation has committed leaves the target genuinely gone from Redis's
+  perspective with the blob merely leaked (fetched intact afterward by a
+  fresh, independent store client, proving no corruption); a lock-timeout
+  during delete leaves the target completely untouched (never got past
+  acquiring the lock).
+- **Cache/shared-storage primitives directly:** `FilesystemEmbeddingCache.
+  delete` is idempotently `False` on a second call;
+  `SharedArtifactStore.delete` raises `SharedArtifactStoreError` (not a
+  raw `OSError`, not a silent `False`) when the underlying `unlink()`
+  fails due to a read-only parent directory, and returns `False` (not an
+  error) for a key that was never present; `SharedTargetMediaStore.delete`
+  removes published media and is idempotent on a repeat call.
+
+No production code was changed to write these tests. Where a test revealed
+a genuine (if narrow) gap — the `delete_target` half-deleted window — it is
+documented as a known, self-healing limitation (§16) rather than silently
+patched.
