@@ -92,6 +92,9 @@ class SharedFilesystemEmbeddingCache(TargetEmbeddingCache):
     def exists(self, target_id: str, target_version: str, content_sha256: str, spec: EmbeddingSpec) -> bool:
         return self.get(target_id, target_version, content_sha256, spec) is not None
 
+    def delete(self, target_id: str, target_version: str, content_sha256: str, spec: EmbeddingSpec) -> bool:
+        return self._store.delete(self._key(target_id, target_version, content_sha256, spec))
+
     def put(
         self,
         target_id: str,
@@ -184,6 +187,9 @@ class SharedFilesystemSegmentEmbeddingCache(SegmentEmbeddingCache):
 
     def exists(self, target_id: str, target_version: str, content_sha256: str, spec: EmbeddingSpec) -> bool:
         return self.get(target_id, target_version, content_sha256, spec) is not None
+
+    def delete(self, target_id: str, target_version: str, content_sha256: str, spec: EmbeddingSpec) -> bool:
+        return self._store.delete(self._key(target_id, target_version, content_sha256, spec))
 
     def put(
         self,

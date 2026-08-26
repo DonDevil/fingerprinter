@@ -195,6 +195,26 @@ def test_unknown_target_raises_permanent_failure(engine, registry, make_job, tmp
         handler(job)
 
 
+def test_deleted_target_raises_permanent_failure_same_as_unknown_target(engine, registry, make_job, tmp_path):
+    """Target-management design doc, S13's active-job deletion policy:
+    delete is allowed immediately, and a job that reaches a since-deleted
+    target must fail exactly the same way a job against a target that was
+    never registered fails -- no new code path, no special-cased 'deleted'
+    state, just the existing unknown-target -> PermanentFailure behavior
+    `test_unknown_target_raises_permanent_failure` already proves."""
+    from worker.fingerprint_worker import PermanentFailure
+
+    registry.register_target("target-1", "v1", str(TINY_VIDEO))
+    registry.delete_target("target-1", "v1")
+
+    artifact = _candidate_artifact(tmp_path)
+    handler = build_matching_handler(_FakeAcquirer(artifact), engine, registry)
+    job = make_job(target_id="target-1", target_version="v1")
+
+    with pytest.raises(PermanentFailure):
+        handler(job)
+
+
 def test_job_without_supported_technique_raises_permanent_failure(engine, registry, make_job, tmp_path):
     from worker.fingerprint_worker import PermanentFailure
 

@@ -82,6 +82,13 @@ class TargetEmbeddingCache(ABC):
     def exists(self, target_id: str, target_version: str, content_sha256: str, spec: EmbeddingSpec) -> bool:
         """Cheaper existence check than get() where a backend can offer one."""
 
+    @abstractmethod
+    def delete(self, target_id: str, target_version: str, content_sha256: str, spec: EmbeddingSpec) -> bool:
+        """Remove this exact representation if present. True iff something
+        was deleted, False iff it was already absent -- mirrors exists()'s
+        contract, never raises for a plain miss. Used by
+        TargetRegistry.delete_target for target-exclusive cache cleanup."""
+
 
 class FilesystemEmbeddingCache(TargetEmbeddingCache):
     """One JSON file per cached representation, named by
@@ -104,6 +111,13 @@ class FilesystemEmbeddingCache(TargetEmbeddingCache):
 
     def exists(self, target_id: str, target_version: str, content_sha256: str, spec: EmbeddingSpec) -> bool:
         return self.get(target_id, target_version, content_sha256, spec) is not None
+
+    def delete(self, target_id: str, target_version: str, content_sha256: str, spec: EmbeddingSpec) -> bool:
+        path = self._path_for(target_id, target_version, content_sha256, spec)
+        if not path.exists():
+            return False
+        path.unlink()
+        return True
 
     def put(
         self,

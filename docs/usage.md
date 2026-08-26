@@ -78,7 +78,7 @@ done
 wait
 ```
 
-## Register a target
+## Manage targets
 
 There is no environment variable for the target film — `WorkerConfig.from_env`
 (see the table above) is infra/tuning only, and a worker process is
@@ -86,22 +86,90 @@ target-agnostic: it just processes whatever jobs arrive on the Redis stream.
 The target film is specified in two separate steps instead:
 
 1. Register the target movie once per `(target_id, target_version)` via
-   `TargetRegistry.register_target`, below.
+   `python -m target.cli add`, below.
 2. Reference that `target_id`/`target_version` on each job you submit (see
    "Submit a synthetic/test job" below) — this is what tells a given job
    which registered target to match its candidate against.
 
 Before any job can match, the target it's being checked against must be
-registered. There is no CLI for this — call `TargetRegistry.register_target`
-directly (this mirrors how the registry is meant to be driven: by whatever
-process owns target ingestion, not a generic script this repo doesn't
-otherwise need):
+registered. The operator-facing entrypoint is a thin CLI over
+`target.service.TargetService`:
+
+```bash
+python -m target.cli add /path/to/target_movie.mp4 --id movie-123 --version v1
+python -m target.cli list
+python -m target.cli get movie-123 --version v1
+python -m target.cli update-metadata movie-123 --version v1 --set genre=action --unset old_tag
+python -m target.cli delete movie-123 --version v1
+```
+
+Every subcommand accepts `--json` for machine-readable output instead of
+the human-readable default. Exit codes: `0` success, `1` a target-lifecycle
+error (invalid `--id`/`--version`, missing/unreadable media, the identity
+already exists with different content, target not found, ...), `2` a bad
+command line (argparse's own usage-error exit).
+
+`add` is **idempotent** for identical content: registering the same
+`(target_id, target_version)` again with byte-identical media is a safe
+no-op retry. Registering it again with *different* content raises an error
+instead of silently swapping what the target refers to — to publish new
+content, register it under a new `target_version`
+(`python -m target.cli add new_movie.mp4 --id movie-123 --version v2`); to
+change only metadata, use `update-metadata`.
+
+**Important:** this CLI must be run with the same `REDIS_URL` /
+`TARGET_CACHE_PATH` / `SHARED_ARTIFACT_STORE_PATH` configuration as the
+worker fleet it manages targets for (see the environment variable table
+above) — `add`/`delete` publish/remove cache and shared-media artifacts at
+whatever paths this process is wired to, and a mismatched configuration
+means a worker won't see what the CLI just did (or `delete` will clean up a
+cache directory no worker is actually reading from).
+
+Segment embeddings are **not** computed at registration time — they are
+built lazily, cache-first, on the first job that needs this
+`(target_id, target_version)` (see `docs/architecture/system-
+architecture.md`, §5, "Target registry and cache").
+
+### Deleting a target
+
+`delete` removes the target's own registry record, its target-exclusive
+embedding/segment caches, and — only if no other `target_id`/`target_version`
+still shares the same content — the underlying shared media blob. It does
+**not** touch historical results, and it does **not** check for queued or
+in-flight jobs: a job that reaches a since-deleted target fails the same
+way a job against a never-registered target already does (a loud,
+immediate `PermanentFailure`, not a silent bad match). Delete targets you
+know have no jobs genuinely in flight against them if you want to avoid
+that failure.
+
+### Bringing an existing Redis instance up to date
+
+`fingerprint:target:index` (what `list`/`get` read) does not exist on a
+Redis instance that predates this CLI. Run the one-time, additive migration
+once against it:
+
+```bash
+python -m target.cli reindex --dry-run   # preview what would be added
+python -m target.cli reindex             # actually populate the index
+```
+
+Safe to run against an already-migrated instance (finds nothing new) and
+never deletes or modifies any existing target record, embedding, cache
+entry, job, or result.
+
+### Direct `TargetRegistry`/`TargetService` use (advanced)
+
+The CLI is a thin wrapper over `target.service.TargetService`, which is
+itself a thin wrapper over `target.registry.TargetRegistry` — either is a
+plain Python API for a caller that isn't a human at a terminal (e.g. a
+future HTTP layer):
 
 ```python
 from redis import Redis
 from target.cache import FilesystemEmbeddingCache
 from target.registry import TargetRegistry
 from target.segment_cache import FilesystemSegmentEmbeddingCache
+from target.service import TargetService
 
 redis_client = Redis.from_url("redis://localhost:6379/0", decode_responses=True)
 registry = TargetRegistry(
@@ -109,19 +177,15 @@ registry = TargetRegistry(
     FilesystemEmbeddingCache("./target_cache/pooled"),
     FilesystemSegmentEmbeddingCache("./target_cache/segments"),
 )
+service = TargetService(registry)
 
-record = registry.register_target(
+record = service.create_target(
     target_id="movie-123",
     target_version="v1",
     media_path="/path/to/target_movie.mp4",
 )
 print(record.content_sha256)
 ```
-
-Segment embeddings are **not** computed at registration time — they are
-built lazily, cache-first, on the first job that needs this
-`(target_id, target_version)` (see `docs/architecture/system-
-architecture.md`, §5, "Target registry and cache").
 
 ## Submit a synthetic/test job
 
@@ -207,7 +271,7 @@ python -m pytest tests/test_crash_recovery.py -q
 python -m pytest tests/test_worker_main.py::test_config_validation_error_exits_nonzero -q
 ```
 
-Current baseline on this repository: **269 passed, 0 failed** (see
+Current baseline on this repository: **348 passed, 0 failed** (see
 `docs/development.md` for the exact run this is drawn from).
 
 ## Run a controlled pipeline test / benchmark

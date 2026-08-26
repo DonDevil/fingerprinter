@@ -104,6 +104,20 @@ class SharedArtifactStore:
     def exists(self, key: str) -> bool:
         return self._path_for(key).exists()
 
+    def delete(self, key: str) -> bool:
+        """Remove the blob at `key` if present. True iff something was
+        deleted. Raises SharedArtifactStoreError on an unreachable/
+        unwritable store, same failure semantics as get_bytes/put_bytes --
+        never conflates "absent" with "store unreachable"."""
+        path = self._path_for(key)
+        if not path.exists():
+            return False
+        try:
+            path.unlink()
+            return True
+        except OSError as exc:
+            raise SharedArtifactStoreError(f"failed to delete {key!r} from shared artifact store: {exc}") from exc
+
     def get_bytes(self, key: str) -> Optional[bytes]:
         """`None` iff the key is absent. Raises `SharedArtifactStoreError`
         if the key exists but cannot be read (unreachable mount, permission
@@ -205,6 +219,15 @@ class SharedTargetMediaStore:
         Idempotent -- republishing identical bytes under the same hash is
         a safe no-op write."""
         self._store.put_file(self._key(content_sha256), local_media_path)
+
+    def delete(self, content_sha256: str) -> bool:
+        """Remove the published media for `content_sha256` if present. True
+        iff something was deleted. Callers (TargetRegistry.delete_target)
+        must confirm no other (target_id, target_version) still references
+        this hash (via find_by_content_hash) before calling this -- this
+        method itself has no reference-counting logic; it deletes
+        unconditionally whatever is at this content hash's key."""
+        return self._store.delete(self._key(content_sha256))
 
     def fetch_to_temp(self, content_sha256: str, suffix: str = "") -> Optional[Path]:
         """Copy the media for `content_sha256` into a fresh local temp
