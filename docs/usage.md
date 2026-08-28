@@ -101,6 +101,7 @@ python -m target.cli list
 python -m target.cli get movie-123 --version v1
 python -m target.cli update-metadata movie-123 --version v1 --set genre=action --unset old_tag
 python -m target.cli delete movie-123 --version v1
+python -m target.cli build movie-123 --version v1
 ```
 
 Every subcommand accepts `--json` for machine-readable output instead of
@@ -125,10 +126,65 @@ whatever paths this process is wired to, and a mismatched configuration
 means a worker won't see what the CLI just did (or `delete` will clean up a
 cache directory no worker is actually reading from).
 
-Segment embeddings are **not** computed at registration time — they are
-built lazily, cache-first, on the first job that needs this
+Segment embeddings are **not** computed at registration time — by default
+they are built lazily, cache-first, on the first job that needs this
 `(target_id, target_version)` (see `docs/architecture/system-
-architecture.md`, §5, "Target registry and cache").
+architecture.md`, §5, "Target registry and cache"). For anything but a
+short target file, build it explicitly instead — see the next section.
+
+### Building target embeddings eagerly
+
+```bash
+python -m target.cli build movie-123 --version v1
+python -m target.cli build movie-123 --version v1 --json
+```
+
+Runs the target's segment-embedding build now, under operator control,
+instead of leaving it to happen on whatever job claims this target first.
+This is the same cache-first, lock-guarded
+`TargetRegistry.get_or_build_segment_embedding` call a worker makes
+lazily — `build` does not add a second mechanism, it only lets you run
+that call ahead of time (see `docs/architecture/target-eager-build-
+implementation.md` for the full design/implementation record).
+
+**Why this matters:** the segment-embedding build decodes the target's
+*entire* duration via `ffmpeg`, bounded by a fixed
+`embedding.frames.DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S` (300s). For a long
+target (a full-length movie, say), that decode can approach or exceed the
+timeout — if the *first* job against that target is what triggers the
+build, the job fails with a media/timeout error before any matching
+happens, and the target cache stays empty so every subsequent job repeats
+the same failure. Run `build` once, after `add` and before submitting real
+jobs, so that failure (if it happens) is caught here, at a time of your
+choosing, instead of inside a live job.
+
+Unlike `add`/`list`/`get`/`update-metadata`/`delete`, `build` needs the
+embedding engine, not just `TargetService` — so it also honors
+`EMBEDDING_DEVICE` and `TORCH_NUM_THREADS` (same names, same defaults as
+`worker/main.py`, see the environment variable table above), on top of
+`REDIS_URL` / `TARGET_CACHE_PATH` / `SHARED_ARTIFACT_STORE_PATH`. It is the
+only subcommand that loads the DINOv2 model — every other subcommand stays
+free of the torch/transformers/numpy/Pillow dependency chain
+(`tests/test_embedding_lazy_import.py`).
+
+**Idempotent, safe to run again:** if a compatible segment embedding
+already exists for this exact `(target_id, target_version, content_sha256,
+model/preprocessing/sampling config)`, `build` reports `already_built` and
+does not touch the model, ffmpeg, or the build lock. There is no
+`--force`/rebuild flag — re-running `build` after registering new content
+under the same `target_version` is not a supported operation in the first
+place (see "`add` is idempotent...", above); to replace a target's media,
+register a new `target_version` and `build` that.
+
+Exit codes: `0` success (built or already built), `1` a clear, typed
+failure — target not found, unusable/undecodable/timed-out media
+(`UnsupportedMediaError`), a transient inference error
+(`InferenceError`, e.g. a momentary OOM — safe to retry), the shared
+artifact store being unreachable, or another build already in progress for
+this exact target that didn't finish within the poll budget
+(`TimeoutError`) — and `2` for a bad command line. A failed build never
+leaves a partial or corrupt cache entry behind (the cache write itself is
+atomic) and is always safe to retry.
 
 ### Deleting a target
 
@@ -188,6 +244,11 @@ print(record.content_sha256)
 ```
 
 ## Submit a synthetic/test job
+
+Recommended order for anything but a trivially short target: `target.cli
+add`, then `target.cli build` (see "Building target embeddings eagerly"
+above), then submit jobs — so a slow or timeout-prone first build is
+caught before any job depends on it, not discovered by a job failing.
 
 The repository has no standalone job-submission CLI; `work_queue.producer.
 JobProducer` (bare) and `integration.submission.FingerprintJobSubmitter`

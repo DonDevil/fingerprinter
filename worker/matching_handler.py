@@ -43,68 +43,26 @@ doc, "Error mapping", for the full reasoning):
 """
 from __future__ import annotations
 
-import mimetypes
 import time
-from pathlib import Path
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional
 
 from acquisition import MediaAcquirer, PermanentAcquisitionError, TransientAcquisitionError
-from acquisition.artifact import MediaArtifact
 from embedding.dinov2_engine import DINOv2EmbeddingEngine
 from embedding.errors import InferenceError, UnsupportedMediaError
 from matching.aggregation import DINOV2_TEMPORAL_TECHNIQUE, combine, temporal_match_to_evidence
 from matching.config import MatcherConfig
 from matching.matcher import match_segments
-from target.identity import TargetRecord
+from target.artifact import target_media_artifact as _target_artifact
 from target.registry import TargetRegistry
 from target.shared_storage import SharedArtifactStoreError, SharedTargetMediaStore
 from work_queue.jobs import Job
 from work_queue.results import Result, ResultDecision
 from worker.fingerprint_worker import PermanentFailure, TransientFailure
 
-
-def _target_artifact(
-    record: TargetRecord, media_store: Optional[SharedTargetMediaStore] = None
-) -> Tuple[MediaArtifact, bool]:
-    """Wraps a registered target's on-disk media as a `MediaArtifact` so
-    the same `DINOv2EmbeddingEngine.embed_video_segments` call path used
-    for candidates also embeds targets — one embedding code path, not two.
-    `content_type` is guessed from the file extension (targets don't carry
-    a stored content_type, unlike an acquired `MediaArtifact`); this
-    handler only supports video targets, so anything that doesn't guess to
-    `video/*` will correctly fail `embed_video_segments`'s own check.
-
-    Phase 13D (audit §3.5): `record.media_path` is a path on whichever host
-    ran registration, which may not be this host. If it's absent locally
-    and a `media_store` was injected, fetch a temp copy from shared storage
-    (content-addressed by `record.content_sha256`) instead — the second
-    return value tells the caller whether that temp copy needs cleanup
-    (`record.media_path` itself is a persistent, caller-owned file and must
-    never be deleted; a fetched temp copy is this call's own responsibility,
-    mirroring `MediaArtifact.cleanup()`'s "caller owns lifetime" contract).
-    `media_store=None` (the default) leaves this function's behavior
-    exactly as before Phase 13D: pass the path straight through and let
-    `embed_video_segments` raise `UnsupportedMediaError` on its own
-    existence check if it's missing."""
-    local_path = Path(record.media_path)
-    is_temp = False
-    if media_store is not None and not local_path.exists():
-        fetched = media_store.fetch_to_temp(record.content_sha256, suffix=local_path.suffix)
-        if fetched is not None:
-            local_path = fetched
-            is_temp = True
-
-    content_type = mimetypes.guess_type(str(local_path))[0] or "video/mp4"
-    artifact = MediaArtifact(
-        local_path=local_path,
-        original_url=f"local-target://{record.target_id}/{record.target_version}",
-        final_url=f"local-target://{record.target_id}/{record.target_version}",
-        content_type=content_type,
-        byte_size=0,
-        checksum_sha256=record.content_sha256,
-        acquisition_duration_s=0.0,
-    )
-    return artifact, is_temp
+# `_target_artifact` now lives in `target/artifact.py` (target-eager-build
+# audit, Part B §B.4.G) so `target/build.py`'s explicit build command can
+# share it instead of duplicating it; re-exported under its original name
+# here since existing callers (benchmarks/*.py) import it from this module.
 
 
 def _noop_stage_recorder(stage: str, duration_s: float) -> None:

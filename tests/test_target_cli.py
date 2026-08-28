@@ -5,12 +5,23 @@ exit codes, human/--json output, and reindex.
 speed; it reads its own wiring from the environment on every call
 (REDIS_URL / TARGET_CACHE_PATH), so `monkeypatch.setenv` per test is
 sufficient -- no module reload needed.
+
+The `build` subcommand tests below monkeypatch
+`embedding.dinov2_engine.DINOv2EmbeddingEngine` with a synthetic engine --
+`target.cli._cmd_build` imports that name lazily, inside the handler, so
+patching the module attribute before calling `main(["build", ...])` is
+sufficient; no real model/ffmpeg is ever exercised here
+(tests/test_embedding_lazy_import.py separately proves every *other*
+subcommand still never imports torch).
 """
 import json
 import os
+from types import SimpleNamespace
 
 import pytest
 
+from embedding.errors import UnsupportedMediaError
+from embedding.result import SegmentEmbedding
 from target.cli import main
 
 
@@ -116,6 +127,88 @@ def test_cli_delete(tmp_path, capsys):
     assert payload == {"status": "deleted", "target_id": "blast", "target_version": "v1"}
 
     assert main(["get", "blast", "--version", "v1"]) == 1
+
+
+_SEGMENTS = (
+    SegmentEmbedding(segment_index=0, start_time=0.0, end_time=5.0, vector=(0.1, 0.2, 0.3)),
+    SegmentEmbedding(segment_index=1, start_time=5.0, end_time=10.0, vector=(0.4, 0.5, 0.6)),
+)
+_COARSE_VECTOR = (0.4, 0.5, 0.6)
+
+
+class _FakeDINOv2Engine:
+    """Stands in for `DINOv2EmbeddingEngine` -- see module docstring."""
+
+    def __init__(self, device="auto", torch_num_threads=None):
+        from embedding.config import PreprocessingConfig, SegmentSamplingConfig
+
+        self.model_id = "dinov2-synthetic"
+        self.model_version = "v1"
+        self.preprocessing_config = PreprocessingConfig()
+        self.segment_sampling_config = SegmentSamplingConfig()
+        self.calls = 0
+
+    def embed_video_segments(self, artifact):
+        self.calls += 1
+        return SimpleNamespace(segments=_SEGMENTS, coarse_vector=_COARSE_VECTOR)
+
+
+class _FailingFakeDINOv2Engine(_FakeDINOv2Engine):
+    def embed_video_segments(self, artifact):
+        self.calls += 1
+        raise UnsupportedMediaError("ffmpeg timed out extracting segment frames")
+
+
+def test_cli_build_success_json(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr("embedding.dinov2_engine.DINOv2EmbeddingEngine", _FakeDINOv2Engine)
+    main(["add", str(_write(tmp_path, "a.mp4", b"a")), "--id", "blast", "--version", "v1"])
+    capsys.readouterr()
+
+    exit_code = main(["build", "blast", "--version", "v1", "--json"])
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "built"
+    assert payload["target_id"] == "blast"
+    assert payload["target_version"] == "v1"
+    assert payload["segment_count"] == 2
+
+
+def test_cli_build_is_idempotent_second_run_reports_already_built(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr("embedding.dinov2_engine.DINOv2EmbeddingEngine", _FakeDINOv2Engine)
+    main(["add", str(_write(tmp_path, "a.mp4", b"a")), "--id", "blast", "--version", "v1"])
+    capsys.readouterr()
+
+    assert main(["build", "blast", "--version", "v1", "--json"]) == 0
+    capsys.readouterr()
+
+    exit_code = main(["build", "blast", "--version", "v1", "--json"])
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "already_built"
+
+
+def test_cli_build_target_not_found_exits_1(monkeypatch, capsys):
+    monkeypatch.setattr("embedding.dinov2_engine.DINOv2EmbeddingEngine", _FakeDINOv2Engine)
+
+    exit_code = main(["build", "nope", "--version", "v1", "--json"])
+
+    assert exit_code == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["error"] == "TargetNotFoundError"
+
+
+def test_cli_build_media_failure_exits_1_and_reports_error_type(tmp_path, capsys, monkeypatch):
+    monkeypatch.setattr("embedding.dinov2_engine.DINOv2EmbeddingEngine", _FailingFakeDINOv2Engine)
+    main(["add", str(_write(tmp_path, "a.mp4", b"a")), "--id", "blast", "--version", "v1"])
+    capsys.readouterr()
+
+    exit_code = main(["build", "blast", "--version", "v1", "--json"])
+
+    assert exit_code == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["error"] == "UnsupportedMediaError"
+    assert "ffmpeg timed out" in payload["message"]
 
 
 def test_cli_service_error_exit_code_and_stderr(tmp_path, capsys):

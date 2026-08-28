@@ -1,0 +1,102 @@
+{
+  "configuration": {
+    "block_ms": 5000,
+    "consumer_group": "fingerprinter-workers",
+    "embedding_device": "auto",
+    "lease_ms": 30000,
+    "media_max_bytes": 104857600,
+    "namespace": "fingerprint",
+    "observability_interval_ms": 60000,
+    "reclaim_interval_ms": null,
+    "redis_db": "0",
+    "redis_endpoint": "redis://localhost:6379/0",
+    "run_output": "./benchmarks/results/after_bridge_test.json",
+    "shared_artifact_store_path": null,
+    "stream": "fingerprint:jobs:stream:default",
+    "target_cache_path": "./target_cache",
+    "torch_num_threads": 1,
+    "worker_id": "worker-Ubuntu-24-04-14268-129436557590656"
+  },
+  "counters": {
+    "active_jobs": 0,
+    "jobs_claimed": 6,
+    "jobs_completed": 0,
+    "jobs_failed": 6,
+    "jobs_permanently_failed": 0,
+    "jobs_reclaimed": 0,
+    "jobs_rejected": 0,
+    "jobs_retried": 0,
+    "total_job_attempts": 6
+  },
+  "error_categories": {
+    "permanent_acquisition_failure": 6
+  },
+  "latency": {
+    "claim_to_completion_ms": {
+      "avg": null,
+      "count": 0,
+      "max": null,
+      "min": null,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "sample_window": 0
+    },
+    "claim_to_failure_ms": {
+      "avg": 639.53,
+      "count": 6,
+      "max": 885.5599250000523,
+      "min": 306.5224029996898,
+      "p50": 662.7661580005224,
+      "p95": 885.5599250000523,
+      "p99": 885.5599250000523,
+      "sample_window": 6
+    }
+  },
+  "metadata": {
+    "consumer_group": "fingerprinter-workers",
+    "consumer_name": "worker-Ubuntu-24-04-14268-129436557590656",
+    "hostname": "Ubuntu-24-04",
+    "namespace": "fingerprint",
+    "pid": 14268,
+    "schema_version": 1,
+    "stream": "fingerprint:jobs:stream:default",
+    "worker_id": "worker-Ubuntu-24-04-14268-129436557590656"
+  },
+  "pipeline_stage_metrics": {
+    "media_acquisition": {
+      "avg": 639.091,
+      "count": 6,
+      "max": 885.070863000692,
+      "min": 306.0948419997658,
+      "p50": 662.3463140003878,
+      "p95": 885.070863000692,
+      "p99": 885.070863000692,
+      "sample_window": 6
+    }
+  },
+  "redis": {
+    "consumer_pending": 0,
+    "group_lag": 0,
+    "group_pending": 0,
+    "oldest_pending_idle_ms": null,
+    "stream_length": 36
+  },
+  "resources": {
+    "cpu_percent": 61.0,
+    "cpu_time_s": 10.308,
+    "open_fds": 38,
+    "rss_current_bytes": 844357632,
+    "rss_peak_bytes": 1187233792,
+    "thread_count": 2
+  },
+  "shutdown": {
+    "clean": true,
+    "reason": "graceful_shutdown"
+  },
+  "timing": {
+    "ended_at": 1787849430.8587883,
+    "started_at": 1787846546.605748,
+    "uptime_s": 2884.253
+  }
+}

@@ -3,597 +3,779 @@
 ## 1. Status
 
 **AUDIT ONLY. No production code, tests, configuration, or Redis state was
-modified to produce this document.**
+modified to produce this document.** The full target-management test suite
+(105 tests across the target-lifecycle files) and the full repository suite
+(`tests/`, 369 tests) were **run**, read-only, against the existing local
+Redis instance (test db, the pre-existing `redis_client` fixture) purely to
+verify claims in this document — no test file, fixture, or Redis key was
+edited, and no test asserts against anything but ephemeral state the suite
+itself creates and tears down.
 
-Scope: `target/`, `integration/`, `work_queue/`, `worker/`, plus every test
-file that exercises target registration/identity/versioning/cache, and the
-`docs/usage.md` / `docs/architecture/system-architecture.md` /
-`docs/architecture/phase-12-crawler-fingerprinter-integration.md` /
-`docs/architecture/phase-13d-*.md` narrative around them. `old/` was not
-read except where a search hit landed there (one irrelevant hit, noted
-below) — the phase brief says not to read it unless necessary, and nothing
-here needed it.
+**This document supersedes the audit previously at this same path.**
+Read `docs/architecture/target-management-design.md` and
+`docs/architecture/target-management-implementation.md` first if you want
+the full rationale trail — this document's job is narrower: confirm, by
+reading the actual current source and running the actual current test
+suite, whether what those two documents *claim* was built is what actually
+exists on disk today, and to answer this phase's audit questionnaire
+against that verified reality rather than against the documents' prose.
+
+**Headline finding: the operator-facing CRUD/lifecycle interface this
+audit brief asks about already exists, is already wired end-to-end, and is
+already covered by a passing test suite.** A prior audit → design →
+implementation cycle ran in this same repository (visible in
+`docs/architecture/target-management-{audit,design,implementation}.md`,
+and in `target/service.py`, `target/errors.py`, `target/cli.py`, and the
+extended `target/registry.py`, `target/cache.py`, `target/segment_cache.py`,
+`target/shared_cache.py`, `target/shared_storage.py`). Every capability
+this brief's OBJECTIVE section asks for — add/list/get/modify/delete,
+multi-target, an operator-facing boundary hiding Redis/cache/identity
+internals — is **already implemented**, not merely designed. The gaps the
+brief anticipates finding (no list, no delete, no update, unsafe
+content-swap-via-reregistration, unlocked races, unescaped `:` collision)
+were the findings of the *original* pre-implementation audit and have since
+been closed. This document's contribution is independent verification of
+that claim from the current source and a live test run — not a repeat
+design exercise.
+
+Scope: `target/`, `integration/`, `work_queue/`, `worker/`, `tests/`, plus
+`docs/usage.md` and the three `docs/architecture/target-management-*.md`
+documents. `old/` was not read (no relevance, matching the brief's own
+guidance). The sibling `crawler/` directory was inspected only enough to
+confirm it is a separate, independent git repository (see §9) — its
+internals were not audited, per this phase's scope (`fingerprinter/`,
+which has its own `.git`).
 
 Every claim below is labeled:
 
-- **VERIFIED FROM SOURCE** — read directly in the file/line cited.
-- **VERIFIED BY TEST** — an existing test in `tests/` asserts this behavior.
+- **VERIFIED FROM SOURCE** — read directly in the file/line cited, this session.
+- **VERIFIED BY TEST** — an existing test asserts this behavior, and the
+  suite containing it was run, this session, and passed.
 - **INFERRED** — a reasonable conclusion from source that isn't directly
   asserted by any single line or test.
-- **NOT IMPLEMENTED** — searched for, confirmed absent.
-- **NOT VALIDATED** — plausible/intended per docs or design, but no test or
-  code path confirms it either way.
+- **NOT IMPLEMENTED** — searched for, confirmed absent, this session.
+- **NOT VALIDATED** — plausible/intended, but no test or code path confirms
+  it either way.
 
 ## 2. Audit objective
 
-Determine what a clean, operator/dashboard-facing lifecycle interface
-(create / list / get / update / delete a target, explicitly supporting
-multiple simultaneous targets) would need to wrap, given the *existing*
-`TargetRegistry`/cache/versioning architecture — without redesigning that
-architecture, and without implementing anything yet.
+Determine, from the actual current source (not from the design/
+implementation documents' prose, and not from assumption), whether a clean
+operator/dashboard-facing lifecycle interface (create / list / get /
+update / delete a target, explicitly supporting multiple simultaneous
+targets) exists over the pre-existing `TargetRegistry`/cache/versioning
+architecture, what its exact contract is, and what — if anything — remains
+a genuine gap for a future phase.
 
 ## 3. Current target lifecycle (as it exists today)
 
-**VERIFIED FROM SOURCE.** The only lifecycle operations that exist are:
+**VERIFIED FROM SOURCE**, `target/service.py` (188 lines, read in full) and
+`target/registry.py` (572 lines, read in full):
 
 | Operation | Exists? | Callable |
 |---|---|---|
-| Create/register | Yes | `TargetRegistry.register_target()` |
-| Get one | Yes | `TargetRegistry.get_target()` |
-| Find by content hash | Yes | `TargetRegistry.find_by_content_hash()` |
-| List all | **No** | — |
-| Update (metadata-only) | **No** | — |
-| Update (new content, same version) | Yes, as a side effect of re-registration | `register_target()` again |
-| Delete | **No** | — |
+| Create/register | Yes | `TargetService.create_target()` → `TargetRegistry.register_target(..., on_conflict="reject")` |
+| List all | Yes | `TargetService.list_targets()` → `TargetRegistry.list_targets()` |
+| Get one | Yes | `TargetService.get_target()` → `TargetRegistry.get_target()` |
+| Find by content hash | Yes (pre-existing, unchanged) | `TargetRegistry.find_by_content_hash()` |
+| Update (metadata-only, patch semantics) | Yes | `TargetService.update_target_metadata()` → `TargetRegistry.update_target_metadata()` |
+| Update (new content) | Yes, only via a **new `target_version`** — content-swap under an existing version is now *rejected*, not silently allowed | `TargetService.create_target()` with a different `target_version` |
+| Delete | Yes, with cache/shared-media cleanup | `TargetService.delete_target()` → `TargetRegistry.delete_target()` |
+| One-time list-index backfill for pre-existing data | Yes | `TargetService.reindex()` → `TargetRegistry.reindex()` |
 
-There is no production call site for `register_target` anywhere in this
-repository — `target/shared_storage.py:184` says so explicitly in its own
-docstring ("`register_target` has no production call site"), and
-`docs/usage.md` (§"Register a target") confirms it's invoked by hand,
-per-target, by whatever external process owns target ingestion: *"There is
-no CLI for this — call `TargetRegistry.register_target` directly."*
-**VERIFIED FROM SOURCE.**
+Two callable layers exist, by design:
+- **`TargetRegistry`** (`target/registry.py`) — identity/versioning/
+  cache-compatibility plus the actual Redis mutations and locking for every
+  lifecycle operation. Still importable and usable directly (as tests and
+  benchmarks already do), unchanged in its own responsibility scope.
+- **`TargetService`** (`target/service.py`) — the operator-facing boundary:
+  input validation (`target_id`/`target_version` charset+length,
+  `media_path` filesystem checks, metadata shape), and the
+  create-vs-conflict policy. **Never touches Redis, a cache path, or a
+  `SharedArtifactStore` key directly** — confirmed by reading the file in
+  full: its only imports from `target/` are `TargetRegistry`,
+  `TargetRecord`, `ReindexResult`, and the error classes.
+
+A CLI (`target/cli.py`, `python -m target.cli`) sits on top of
+`TargetService` and is the first concrete operator entry point —
+see §17.
 
 ## 4. Current registration API
 
-**Callable:** `TargetRegistry.register_target(target_id: str, target_version: str, media_path: str, media_metadata: Optional[dict] = None) -> TargetRecord` (`target/registry.py:74-112`). **VERIFIED FROM SOURCE.**
+**Callable:** `TargetService.create_target(target_id, target_version,
+media_path, metadata=None) -> TargetRecord` (`target/service.py:118-144`),
+which validates and delegates to `TargetRegistry.register_target(...,
+on_conflict="reject")` (`target/registry.py:105-194`). **VERIFIED FROM
+SOURCE.**
 
-- **`target_id` semantics:** caller-assigned opaque string identifying "the
-  movie," never derived from content or filename (`target/identity.py:10-16`).
-- **`target_version` semantics:** caller-assigned label, independent of
-  content — two versions of the same `target_id` are expected to hold
-  different content, but nothing enforces that (§7 below).
-- **`media_path` semantics:** informational only — read once (streamed) to
-  compute `content_sha256`, then stored verbatim on the record. Never
-  contributes to identity (`target/identity.py:29-37`, `sha256_file`
-  docstring: "Never reads the filename or any filesystem metadata").
-- **Content SHA-256 behavior:** `sha256_file(media_path)` streams the file
-  in 64 KiB chunks (`target/identity.py:26,29-37`). Computed synchronously,
-  on every call, even for a re-registration of the same `(target_id,
-  target_version)` — there is no short-circuit if the path is unchanged.
-- **Redis records created:** `HSET fingerprint:target:{id}:{version}` (the
-  record itself) and `SADD fingerprint:target:content:{content_sha256}`
-  with an encoded `(id, version)` member (`target/keys.py:13-19`,
-  `registry.py:107-111`). **VERIFIED FROM SOURCE.**
-- **Local/shared cache artifacts:** **none**, at registration time. Only
-  if a `media_store` (`SharedTargetMediaStore`) was injected does
-  registration additionally push the raw media bytes into shared storage,
-  keyed by `content_sha256` alone (`registry.py:93-95`,
-  `target/shared_storage.py:176-221`). Embedding/segment caches are **not**
-  touched by `register_target` at all.
-- **Idempotency:** re-registering the same `(target_id, target_version)`
-  is a safe upsert — `created_at` is preserved from the existing record,
-  `updated_at` and every other field are overwritten (`registry.py:96-106`).
-  **VERIFIED BY TEST** (`tests/test_target.py::test_cache_miss_for_different_target_content_hash`,
-  lines 151-162): re-registering under the *same* `(target_id,
-  target_version)` with **different bytes** is accepted with no error, and
-  correctly invalidates any embedding previously cached for the old
-  content hash.
-- **Same media bytes registered under different IDs:** explicitly
-  supported and detectable — `find_by_content_hash()` exists precisely for
-  this. **VERIFIED BY TEST**
-  (`test_target_identity_independent_of_filename`, lines 72-84): two
-  different `target_id`s with byte-identical content both register
-  successfully and both show up under `find_by_content_hash(hash)`.
-  Duplicate content is allowed by design, not rejected.
-- **Embeddings computed immediately or lazily:** lazily, cache-first,
-  build-on-miss. Registration never calls the embedding engine.
-  `docs/usage.md:121-124` states this explicitly, and it matches
-  `get_or_build_segment_embedding`'s implementation (`registry.py:201-273`).
+- **`target_id`/`target_version` semantics:** caller-assigned opaque
+  strings, still never derived from content or filename
+  (`target/identity.py`, unchanged). **New at the `TargetService`
+  boundary:** both must match `^[A-Za-z0-9._-]+$`, 1–128 characters, no
+  leading/trailing whitespace tolerated (rejected, not stripped) —
+  `target/service.py:52-65`. This closes the previously-identified
+  `target_key()` unescaped-`:` collision class (§13). `TargetRegistry.
+  register_target` itself still performs **no** charset validation — a
+  caller that bypasses `TargetService` and calls it directly can still
+  create a `:`-containing id. **VERIFIED FROM SOURCE**, and this residual
+  gap is explicitly documented in the design doc (§6) as an accepted,
+  scoped decision, not an oversight.
+- **`media_path` semantics:** still informational only for identity
+  (identity is `content_sha256`, never the path) but now validated before
+  any registry call: must exist, must not be a directory, must be a
+  regular file, must be non-empty, must pass a 1-byte readability probe —
+  every failure raises `TargetMediaError`, never a raw `OSError`/
+  `FileNotFoundError`/`IsADirectoryError` (`target/service.py:68-91`).
+  **VERIFIED FROM SOURCE**, **VERIFIED BY TEST**
+  (`tests/test_target_service.py`, media-validation parametrized cases —
+  file ran and passed this session).
+- **Content SHA-256 behavior:** unchanged — `sha256_file()` streams the
+  file, computed before any lock is acquired
+  (`target/registry.py:156-158`), still no short-circuit on an unchanged
+  path (re-hashes every call).
+- **Redis records created:** `HSET fingerprint:target:{id}:{version}`,
+  `SADD fingerprint:target:content:{content_sha256}`, and (new)
+  `SADD fingerprint:target:index` — all three under one `RedisLock`
+  (`target/registry.py:188-194`, `target/keys.py:21-28`).
   **VERIFIED FROM SOURCE.**
+- **Idempotency — now a three-way, explicit contract, not an implicit
+  full-overwrite:**
 
-### Gap found: stale content-index entries
+  | Existing record? | Content matches? | Outcome |
+  |---|---|---|
+  | No | — | Created |
+  | Yes | Identical `content_sha256` | Idempotent success — `created_at` preserved, `updated_at` advances, metadata **replaced** by whatever this call's `metadata` argument says (an omitted `metadata` resets stored metadata to `{}` — `create_target` declares full desired state; distinct from `update_target_metadata`'s patch semantics, see §6) |
+  | Yes | Different | `TargetAlreadyExistsError`, existing record and both index memberships **completely untouched** |
 
-**VERIFIED FROM SOURCE.** `register_target` only ever `SADD`s the *new*
-`content_sha256`'s index set; it never `SREM`s the target's *previous*
-`content_sha256` entry when content changes under a fixed `(target_id,
-target_version)`. After the re-registration in
-`test_cache_miss_for_different_target_content_hash`,
-`find_by_content_hash(<old hash>)` would still return `(target-1, v1)`
-even though `get_target("target-1", "v1").content_sha256` no longer equals
-that hash. No test currently checks this (the existing test only checks
-the *new* hash's cache behavior, not the old hash's index state). This is
-a latent correctness gap in the reverse index, relevant to any future
-delete/GC design, not a crash risk today because nothing currently reads
-that stale entry for a decision.
+  **VERIFIED FROM SOURCE** (`target/registry.py:160-194`), **VERIFIED BY
+  TEST** (`tests/test_target_lifecycle.py`, `on_conflict` tests;
+  `tests/test_target_service.py`, create-idempotency/conflict tests — both
+  files ran and passed this session, 25 + 25 collected test functions,
+  more individual cases via parametrization).
+- **Same media bytes registered under different IDs:** still explicitly
+  supported and detectable via `find_by_content_hash()`, unchanged
+  behavior. Duplicate content across distinct targets is allowed by design.
+- **Embeddings computed immediately or lazily:** still lazily, cache-first,
+  build-on-miss — `register_target`/`create_target` never touch the
+  embedding engine. Unchanged.
+
+### Fixed: stale content-index entry (previously an open gap)
+
+**VERIFIED FROM SOURCE.** The original audit's finding — a
+content-changing re-registration left the *old* `content_sha256`'s reverse
+index still pointing at the target — is fixed: `register_target`'s
+`"replace"` path now `SREM`s the target's membership from the *old* hash's
+`target_content_index_key` before writing the new one
+(`target/registry.py:172-178`), under the same lifecycle lock so this is
+race-free with respect to other mutators of the same identity.
+**VERIFIED BY TEST**:
+`tests/test_target_lifecycle.py::test_content_changing_reregistration_removes_stale_content_index_entry`
+ran and passed this session. Only forward-going registrations are fixed —
+any stale entry that predates this fix in an already-deployed Redis
+instance is not retroactively repaired (documented open item, §15/§16).
 
 ## 5. Current listing/get capabilities
 
-**`get_target(target_id, target_version) -> Optional[TargetRecord]`
-exists** (`registry.py:114-116`) — single-record lookup only, by exact key.
+**`TargetService.list_targets() -> list[TargetRecord]`** exists
+(`target/service.py:146-149` → `target/registry.py:233-250`).
+**VERIFIED FROM SOURCE**, **VERIFIED BY TEST** (list-ordering,
+multi-version-coexistence, and stale-member-skip tests in
+`tests/test_target_lifecycle.py`, ran and passed).
 
-**NOT IMPLEMENTED:**
-- List all registered targets.
-- List all versions for a given `target_id`.
-- "Is this target active" (there is no active/inactive concept at all —
-  a target either has a Redis hash or it doesn't).
-
-Confirmed by exhaustive grep across `target/`, `worker/`, `integration/`,
-`tests/` for `list_target`, `def list`, `TargetService`, `TargetManager`,
-`enumerate` — zero relevant hits (`old/storage/file_retention.py` was the
-only hit anywhere in the repo, and it's an unrelated legacy module).
-
-A future listing implementation has two viable strategies given the
-current key design:
-1. **`SCAN fingerprint:target:*` and filter.** Technically possible
-   without touching `TargetRegistry`, but fragile: `target_key()` is a
-   plain f-string join on `:`, and nothing restricts `target_id`/
-   `target_version` from containing `:` themselves (see §14) — so parsing
-   a scanned key back into `(target_id, target_version)`, or reliably
-   excluding the `:embeddings`/`:segment_embeddings` suffix keys, is
-   ambiguous in the general case. Also an O(keyspace) SCAN, not O(targets).
-2. **A small explicit index Set**, e.g. `fingerprint:target:index`,
-   `SADD`ed alongside the existing `target_content_index_key` write in
-   `register_target`, using the same `encode_content_index_member`
-   encoding already in `target/keys.py`. This mirrors a pattern the
-   codebase already trusts and avoids all key-parsing ambiguity.
-   **Recommended approach** — see §16.
+- Backed by a dedicated Redis Set, `fingerprint:target:index`
+  (`target/keys.py:21-28`), `SADD`ed inside `register_target` itself — so
+  the invariant "every successfully registered target is listable" holds
+  for *any* caller, including a direct `TargetRegistry.register_target`
+  call (tests, benchmarks), not only calls that went through
+  `TargetService`.
+- **O(number of registered targets)** — one `SMEMBERS` plus one `HGETALL`
+  per member, never a keyspace `SCAN`. Results are sorted by `(target_id,
+  target_version)` before being returned, so output is deterministic
+  despite `SMEMBERS`'s unordered nature. **VERIFIED FROM SOURCE.**
+- **`TargetService.get_target(target_id, target_version) -> Optional[TargetRecord]`**
+  exists, returns `None` on a miss rather than raising (deliberately
+  different from the mutation methods — a `get` miss is a normal lookup
+  outcome, not an operator error). **VERIFIED FROM SOURCE.**
+- **"List all versions for one `target_id`"**: **not a separate method** —
+  a caller filters `list_targets()`'s result by `target_id` client-side.
+  This is a thin, reasonable simplification (expected scale is tens to low
+  hundreds of targets, not crawler-URL scale — design doc §8), not a gap;
+  flagged here only so it isn't mistaken for a missing capability.
+- **"Is this target active"**: still **NOT IMPLEMENTED** — no
+  active/inactive concept exists anywhere; a target either resolves via
+  `get_target`/appears in `list_targets` or it doesn't. This is a
+  deliberate design decision (§7, §11), not an oversight.
+- **Pre-existing-data gap:** targets registered *before* this
+  implementation shipped are invisible to `list_targets()` until
+  `reindex()` is run once against that Redis instance (§12). Confirmed:
+  `fingerprint:target:index` is populated only by `register_target`'s
+  `SADD` and `reindex`'s backfill `SADD` — no other write path touches it.
+  **This is a real, currently-live migration requirement for any
+  already-deployed Redis instance with pre-existing targets that predates
+  this feature**, not a hypothetical.
 
 ## 6. Current update capabilities
 
-**NOT IMPLEMENTED** as a distinct operation. The only way to change an
-existing target today is to call `register_target()` again for the same
-`(target_id, target_version)`, which does a **full overwrite** of
-`media_path`, `content_sha256` (via re-hashing whatever file is at
-`media_path` now), and `media_metadata` — there is no partial/metadata-only
-update path. Calling it again with `media_metadata=None` (the default)
-**silently clobbers** any previously-stored metadata back to `{}`, since
-the record is rebuilt from scratch each call (`registry.py:99-106`) and
-`media_metadata or {}` has no memory of the prior value. **VERIFIED FROM
-SOURCE**, not directly tested (no test re-registers *without* passing
-metadata after having set some).
+**Metadata-only update exists and has patch semantics**, closing the
+original audit's finding that re-registration silently clobbered metadata.
 
-Field mutability, from source:
-- **Immutable by construction:** `target_id`, `target_version` (they're the
-  key, not stored-and-editable fields), `created_at` (preserved across
-  re-registration).
-- **Derived, not settable:** `content_sha256` — always recomputed from
-  whatever bytes `media_path` points to; never accepted as a caller-supplied
-  value anywhere in the codebase. Correctly treated as identity, not metadata.
-- **Mutable only via full re-registration today:** `media_path`,
-  `media_metadata`, `updated_at`.
+**Callable:** `TargetService.update_target_metadata(target_id,
+target_version, set_fields=None, remove_fields=None) -> TargetRecord`
+(`target/service.py:155-172` → `target/registry.py:252-290`).
+**VERIFIED FROM SOURCE.**
 
-**Recommendation (do not implement yet):** Do not invent a generic
-`update_target()` that can silently swap content under an existing
-`target_version` — that already works today via re-registration and is
-exactly the operation §12 argues should be steered away from. The next
-phase should expose two narrow, explicit operations instead:
-1. A genuinely metadata-only patch (`update_target_metadata`) that reads
-   the existing record, merges the caller's partial metadata dict, and
-   writes back *without* touching `media_path`/`content_sha256`/re-hashing
-   anything. This does not exist in `TargetRegistry` today and would be a
-   small, additive method.
-2. "New content" is reframed as "register a new `target_version`" — an
-   operation that is already fully supported and requires zero registry
-   changes.
+- Shallow-merges `set_fields` into existing `media_metadata`
+  (`dict.update()` semantics — a nested value in `set_fields` replaces the
+  corresponding existing value wholesale, not a recursive merge), then
+  pops every key named in `remove_fields` (a key present in both ends up
+  removed — set applied first, remove second).
+- **Never touches** `media_path`, `content_sha256`, `target_id`,
+  `target_version` — there is no parameter for any of them on this method,
+  so a content swap is structurally impossible through this call, not
+  merely disallowed by convention.
+- `created_at` preserved, `updated_at` advances.
+- Raises `TargetNotFoundError` (not a silent no-op or a fresh-create) if
+  the identity doesn't exist.
+- Serialized by the same lifecycle lock `register_target`/`delete_target`
+  use, scoped to `target_record_lock_key(target_id, target_version)`
+  (`target/keys.py:48-56`).
+
+**VERIFIED BY TEST**: `tests/test_target_lifecycle.py`'s
+`update_target_metadata` tests (merge, remove, key-in-both,
+identity-preservation, not-found) and `tests/test_target_service.py`'s
+equivalents — both files ran and passed this session.
+
+Field mutability, current state:
+- **Immutable by construction:** `target_id`, `target_version` (the key,
+  never a stored-and-editable field), `created_at` (preserved across every
+  mutation).
+- **Derived, never settable:** `content_sha256` — always computed from
+  `media_path`'s bytes; no code path anywhere accepts it as caller input.
+- **Mutable via `update_target_metadata` (patch, not replace):**
+  `media_metadata` only.
+- **Mutable via `create_target` (a new `target_version`), never in
+  place:** `media_path`/content. There is no "swap content under an
+  existing version" operation reachable through `TargetService` — the only
+  way to reach that behavior is to bypass `TargetService` and call
+  `TargetRegistry.register_target(..., on_conflict="replace")` (the
+  default) directly, which is retained **only** for backward compatibility
+  with pre-existing direct callers (tests/benchmarks), not exposed as an
+  operator operation.
+
+**This fully resolves the original audit's §6 finding and recommendation**
+— the two narrow operations it recommended (`update_target_metadata`, and
+treating new content as a new `target_version`) are exactly what was built.
 
 ## 7. Current deletion capabilities
 
-**NOT IMPLEMENTED.** Confirmed by exhaustive grep (`delete`, `deregister`,
-`remove_target`) across `target/`, `worker/`, `integration/`, `tests/` —
-zero hits.
+**Exists.** `TargetService.delete_target(target_id, target_version) ->
+None` (`target/service.py:174-179` → `target/registry.py:319-373`).
+**VERIFIED FROM SOURCE.**
 
-### Target-owned state inventory (VERIFIED FROM SOURCE)
+Full sequence, under the lifecycle lock (`target/registry.py:346-373`):
 
-| Artifact | Key | Owned exclusively by one `(target_id, target_version)`? | Safe to delete on target delete? |
-|---|---|---|---|
-| Registry record | `fingerprint:target:{id}:{version}` (Redis hash) | Yes | Yes |
-| Embedding metadata summary | `fingerprint:target:{id}:{version}:embeddings` (Redis hash) | Yes | Yes |
-| Segment embedding metadata summary | `fingerprint:target:{id}:{version}:segment_embeddings` (Redis hash) | Yes | Yes |
-| Content-hash reverse index membership | `fingerprint:target:content:{content_sha256}` (Redis Set) | **No — content-keyed, one entry per `(id,version)` sharing that hash** | Only remove *this target's* member, never the whole set |
-| Local pooled embedding cache file | `FilesystemEmbeddingCache`, named by `cache_entry_key(id, version, content_sha256, spec)` | Yes (id+version are part of the key) | Yes |
-| Local segment embedding cache file | `FilesystemSegmentEmbeddingCache`, same keying | Yes | Yes |
-| Shared pooled/segment cache (Phase 13D) | `SharedFilesystemEmbeddingCache`/`SharedFilesystemSegmentEmbeddingCache`, same `cache_entry_key` keying | Yes | Yes |
-| **Shared raw target media** (Phase 13D) | `SharedTargetMediaStore`, keyed by **`content_sha256` only** (`target/shared_storage.py:199-200`) — no `target_id`/`target_version` in the key | **No** | **Not safely deletable without checking `find_by_content_hash` first** |
-| Result records | `fingerprint:job:{job_id}:result`, `fingerprint:result:{job_id}` — carry `target_id`/`target_version` fields but are keyed by `job_id` | N/A (historical, not target-owned in a deletion sense) | Should **not** cascade-delete — see §11 |
-| Queued/in-flight jobs | Redis Stream entries carrying `target_id`/`target_version` fields, keyed by stream position, not target | N/A | Should **not** be touched by delete — see §11 |
-| `target/lock.py` build-on-miss lock | `fingerprint:lock:target:{cache_key}` | Yes | Self-expiring (TTL); no cleanup needed |
+1. Look up the record; `TargetNotFoundError` if missing.
+2. Read the pooled/segment embedding summary hashes
+   (`target_embeddings_key`/`target_segment_embeddings_key`) and
+   reconstruct each cached `EmbeddingSpec` from its stored
+   `to_metadata_fields()` JSON — the only way to know which cache files
+   this target owns without a filesystem scan.
+3. Delete each target-exclusive pooled/segment cache entry
+   (`self._cache.delete(...)` / `self._segment_cache.delete(...)`) — safe
+   unconditionally, since `cache_entry_key` bakes `(target_id,
+   target_version)` into the filename/key, so these entries can never be
+   shared across targets.
+4. `SREM` this target's membership from the content-hash reverse index.
+5. `SREM` this target's membership from the list index.
+6. `DEL` the record hash + both embedding-summary hashes, in one Redis
+   pipeline.
+7. **Only after step 4**, call `find_by_content_hash(record.content_sha256)`
+   — this now reflects only *other* targets, since this target's own
+   membership is already gone. If empty **and** a `media_store` is
+   configured, delete the shared media blob.
 
-**The one artifact that genuinely requires a reference check before
-deletion is `SharedTargetMediaStore`.** Everything else — including every
-embedding/segment cache entry, local or shared — is exclusively owned by
-its exact `(target_id, target_version, content_sha256, spec)` tuple by
-construction (`target/versioning.py:75-88`, `cache_entry_key`), so two
-different targets never collide on a cache file even if their content is
-byte-identical. `SharedTargetMediaStore` is the sole exception because it
-deliberately de-duplicates by content only (§8). A correct delete
-implementation must call `find_by_content_hash(record.content_sha256)`
-after removing the target's own registry record and index membership, and
-only delete the shared media blob if no other `(target_id, target_version)`
-still references that hash. **This does not require a general reference-
-counting system** — `find_by_content_hash` (already implemented) is
-sufficient, provided the content-index `SREM` for the deleted target
-happens *before* the check.
+### Target-owned state inventory (re-verified, current source)
 
-**No target→job or target→result index exists.** There is currently no
-way to answer "which jobs/results reference target X" without a full scan
-of job/result keyspace. See §11 for what this means for delete safety.
+| Artifact | Owned exclusively by one `(target_id, target_version)`? | Deleted by `delete_target`? |
+|---|---|---|
+| Registry record hash | Yes | Yes (step 6) |
+| Embedding/segment-embedding summary hashes | Yes | Yes (step 6) |
+| Content-hash reverse-index membership | No — content-keyed, shared across any target with identical bytes | This target's own membership only (step 4), never the whole Set |
+| List-index membership | Yes | Yes (step 5) |
+| Local/shared pooled and segment cache files | Yes — `cache_entry_key` includes `(target_id, target_version)` | Yes, unconditionally (step 3) |
+| **`SharedTargetMediaStore` raw media blob** | **No — keyed by `content_sha256` alone** | **Only if `find_by_content_hash` (post-SREM) shows no remaining referent** (step 7) |
+| `ResultRecord`s | No — keyed by `job_id`, target fields are descriptive only | **Not touched** (by design) |
+| Queued/in-flight Redis Stream job entries | No — keyed by stream position | **Not touched** (by design, §11) |
+| Build-on-miss lock (`target/lock.py`) | Yes | Not applicable — self-expiring by TTL, nothing to clean up |
+
+**The one artifact requiring a reference check before deletion —
+`SharedTargetMediaStore` — is correctly reference-checked**, using the
+already-existing `find_by_content_hash` primitive, with the ordering that
+matters (SREM before the check) enforced by the code, not left to caller
+discipline. **VERIFIED FROM SOURCE**, **VERIFIED BY TEST**:
+`tests/test_target_lifecycle.py`'s delete tests include "shared media
+retained when a second target still references it" and "shared media
+deleted when the last referent is deleted" — ran and passed this session.
+
+### A real, narrow, documented, self-healing gap
+
+**VERIFIED FROM SOURCE and VERIFIED BY TEST**
+(`tests/test_target_crash_safety.py::test_delete_target_crash_between_index_removal_and_hash_deletion_is_retry_safe`,
+ran and passed): if the process crashes or the Redis connection drops
+*exactly* between the two `SREM` calls (steps 4/5) and the pipelined `DEL`
+that follows (step 6), the target becomes invisible to `list_targets()`
+and `find_by_content_hash()` but the record hash itself is not yet
+deleted, so a direct `get_target()` still resolves it. This is **narrow**
+(a small window between two already-committed writes and one
+not-yet-attempted one) and **self-healing** — calling `delete_target()`
+again completes it correctly, because `get_target()` still finds the
+record. Not fixed in this implementation; documented as a known,
+accepted-risk limitation, not silently patched. This is the one concrete,
+currently-live correctness caveat this audit found in the delete path.
+
+**No target→job or target→result index exists** — unchanged from the
+original audit's finding, and this is an explicit, reasoned policy
+decision (§11 below), not an omission.
 
 ## 8. Multiple-target support
 
-**Already fully supported, proven from source and tests. No redesign
-needed.**
+**Fully supported — unchanged conclusion from the original audit, now
+additionally exercised by the new lifecycle code without any redesign.**
 
-- **Redis key design:** every target-related key is namespaced by
-  `(target_id, target_version)` or `content_sha256` — never a
-  singleton/global key (`target/keys.py`, entire file).
-- **Job schema:** `work_queue.jobs.Job` carries `target_id`/`target_version`
-  as required, per-job fields (`work_queue/jobs.py:36-46,54-63`) — not
-  worker/process configuration. **VERIFIED FROM SOURCE.**
-- **Candidate/submission API:** `integration.candidate.FingerprintCandidate`
-  requires `target_id`/`target_version` per candidate, validated non-empty
-  (`integration/candidate.py:104-105,123-125`). **VERIFIED FROM SOURCE.**
-- **Matching handler:** resolves `job.target_id`/`job.target_version`
-  fresh, per job, at handler-invocation time (`worker/matching_handler.py:189,197-198`)
-  — no cached "current target" state anywhere in the handler or `Worker`.
-- **Proof of coexistence:** `tests/test_integration_e2e.py` registers
-  `"target-1"`, `"target-2"`, and `"target-unrelated"` in the same Redis
-  instance and exercises cross-target no-match and multi-worker scenarios
-  (lines 91-264). **VERIFIED BY TEST.**
-- **Worker is target-agnostic:** confirmed both in source (no target
-  reference anywhere in `worker/main.py`'s wiring) and in
-  `docs/usage.md:83-85`: *"a worker process is target-agnostic: it just
-  processes whatever jobs arrive on the Redis stream."*
+- Every target-related Redis key remains namespaced by `(target_id,
+  target_version)` or `content_sha256` (`target/keys.py`, read in full) —
+  including both **new** keys, `fingerprint:target:index` (one
+  unparameterized Set, but its *members* are per-identity, not a
+  collision) and `fingerprint:lock:target-record:{id}:{version}` (scoped
+  per identity, deliberately shaped differently from the pre-existing
+  `fingerprint:lock:target:{cache_key}` build-on-miss lock so the two
+  families can never collide). **VERIFIED FROM SOURCE.**
+- `work_queue.jobs.Job` and `integration.candidate.FingerprintCandidate`
+  still require `target_id`/`target_version` as mandatory per-job/
+  per-candidate fields (`work_queue/jobs.py:42-43,60-61`;
+  `integration/candidate.py:104-105,123`) — **confirmed unchanged this
+  session** by direct read; neither file was touched by the lifecycle
+  implementation (matches the implementation doc's explicit "no changes to
+  work_queue/integration" claim, §17 of this doc).
+- `worker/matching_handler.py` still resolves `target_id`/`target_version`
+  fresh per job, and still maps an unresolvable identity to
+  `PermanentFailure` via `KeyError` (`worker/matching_handler.py:230-232`,
+  confirmed unchanged this session). **VERIFIED BY TEST** —
+  `tests/test_matching_handler.py` ran and passed, including the **new**
+  `test_deleted_target_raises_permanent_failure_same_as_unknown_target`
+  (line 198), which proves a target that went through the new
+  `delete_target()` fails identically to a target that was simply never
+  registered — the pre-existing fail-closed path was not modified and did
+  not need to be.
+- **Proof of coexistence, re-verified this session by running the suite:**
+  `tests/test_integration_e2e.py` (multi-target, multi-worker scenarios)
+  passed as part of the 369-test full-suite run.
 
-**Conclusion: the gap is entirely in the missing operator-facing lifecycle
-surface (list/delete/safe-update), not in the underlying multi-target
-data-plane, which already works correctly for arbitrarily many
-simultaneous targets.**
+**Conclusion, unchanged from the original audit and now further confirmed:
+multi-target support is a property of the pre-existing data plane, and the
+lifecycle implementation added on top of it did not need to touch — and in
+fact did not touch — any of `work_queue/`, `worker/matching_handler.py`,
+`worker/main.py`, or `integration/` to deliver create/list/get/update/
+delete for arbitrarily many simultaneous targets.**
 
 ## 9. Crawler integration
 
-**There is no crawler code in this repository.** `find` confirms the only
-hit for "crawl" anywhere outside `old/` is
-`docs/architecture/phase-12-crawler-fingerprinter-integration.md` itself.
-The crawler lives in a separate, sibling repository
-(`integration/candidate.py`'s own docstring, lines ~16-22, refers to *"the
-sibling crawler repo"*). What exists on this side is the boundary the
-crawler is expected to call: `integration.submission.FingerprintJobSubmitter.submit()`.
+**Confirmed this session:** `fingerprinter/` and `crawler/` are two
+independent git repositories (`fingerprinter/.git`, `crawler/.git` both
+exist as real, separate `.git` directories, not a shared monorepo root)
+under a common, non-git-tracked parent directory
+(`/home/dhanush/anti_piracy`). `integration/candidate.py`'s own docstring
+refers to "the sibling crawler repo." This confirms the original audit's
+conclusion: there is no crawler code inside `fingerprinter/`'s own
+repository, and this phase's scope (target-management within
+`fingerprinter/`) correctly does not touch it.
 
-- `target_id`/`target_version` are mandatory, per-candidate,
+- `target_id`/`target_version` remain mandatory, per-candidate,
   caller-supplied fields with no default and no global fallback
-  (`integration/candidate.py:104-105`). **VERIFIED FROM SOURCE.**
-- The crawler (or any caller) can already switch targets between calls
-  with zero code changes — it's a plain function argument on
-  `FingerprintCandidate`, not configuration baked into the submitter or
-  worker.
-- **What happens if the configured target does not exist:**
-  `FingerprintCandidate.validate()` only checks that `target_id`/
-  `target_version` are non-empty strings — it never calls
-  `TargetRegistry.get_target()` (**VERIFIED FROM SOURCE**, `candidate.py:110-132`
-  has no registry import at all). So a job against an unregistered target
-  **enqueues successfully** (`SubmissionOutcome.ENQUEUED`) and only fails
-  once a worker claims it and the matching handler calls the registry,
-  which raises `KeyError` → `PermanentFailure`
-  (`worker/matching_handler.py:231-232`, **VERIFIED BY TEST**
-  `tests/test_matching_handler.py::test_unknown_target_raises_permanent_failure`,
-  lines 187-195). This is fail-closed and correct (no silent bad match),
-  but it means a typo'd `target_id` is only caught after the job traverses
-  the full queue, not at submission time. **No test exercises the
-  submission-time behavior** (no `test_submit_rejects_unknown_target` or
-  equivalent exists) — this is a gap in test coverage of an already-known,
-  intentionally-minimal boundary (the phase-12 brief explicitly scoped
-  `FingerprintCandidate.validate()` to cheap, local, pre-Redis checks only).
+  (`integration/candidate.py:104-105`, confirmed unchanged this session).
+- The crawler (or any external caller of `integration.submission`) can
+  already switch targets between calls with zero code changes on either
+  side — unchanged conclusion.
+- **What happens if the configured target does not exist:** unchanged —
+  `FingerprintCandidate.validate()` still only checks non-empty strings,
+  never calls the registry; a job against an unregistered target still
+  enqueues successfully and fails worker-side as `PermanentFailure` once
+  claimed. **This submission-time gap was explicitly scoped out of the
+  target-management implementation** (design doc §26, confirmed against
+  current source: `integration/candidate.py` was not modified by this
+  phase) — it is a pre-existing, intentionally-minimal phase-12 boundary
+  decision, not a target-management regression or omission.
 
 ## 10. Worker integration
 
-- `worker/matching_handler.py::build_matching_handler` receives
-  `target_id`/`target_version` from `job.target_id`/`job.target_version`
-  at call time (lines 189, 197-198) — never from process-level
-  configuration. `worker/main.py`'s `WorkerConfig` has no target field at
-  all (`docs/usage.md`'s env var table confirms this — no `TARGET_ID`
-  variable exists).
-- **Multiple targets concurrently:** true at the fleet level — distinct
-  worker *processes* (or consumer-group members) can each be mid-job
-  against a different target at the same instant (`docs/usage.md`'s
-  "multiple worker processes on one host" example +
-  `tests/test_integration_e2e.py::test_multiple_workers_process_distinct_jobs_without_duplication`,
-  **VERIFIED BY TEST**). A single `Worker.run()` loop processes one job at
-  a time (its own dispatch loop, `worker/fingerprint_worker.py`), so
-  concurrency across targets comes from running multiple worker processes,
-  not from one process handling two targets simultaneously — this matches
-  the deployment model documented throughout, not a limitation specific to
-  target management.
-- **Artifact isolation:** guaranteed by construction — `cache_entry_key()`
-  hashes `(target_id, target_version, content_sha256, spec)` together
-  (`target/versioning.py:75-88`), so no two distinct targets can ever
-  collide on a cache entry, and the build-on-miss lock
-  (`target/lock.py`) is scoped to that same exact tuple
-  (`registry.py:249`), correctly serializing concurrent builds *of the
-  same target* while never blocking unrelated targets against each other.
-  **VERIFIED BY TEST**: `tests/test_target_build_on_miss.py::test_concurrent_miss_builds_only_once`.
+- `worker/matching_handler.py` still receives `target_id`/`target_version`
+  from `job.target_id`/`job.target_version` at call time, never from
+  process-level configuration; `worker/main.py`'s `WorkerConfig` still has
+  no target field. **Confirmed unchanged this session** — neither file
+  appears in the target-lifecycle implementation's file list, and a direct
+  read confirms no target-lifecycle import or call was added to either.
+- **Deliberate, verified non-integration:** `target/cli.py` explicitly does
+  **not** import `worker.main`, specifically to avoid pulling in
+  `embedding.dinov2_engine`'s torch/transformers/numpy/Pillow dependency
+  chain for a process that only reads/writes small Redis hashes
+  (`target/cli.py:20-29`, confirmed by reading the module docstring and
+  imports). **VERIFIED BY TEST**: `tests/test_embedding_lazy_import.py`
+  (9 tests, ran and passed this session) proves, via fresh subprocesses,
+  that `torch`/`transformers`/`numpy`/`PIL` are absent from `sys.modules`
+  after importing `target.cli`/`target.registry`/`target.service` and
+  running a full CLI command cycle.
+- **Multiple targets concurrently:** unchanged conclusion — true at the
+  fleet level (distinct worker processes on different targets
+  simultaneously), not within a single `Worker.run()` loop (one job at a
+  time, target-agnostic dispatch). This is the pre-existing deployment
+  model, untouched by this phase.
+- **Artifact isolation:** unchanged, still guaranteed by
+  `cache_entry_key()` hashing `(target_id, target_version, content_sha256,
+  spec)` together — confirmed this session that the new `delete()`
+  primitives on every cache class take the exact same four-argument shape
+  as `get`/`put`, so deletion is exclusive by the same construction that
+  makes reads/writes exclusive.
 
 ## 11. Cache/artifact ownership
 
-Covered in detail in §7's table. Summary of the invariant that matters
-most for a future delete implementation:
+Covered in §7's table. The load-bearing invariant, re-verified this
+session by reading all four cache/storage `delete()` implementations
+(`target/cache.py:86-125`, `target/segment_cache.py:103-133`,
+`target/shared_cache.py:95-191`, `target/shared_storage.py:107-223`):
 
-**Content-addressed identity is preserved everywhere and must not be
-replaced.** `sha256_file()` never reads filename/path/mtime
-(`target/identity.py:29-37`), and every cache key downstream of it
-(`cache_entry_key`) is a pure function of `(target_id, target_version,
-content_sha256, spec)` — never hostname, PID, or local timestamp
-(`target/shared_storage.py:44-48` states this explicitly as the property
-that makes cross-host sharing correct). The **one place** this invariant
-intentionally trades exclusivity for deduplication is
-`SharedTargetMediaStore`, which addresses raw media by `content_sha256`
-alone, by design (`target/shared_storage.py:176-192`'s docstring explains
-this was chosen because no per-target media-acquisition source exists to
-justify per-target storage). This is not a bug — it is a deliberate,
-documented dedup choice — but it is the one place a future delete
-operation must reference-check (via the already-existing
-`find_by_content_hash`) rather than delete unconditionally.
+**Every new `delete()` method mirrors its class's existing `get`/`put`
+key-derivation exactly** — none of them independently reconstructs a path
+or key; each calls the same private `_path_for(...)`/`_key(...)` helper
+`get`/`put` already use. This means deletion cannot drift out of sync with
+how entries are addressed, by construction, not by convention. Return
+contract is uniform across all four: `True` iff something was actually
+removed, `False` iff already absent (idempotent, safe to call twice,
+never raises for a plain miss); `SharedArtifactStore.delete` raises
+`SharedArtifactStoreError` — not a raw `OSError`, not a silent `False` —
+only when the underlying store itself is unreachable/unwritable, the same
+"absent vs. unreachable" distinction `get_bytes`/`put_bytes` already use.
+**VERIFIED FROM SOURCE and VERIFIED BY TEST**
+(`tests/test_target_crash_safety.py`'s direct primitive tests, ran and
+passed).
+
+**Content-addressed identity is preserved everywhere and was not
+replaced** — confirmed this session: `target/identity.py`,
+`target/versioning.py`, and `target_key()`'s own `:`-joined format are
+byte-for-byte unchanged from before this implementation (the collision
+risk they created is closed by validation at the `TargetService`
+boundary, §13, not by reshaping the keys themselves — a smaller, correctly
+scoped fix per the design doc's own reasoning).
 
 ## 12. Concurrency/idempotency
 
-- `register_target` performs plain `HSET`/`SADD` — **no `WATCH`/CAS/lock**
-  around the read-then-write of `created_at` (`registry.py:96-111`
-  reads `get_target` then writes, non-atomically). Two callers racing to
-  register the *same* `(target_id, target_version)` with *different*
-  media at the same moment: last `HSET` wins silently, no error, no test
-  covers this. This mirrors the acceptable "last write wins" pattern used
-  elsewhere in this codebase for genuinely idempotent writes (e.g., the
-  content index `SADD`, which *is* safe to race because Set membership is
-  idempotent regardless of order) — but here the two writers may be
-  registering **different content** under the same identity, so the race
-  has an observable, non-idempotent outcome (which content wins is
-  order-dependent). This is a **real, unaddressed gap**, not a
-  false-positive concern.
-- `register_embedding`/`register_segment_embedding` are effectively safe
-  under race because the underlying cache `put()` calls are last-write-wins
-  overwrites of the *same* content for the *same* key (idempotent by
-  construction, since `spec`+`content_sha256` pin the input).
-- The build-on-miss path (`get_or_build_segment_embedding`) already has
-  correct locking (`target/lock.py`'s `RedisLock`, **VERIFIED BY TEST**).
-  There is no analogous lock around plain `register_target`.
-- **Smallest fix for the next phase** (not implemented here): wrap
-  `register_target`'s read-modify-write in the *same* `RedisLock`
-  primitive already used for build-on-miss, scoped to
-  `target_key(target_id, target_version)`. No new locking primitive is
-  needed — this reuses `target/lock.py` verbatim.
-- Delete-vs-register and delete-vs-delete races are **not applicable
-  today** since delete doesn't exist; whatever locking scheme is chosen
-  for delete in the next phase should reuse the same `RedisLock` scoped to
-  the same key, for the same reason.
+**The original audit's core finding — `register_target` had no lock around
+its read-then-write, so two callers racing on the same identity with
+different content could silently interleave — is fixed.**
+
+- **One `RedisLock`, one key shape, shared by all three mutations:**
+  `register_target`, `update_target_metadata`, and `delete_target` all
+  call the same `_acquire_lifecycle_lock(target_id, target_version)`
+  (`target/registry.py:196-215`), scoped to
+  `target_record_lock_key(target_id, target_version)` — a key shape
+  deliberately distinct from the pre-existing build-on-miss lock's key, so
+  the two lock families can never collide even for the same target.
+  **VERIFIED FROM SOURCE.**
+- Acquisition: try once, then poll every 0.1s for up to 5s
+  (`LIFECYCLE_LOCK_POLL_INTERVAL_S`/`_TIMEOUT_S`), raising
+  `TargetLockTimeoutError` on exhaustion rather than blocking indefinitely
+  — deliberately much shorter than the build-on-miss lock's 10-minute
+  budget, since lifecycle operations are operator-driven, not a hot
+  embedding-build path.
+- Release is always in a `finally` in every one of the three methods —
+  confirmed by reading each method body — so a failure partway through
+  never leaves the identity stuck locked for the full TTL.
+- **No new locking primitive was introduced** — `target/lock.py`'s
+  `RedisLock` (`SET NX PX` / Lua-CAS release) is reused verbatim, the same
+  primitive already proven race-free by the pre-existing
+  `tests/test_target_lock.py`.
+
+**VERIFIED BY TEST**, this session, with real concurrency (not simulated):
+- `test_register_target_on_conflict_reject_raises_on_different_content`
+  (correctness of the reject path).
+- `test_concurrent_delete_target_only_one_succeeds` — two real threads,
+  exactly one succeeds, the other gets `TargetNotFoundError`.
+- `test_lifecycle_lock_timeout_raises_without_mutating` — a caller that
+  can't acquire the lock within budget fails loudly and writes nothing.
+
+All three are in `tests/test_target_lifecycle.py`, which ran and passed
+this session as part of both the targeted (105-test) and full (369-test)
+runs.
+
+**Remaining, explicitly accepted concurrency gap:** the delete-path crash
+window described in §7 (between the two `SREM`s and the pipelined `DEL`)
+is not lock-related — it happens *while the lock is held* — it's a
+partial-write-ordering gap, not a race between two callers. It is
+self-healing by retry, as described.
 
 ## 13. Security/input validation
 
-- **`target_id`/`target_version` format:** unconstrained. The only check
-  anywhere is "non-empty string" (`integration/candidate.py:123-125`).
-  Neither `TargetRegistry.register_target` nor `TargetRecord` validates
-  charset or length.
-- **Concrete collision risk found:** `target_key()` is
-  `f"fingerprint:target:{target_id}:{target_version}"`
-  (`target/keys.py:13-14`), a plain `:`-joined f-string, and nothing
-  prevents `target_id`/`target_version` from containing `:` themselves.
-  `target_id="a:b", target_version="c"` and `target_id="a",
-  target_version="b:c"` both produce the literal key
-  `"fingerprint:target:a:b:c"` — a genuine key-collision class, not
-  hypothetical. (`target/keys.py`'s own docstring for
-  `encode_content_index_member` already acknowledges ids/versions "may
-  contain `:`" and works around it there with a unit-separator encoding —
-  but `target_key()` itself has no equivalent safeguard.) **This is a
-  concrete requirement the next phase must enforce**: restrict
-  `target_id`/`target_version` to a safe charset (e.g. no `:`, no control
-  characters) at the operator-interface boundary.
-- **Filesystem input (`media_path`):** `sha256_file` does a plain
-  `open(path, "rb")`. A directory raises `IsADirectoryError`, a missing
-  file raises `FileNotFoundError`, a huge file streams safely in 64 KiB
-  chunks (no memory blowup), a symlink is followed by the OS with no
-  special handling either way. **None of these are caught or mapped** by
-  `TargetRegistry` today — `register_target` has no `try`/`except` of its
-  own, so any of these propagate as raw Python exceptions to whatever
-  calls it (today: only tests/benchmarks call it directly). The future
-  operator-facing `create_target` should validate (exists, is a regular
-  file, is readable, non-empty) and raise a typed, structured error rather
-  than leaking raw `OSError`s — but this is implementation-phase work.
-- **Path traversal:** `media_path` is a trusted, operator-supplied local
-  filesystem path (the process that owns target ingestion), not
-  attacker-controlled network input — unlike `acquisition/ssrf_guard.py`'s
-  URL-facing protections (which exist for candidate URLs, a genuinely
-  untrusted input), there is no equivalent traversal concern here to
-  "fix"; ordinary file-exists/readable validation is sufficient.
-- **Malformed target IDs/versions:** no length cap exists anywhere; an
-  operator interface should probably impose one (e.g. matching common
-  Redis-key-friendly conventions) but no concrete requirement beyond the
-  `:`/collision issue above is evidenced by the source.
+**The original audit's concrete finding — an unescaped `:` in
+`target_key()` creating a real key-collision class — is closed at the
+correct boundary.**
+
+- `TargetService`'s `_validate_identifier` (`target/service.py:52-65`)
+  enforces `^[A-Za-z0-9._-]+$`, 1–128 characters, on both `target_id` and
+  `target_version`, applied identically to both fields, with no silent
+  trimming (`" blast"` and `"blast "` both rejected, not normalized) —
+  **VERIFIED FROM SOURCE**, **VERIFIED BY TEST** (parametrized
+  valid/invalid-identifier cases in `tests/test_target_service.py`, ran
+  and passed).
+- **Residual scope, stated explicitly by design, not accidental:**
+  `TargetRegistry.register_target` itself still performs no charset
+  validation — a caller that constructs a `TargetRegistry` directly
+  (bypassing `TargetService`) can still create a `:`-containing identity.
+  This is an accepted, documented trade-off (the fix lives at the operator
+  boundary, per the audit's own original scoping recommendation, not
+  inside a method with pre-existing test coverage the brief said not to
+  touch) — **not a false sense of security**, but worth stating plainly:
+  the guarantee is "every target created through `TargetService`/the CLI
+  is collision-safe," not "every target in Redis is."
+- `media_path` validation (`target/service.py:68-91`) now covers:
+  missing, directory, non-regular-file, empty, unreadable — every case
+  raises `TargetMediaError` with the original `OSError` as `__cause__`
+  where applicable, never a raw exception. **VERIFIED FROM SOURCE and
+  VERIFIED BY TEST.**
+- **Path traversal:** unchanged conclusion — `media_path` remains trusted,
+  operator-local input (not attacker-controlled network input like
+  `acquisition/ssrf_guard.py`'s URL-facing threat model), so no
+  traversal-specific defense was added or is warranted. This session found
+  nothing to contradict that conclusion.
+- **Metadata shape:** `_validate_metadata`/`_validate_remove_fields`
+  (`target/service.py:94-107`) reject non-dict `metadata`/`set_fields` and
+  non-string `remove_fields` entries with `TargetValidationError`. No
+  deeper shape constraint — metadata remains intentionally opaque,
+  caller-owned data.
 
 ## 14. Existing test coverage
 
-**Strong:**
-- Registration, identity (filename-independence), content-hash dedup
-  across IDs, versioning coexistence, re-registration/idempotency and its
-  cache-invalidation effect (`tests/test_target.py`, `test_target_lock.py`).
-- Embedding cache compatibility matching on every `EmbeddingSpec`
-  dimension (`test_target.py`, `test_shared_target_storage.py`).
-- Build-on-miss locking, including concurrent-miss-builds-once and
-  lock-timeout behavior (`tests/test_target_build_on_miss.py`).
-- Multi-host shared-storage simulation, including partial-write and
-  unreachable-store failure semantics (`tests/test_shared_target_storage.py`).
-- Multi-target coexistence and cross-target no-match, missing-target
-  permanent failure, multi-worker distinct-job processing
-  (`tests/test_integration_e2e.py`, `tests/test_matching_handler.py`).
+**Re-verified by running the suite this session, not by reading test file
+names.**
 
-**Missing (confirmed by absence, not inferred):**
-- No test for listing (operation doesn't exist).
-- No test for delete (operation doesn't exist).
-- No test for concurrent `register_target` races on the same
-  `(target_id, target_version)` with differing content (§12).
-- No test for submission-time missing-target validation (§9) — by design,
-  since that check doesn't exist yet either.
-- No test for metadata-only update (operation doesn't exist).
-- No test asserting the stale content-index entry left behind by a
-  content-changing re-registration (§4's gap) — the *cache* invalidation
-  is tested; the *index* staleness is not.
+| File | Ran this session | Result |
+|---|---|---|
+| `tests/test_target_lifecycle.py` | Yes | Passed (registry-level: on_conflict policy, stale-index regression, list ordering/stale-member-skip, metadata patch semantics, full delete sequence including shared-media reference counting, reindex, lock timeout, concurrent delete) |
+| `tests/test_target_service.py` | Yes | Passed (service-level: identifier validation, media validation, create idempotency/conflict, metadata validation, pass-through/error-translation for every method) |
+| `tests/test_target_cli.py` | Yes | Passed (every subcommand, human + `--json` mode, exit codes 0/1/2, reindex dry-run → real → idempotent) |
+| `tests/test_target_crash_safety.py` | Yes | Passed (fault-injected partial failures across register/update/delete and the four cache `delete()` primitives — this is where the §7 crash-window gap was found and documented, not hidden) |
+| `tests/test_embedding_lazy_import.py` | Yes | Passed (subprocess-verified absence of the ML stack from target-lifecycle code paths) |
+| `tests/test_matching_handler.py` (incl. new deleted-target test) | Yes | Passed |
+| Full `tests/` suite | Yes | **369 passed, 0 failed** — matches the count `docs/architecture/target-management-implementation.md` and `docs/usage.md` document |
 
-## 15. Concrete gaps (summary)
+**Genuinely missing, confirmed by absence this session:**
+- No bulk repair tool/test for content-index entries left stale by
+  content-changing registrations made *before* the §4 fix shipped (the
+  fix is forward-only; documented as an accepted, low-severity limitation
+  in the design and implementation docs, not silently unaddressed).
+- No test asserting rejection of `target_id`/`target_version` collisions
+  when a caller bypasses `TargetService` and calls `TargetRegistry.
+  register_target` directly with a `:`-containing id (the residual gap in
+  §13 has no regression test guarding it, though it is also not expected
+  to regress since it was never fixed at that layer).
+- No submission-time (`integration.candidate`) target-existence check or
+  test — unchanged, out of scope for this phase by explicit prior
+  decision (§9).
+- No `target → job`/`target → result` reverse index or test — unchanged,
+  explicit policy decision (§7 of this doc, §11 below), not an
+  implementation gap.
 
-1. No list-all / list-versions-for-id capability. (§5)
-2. No delete capability, and no target→job or target→result index to
-   support safe/informed deletion decisions. (§7, §11)
-3. No metadata-only update; only path is full re-registration, which
-   silently clobbers `media_metadata` if omitted and can silently swap
-   content under an existing `target_version`. (§6)
-4. Stale content-index (`target_content_index_key`) entries after a
-   content-changing re-registration under a fixed `(id, version)`. (§4)
-5. `register_target` has no concurrency guard — same-identity races with
-   differing content are last-write-wins, silently. (§12)
-6. `target_id`/`target_version` have no charset restriction, and a
-   concrete key-collision class exists via unescaped `:` in `target_key()`.
-   (§13)
-7. No submission-time existence check for `target_id`/`target_version` —
-   bad targets are only caught worker-side, after full queue traversal.
-   (§9 — likely acceptable given the phase-12 boundary's intentional
-   minimalism, but worth the next phase deciding explicitly rather than
-   by omission.)
-8. `SharedTargetMediaStore` dedups by content only, so it's the one
-   artifact type a delete implementation cannot remove unconditionally —
-   requires a `find_by_content_hash` check first. (§7)
+## 15. Concrete gaps (current, re-audited)
 
-## 16. Minimal proposed implementation (for the NEXT phase — not built here)
+Every gap the *original* pre-implementation audit found has been closed
+**except** the two narrow, explicitly-documented, low-severity items
+below — both were found by the implementation's own fault-injection test
+pass (`tests/test_target_crash_safety.py`), not missed by it:
 
-A single new module, `target/service.py`, exposing a `TargetService` class
-that **composes** the existing `TargetRegistry` + caches +
-`SharedTargetMediaStore` (all unchanged) and adds exactly the operations
-that don't exist:
+1. **Delete-path crash window** (§7): a crash between the two `SREM`s and
+   the pipelined `DEL` in `delete_target` leaves a target invisible to
+   `list_targets`/`find_by_content_hash` but still resolvable via
+   `get_target`. Self-healing via retry. Not fixed; flagged for the next
+   design review to decide whether reordering (deleting the record hash
+   first) is worth the "what's the source of truth for existence
+   mid-operation" trade-off that reordering would introduce.
+2. **Pre-existing stale content-index entries are not retroactively
+   repaired** (§4): the fix prevents *new* staleness; any staleness that
+   already existed in a Redis instance before this phase shipped is
+   unaddressed. Failure direction is always "delay shared-media GC,"
+   never "delete something still referenced" — an accepted, bounded risk,
+   not silently ignored.
+3. **`TargetRegistry.register_target`'s charset validation gap** (§13):
+   the collision-class fix lives only at the `TargetService` boundary: a
+   direct `TargetRegistry` caller can still create a colliding identity.
+   Explicit, scoped trade-off, not an oversight — but worth a future
+   phase's explicit sign-off if direct-`TargetRegistry` operator use ever
+   becomes a real pathway (today it is not; only tests/benchmarks call it
+   directly).
+4. **No submission-time target-existence check** in
+   `integration.candidate`/`integration.submission` (§9) — unchanged,
+   pre-existing, explicitly out of scope for target-management.
+5. **No `target → job`/`target → result` reverse index** (§7, §11) — an
+   explicit policy decision (hard-delete is allowed immediately; in-flight
+   jobs against a deleted target fail loudly via the pre-existing
+   `KeyError → PermanentFailure` path), not a missing feature.
+6. **Pre-existing-Redis-instance migration is a manual step**: any
+   already-deployed Redis instance with targets registered before this
+   phase must have `python -m target.cli reindex` run once, or those
+   targets stay invisible to `list_targets()` (their `get`/matching/
+   caching behavior is completely unaffected — only listing is impacted).
+   This is documented in the design doc §21 and the implementation doc
+   §7.8, but is worth restating here as a live operational requirement,
+   not just historical design commentary — if this repository's own
+   Redis instance already has targets registered before this feature
+   shipped, `reindex` needs to be run against it before `list` will show
+   them. **NOT VALIDATED** whether this repository's actual deployed
+   Redis instance (if any exists outside test db 15) currently needs this
+   — outside this audit's scope to check (would require touching a
+   production Redis instance, which the audit constraints forbid).
+
+None of these six items requires new architecture, a new persistence
+system, or a redesign of anything this phase's brief protects
+(`TargetRegistry`, Redis schema, worker, crawler boundary, matching). Each
+is either a documented, accepted trade-off or a small, targeted follow-up.
+
+## 16. Minimal proposed implementation for the NEXT phase
+
+**Because the CRUD/lifecycle interface itself is already built, "minimal
+implementation" for the next phase means closing the residual items in
+§15, not building the interface from scratch.** In priority order:
+
+1. **(Optional, low urgency) Reorder or re-document the delete crash
+   window** (§15.1): either accept it permanently as documented behavior
+   (cheapest — it's already safe, just document it as a supported
+   "delete is retry-safe" contract in `docs/usage.md`), or change the
+   delete-step ordering to delete the record hash before the index
+   `SREM`s, which flips which artifact is authoritative for "does this
+   target exist" during a mid-crash window and deserves its own short
+   design note before being changed, not a drive-by fix.
+2. **(Operational, not code) Confirm whether any pre-existing deployed
+   Redis instance needs a one-time `python -m target.cli reindex` run**,
+   and run it if so. This is an operations task, not an implementation
+   task.
+3. **(Optional) A small regression test** asserting that
+   `TargetRegistry.register_target` called directly (bypassing
+   `TargetService`) with a `:`-containing id still succeeds today (pinning
+   the documented, accepted residual behavior from §13/§15.3 so a future
+   change to that method doesn't silently alter it without a conscious
+   decision).
+4. **(Optional, only if a real need appears) A bulk stale-content-index
+   repair tool** for entries that predate the §4 fix — explicitly not
+   recommended unless a concrete deployment shows this mattering; the
+   failure direction is always benign (delayed GC).
+
+**Nothing in this list requires touching `TargetRegistry`'s public
+surface, the Redis schema, the worker, the crawler boundary, or the
+matching pipeline.** No SQL/second persistence system, no HTTP framework,
+no new locking primitive, and no soft-delete/inactive-state machinery are
+warranted by anything found in this audit — consistent with the original
+brief's explicit constraints, which the implementation already honored.
+
+## 17. Proposed operator interface (already delivered)
+
+**This section documents what exists, since the brief's proposed shape is
+what was built — not a forward-looking proposal.**
+
+`TargetService` (`target/service.py`) is the application-level boundary —
+not new methods bolted onto `TargetRegistry`, not a bare script, not (yet)
+an HTTP API. **VERIFIED FROM SOURCE.**
+
+`target/cli.py` (`python -m target.cli`, stdlib `argparse` only, matching
+the `python -m worker.main` convention) is the thin operator front-end:
 
 ```
-class TargetService:
-    def __init__(self, registry: TargetRegistry, redis_client: Redis): ...
-
-    def create_target(self, target_id, target_version, media_path, metadata=None) -> TargetRecord
-        # thin wrapper over register_target(); adds id/version charset
-        # validation (§13) and typed errors for bad media_path (§13).
-
-    def list_targets(self) -> list[TargetRecord]
-        # backed by a new small index Set, e.g. fingerprint:target:index,
-        # SADD'ed in create_target alongside the existing content-index
-        # SADD, using the same encode/decode helpers target/keys.py
-        # already has for the content index. No new Redis data model
-        # beyond "one more Set of the same shape."
-
-    def get_target(self, target_id, target_version) -> Optional[TargetRecord]
-        # pass-through to TargetRegistry.get_target.
-
-    def update_target_metadata(self, target_id, target_version, metadata: dict) -> TargetRecord
-        # new, small TargetRegistry method: merge into existing
-        # media_metadata, do NOT touch media_path/content_sha256/re-hash.
-
-    def delete_target(self, target_id, target_version) -> None
-        # 1. SREM the target's member from target_content_index_key(hash)
-        #    and from the new list-index Set.
-        # 2. DELETE the target/embeddings/segment_embeddings hashes.
-        # 3. Delete the target's own (id,version)-exclusive cache files
-        #    (local and/or shared — safe unconditionally, §7).
-        # 4. find_by_content_hash(hash) on the *remaining* index; only if
-        #    empty, delete the SharedTargetMediaStore blob for that hash.
-        # 5. Do NOT touch ResultRecords or queued jobs (§11) — they are
-        #    historical/in-flight, not target-owned.
+python -m target.cli add MEDIA_PATH --id ID --version VERSION [--metadata KEY=VALUE ...] [--json]
+python -m target.cli list [--json]
+python -m target.cli get ID --version VERSION [--json]
+python -m target.cli update-metadata ID --version VERSION [--set KEY=VALUE ...] [--unset KEY ...] [--json]
+python -m target.cli delete ID --version VERSION [--json]
+python -m target.cli reindex [--dry-run] [--json]
 ```
 
-This requires exactly one small addition to `TargetRegistry` itself
-(`update_target_metadata`, plus reusing `find_by_content_hash` which
-already exists) and one new Redis Set (the list-index) — no redesign of
-`target_key()`, `cache_entry_key()`, the Redis schema, the worker, the
-crawler-facing contract, or matching. `TargetService.register_target`'s
-concurrency gap (§12) should be closed by wrapping the read-then-write in
-`target/lock.py`'s existing `RedisLock`, scoped to `target_key(id,
-version)` — no new locking primitive.
+**Confirmed this session by reading `target/cli.py` in full:** every
+subcommand calls exactly one `TargetService` method; the CLI issues zero
+direct Redis commands and zero direct filesystem cache access — its only
+filesystem/Redis-adjacent code is the environment-driven *construction* of
+the `Redis`/`TargetRegistry` objects it hands to `TargetService`
+(`_build_redis_client`/`_build_registry`, `target/cli.py:77-106`), which
+is wiring, not lifecycle logic.
 
-## 17. Proposed operator interface
-
-`TargetService` (§16) is the right layer — not new methods bolted onto
-`TargetRegistry` itself (which should stay focused on identity/versioning/
-cache-compatibility, per its own module docstring's "independent
-collaborator" philosophy), not a bare CLI script, and not an HTTP API yet.
-
-A small CLI (`python -m target.cli`, argparse, stdlib only — matching the
-`python -m worker.main` convention `docs/usage.md` already documents) is
-appropriate as a thin front-end over `TargetService`, e.g.:
-
-```
-python -m target.cli add /path/movie.mp4 --id blast --version v1
-python -m target.cli list
-python -m target.cli get blast --version v1
-python -m target.cli update-metadata blast --version v1 --set key=value
-python -m target.cli delete blast --version v1
-```
-
-The CLI must call `TargetService`, never touch Redis/filesystem directly
-— this is what makes a future HTTP layer or dashboard backend a second,
-equally-thin caller of the same service rather than a second
-implementation of target lifecycle logic.
+`docs/usage.md` documents this CLI as the primary registration path,
+replacing the old "no CLI — call `TargetRegistry.register_target`
+directly" language the original audit quoted. **VERIFIED FROM SOURCE**
+(`docs/usage.md:89-180`, read this session).
 
 ## 18. Future dashboard boundary
 
-`TargetRegistry` already returns typed dataclasses (`TargetRecord`,
-`EmbeddingCacheEntry`, `SegmentEmbeddingCacheEntry`) rather than raw Redis
-structures for every operation it supports — the boundary is already clean
-for create/get. The only reason a dashboard would need to know about Redis
-keys, cache file layout, or embedding internals today is that list/delete
-don't exist yet. `TargetService` (§16) closes that gap without changing
-what `TargetRegistry` already hides well. A dashboard backend should call
-`TargetService`, never `TargetRegistry`/`SharedArtifactStore`/Redis
-directly — same rule as the CLI.
+**Already correctly shaped, verified this session.** `TargetService`
+returns only plain, already-immutable `TargetRecord` dataclasses — never a
+Redis key, Set member, or filesystem path — for every one of its five
+lifecycle methods plus `reindex`. A caller of `TargetService` (the CLI
+today; an HTTP handler tomorrow) needs to know nothing about:
+
+- Redis key names or types (`target/keys.py` is imported by nothing
+  outside `target/registry.py` and `target/registry.py`'s own tests).
+- Cache file layout or `cache_entry_key()`'s hashing scheme.
+- `SharedArtifactStore`/`SharedTargetMediaStore` paths or reference
+  counting — `delete_target`'s reference check happens entirely inside
+  `TargetRegistry`.
+- DINOv2/embedding internals — `TargetService`/`target/cli.py` do not
+  import the embedding engine at all (§10), confirmed by a live
+  subprocess test.
+
+A future HTTP layer would be a third, equally-thin client of
+`TargetService`, exactly parallel to the CLI: parse the request, call one
+`TargetService` method, map its typed exception (`target/errors.py`'s six
+classes) to an HTTP status, serialize the returned `TargetRecord`. This
+requires **zero changes** to anything below `TargetService` — the
+boundary this audit is asked to evaluate the cleanliness of is already
+exactly what such a layer needs. **No HTTP framework or web server exists
+in this repository today** — confirmed by the absence of any such
+dependency in `target/`'s imports.
 
 ## 19. Implementation scope for the NEXT phase
 
-In scope (per this audit's findings):
-- `target/service.py`: `TargetService` with `create_target`, `list_targets`,
-  `get_target`, `update_target_metadata`, `delete_target`.
-- One small additive method on `TargetRegistry`: metadata-only update.
-- One new Redis Set (target list index), written alongside the existing
-  content-index write, using the existing encode/decode helpers.
-- `target_id`/`target_version` charset validation at the `TargetService`
-  boundary (reject `:` and control characters — closes §13's collision
-  class).
-- Typed validation errors for bad `media_path` (missing/directory/empty)
-  at the `TargetService` boundary.
-- `RedisLock`-guarded `register_target`/`create_target` to close the
-  race in §12.
-- A thin `target/cli.py` (argparse) front-end over `TargetService`.
-- Tests for every new operation, plus regression tests for the two gaps
-  found in this audit that predate it (stale content-index entry on
-  content-changing re-registration; register-target race).
+Given §15's findings, the next phase's scope should be limited to:
+
+- A documented decision (not necessarily a code change) on the delete
+  crash-window ordering question (§16.1).
+- Confirming/running `reindex` against any pre-existing deployed Redis
+  instance that needs it (§16.2) — an operational task.
+- Optionally, one pinning regression test for the `TargetRegistry`-direct
+  charset-bypass behavior (§16.3).
+- Optionally, and only on concrete evidence of need, a stale-content-index
+  bulk-repair tool (§16.4).
+
+**Explicitly NOT in scope**, because it is already done: building
+`create_target`/`list_targets`/`get_target`/`update_target_metadata`/
+`delete_target`, the CLI, the identifier/media validation, the lifecycle
+locking, the cache/shared-media `delete()` primitives, or any test
+coverage for the above — all of this exists and passes today.
 
 ## 20. Explicit out-of-scope items
 
-- No redesign of `TargetRegistry`, `target/keys.py`, `target/versioning.py`,
-  `target/cache.py`, `target/segment_cache.py`, `target/shared_storage.py`,
-  the Redis job/result schema, the worker, or the matching pipeline.
-- No SQLite or any second persistence system for target metadata — Redis
-  remains the sole source of truth, per the existing architecture.
-- No web framework or HTTP server in this phase — CLI + service layer only,
-  ready for an HTTP layer to be added later as a thin wrapper.
-- No reference-counting infrastructure beyond reusing the existing
-  `find_by_content_hash` for the one artifact that needs it
-  (`SharedTargetMediaStore`).
-- No policy decision on rejecting deletion while jobs are queued/in-flight
-  — current fail-closed behavior (`KeyError` → `PermanentFailure`) is
-  already safe and sufficient; a soft-delete/inactive flag is flagged as
-  an **open question** for the next phase to decide explicitly, not a
-  requirement derived from this audit.
-- No crawler-repo changes — the crawler lives outside this repository and
-  already supports arbitrary `target_id`/`target_version` per call with no
-  code changes needed on either side.
-- No cascade-delete of `ResultRecord`s or queued jobs on target deletion.
+Unchanged from the original audit's scoping, and confirmed still true of
+the actual delivered implementation (nothing in it violated these):
+
+- No redesign of `TargetRegistry`'s existing methods, `target/keys.py`'s
+  key *shapes*, `target/versioning.py`, or the Redis job/result schema.
+- No SQLite or any second persistence system — Redis remains sole source
+  of truth; confirmed, no new dependency was added anywhere in `target/`.
+- No web framework or HTTP server — CLI + service layer only, confirmed
+  by dependency inspection.
+- No reference-counting infrastructure beyond reusing the pre-existing
+  `find_by_content_hash` — confirmed, `delete_target` adds no new
+  bookkeeping structure for this.
+- No policy requiring rejection of deletion while jobs are queued/
+  in-flight — the existing fail-closed `KeyError → PermanentFailure` path
+  is reused as-is and was explicitly chosen over a soft-delete/inactive
+  flag or a new reverse index (§7, §11), confirmed unchanged this session.
+- No crawler-repo changes — confirmed, `fingerprinter/` and `crawler/` are
+  separate repositories and neither this phase's implementation nor this
+  audit touched the latter.
+- No cascade-delete of `ResultRecord`s or queued jobs on target deletion —
+  confirmed unchanged (`delete_target` never references
+  `fingerprint:job:*`/`fingerprint:result:*` keys, verified by reading the
+  method in full).

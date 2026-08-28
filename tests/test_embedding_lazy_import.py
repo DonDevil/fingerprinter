@@ -51,6 +51,22 @@ def test_importing_target_registry_does_not_import_the_ml_stack():
     assert result.stdout.strip() == "", f"unexpected heavy modules imported: {result.stdout.strip()}"
 
 
+def test_importing_target_build_does_not_import_the_ml_stack():
+    """target.build backs target.cli's `build` subcommand orchestration
+    (docs/architecture/target-eager-build-audit.md, Part B) -- it must stay
+    as torch-free as target.registry itself, since target.cli imports it at
+    module scope (only `build`'s own handler lazily imports
+    DINOv2EmbeddingEngine)."""
+    result = _run(
+        "import sys\n"
+        "import target.build\n"
+        f"heavy = [m for m in {_HEAVY_MODULE_NAMES!r} if m in sys.modules]\n"
+        "print(','.join(heavy))\n"
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "", f"unexpected heavy modules imported: {result.stdout.strip()}"
+
+
 def test_importing_target_service_does_not_import_the_ml_stack():
     result = _run(
         "import sys\n"
