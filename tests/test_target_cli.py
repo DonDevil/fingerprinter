@@ -15,6 +15,7 @@ sufficient; no real model/ffmpeg is ever exercised here
 subcommand still never imports torch).
 """
 import json
+import logging
 import os
 from types import SimpleNamespace
 
@@ -32,6 +33,23 @@ def cli_env(monkeypatch, tmp_path, redis_client):
     monkeypatch.setenv("TARGET_CACHE_PATH", str(tmp_path / "target_cache"))
     monkeypatch.delenv("SHARED_ARTIFACT_STORE_PATH", raising=False)
     yield
+
+
+@pytest.fixture(autouse=True)
+def _restore_root_logging():
+    """`target.cli.main()` calls `_configure_logging()`, which -- like
+    `worker/observability.py:configure_json_logging` -- installs a handler
+    and level on the *root* logger (by design, so `--debug` covers every
+    `logger.debug()` call anywhere in the process, not just this module).
+    In a real process that's a one-time startup cost; in this shared test
+    process it would otherwise leak the root logger's level/handlers into
+    unrelated test modules. Restore whatever was there before each test."""
+    root = logging.getLogger()
+    original_level = root.level
+    original_handlers = list(root.handlers)
+    yield
+    root.setLevel(original_level)
+    root.handlers[:] = original_handlers
 
 
 def _write(tmp_path, name, content: bytes):
@@ -139,23 +157,39 @@ _COARSE_VECTOR = (0.4, 0.5, 0.6)
 class _FakeDINOv2Engine:
     """Stands in for `DINOv2EmbeddingEngine` -- see module docstring."""
 
+    #: every instance constructed, in order -- lets a test recover the
+    #: instance `_cmd_build` actually built and inspect what it saw, since
+    #: the CLI constructs the engine internally (see `instances[-1]` below).
+    instances = []
+
     def __init__(self, device="auto", torch_num_threads=None):
         from embedding.config import PreprocessingConfig, SegmentSamplingConfig
 
+        type(self).instances.append(self)
         self.model_id = "dinov2-synthetic"
         self.model_version = "v1"
+        self.model_revision = "synthetic-revision"
+        self.device = device
+        self.torch_num_threads = torch_num_threads
+        self.model_load_duration_s = 0.0
         self.preprocessing_config = PreprocessingConfig()
         self.segment_sampling_config = SegmentSamplingConfig()
         self.calls = 0
+        self.timeouts_seen = []
 
-    def embed_video_segments(self, artifact):
+    def embed_video_segments(self, artifact, on_frame=None, timeout="unset"):
         self.calls += 1
+        self.timeouts_seen.append(timeout)
+        if on_frame is not None:
+            for index in range(1, len(_SEGMENTS) + 1):
+                on_frame(index, len(_SEGMENTS))
         return SimpleNamespace(segments=_SEGMENTS, coarse_vector=_COARSE_VECTOR)
 
 
 class _FailingFakeDINOv2Engine(_FakeDINOv2Engine):
-    def embed_video_segments(self, artifact):
+    def embed_video_segments(self, artifact, on_frame=None, timeout="unset"):
         self.calls += 1
+        self.timeouts_seen.append(timeout)
         raise UnsupportedMediaError("ffmpeg timed out extracting segment frames")
 
 
@@ -172,6 +206,94 @@ def test_cli_build_success_json(tmp_path, capsys, monkeypatch):
     assert payload["target_id"] == "blast"
     assert payload["target_version"] == "v1"
     assert payload["segment_count"] == 2
+
+
+def test_cli_build_uses_unbounded_ffmpeg_timeout(tmp_path, capsys, monkeypatch):
+    """`target.cli build` is explicit, operator-triggered preprocessing
+    (unlike the worker's runtime/lazy build-on-miss path) and therefore
+    must request `timeout=None` -- no ffmpeg subprocess timeout at all --
+    from `embed_video_segments`, not `embed_video_segments`'s own bounded
+    default."""
+    monkeypatch.setattr("embedding.dinov2_engine.DINOv2EmbeddingEngine", _FakeDINOv2Engine)
+    _FakeDINOv2Engine.instances.clear()
+    main(["add", str(_write(tmp_path, "a.mp4", b"a")), "--id", "blast", "--version", "v1"])
+    capsys.readouterr()
+
+    exit_code = main(["build", "blast", "--version", "v1", "--json"])
+
+    assert exit_code == 0
+    assert _FakeDINOv2Engine.instances[-1].timeouts_seen == [None]
+
+
+def test_cli_build_cache_hit_does_not_rerun_ffmpeg_or_embedding(tmp_path, capsys, monkeypatch):
+    """Cache-hit behavior must stay unchanged by the timeout-policy change:
+    a second `build` against an already-built target reports
+    `already_built` and never calls `embed_video_segments` again."""
+    monkeypatch.setattr("embedding.dinov2_engine.DINOv2EmbeddingEngine", _FakeDINOv2Engine)
+    _FakeDINOv2Engine.instances.clear()
+    main(["add", str(_write(tmp_path, "a.mp4", b"a")), "--id", "blast", "--version", "v1"])
+    capsys.readouterr()
+
+    assert main(["build", "blast", "--version", "v1", "--json"]) == 0
+    assert _FakeDINOv2Engine.instances[-1].calls == 1
+    capsys.readouterr()
+
+    exit_code = main(["build", "blast", "--version", "v1", "--json"])
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "already_built"
+    assert _FakeDINOv2Engine.instances[-1].calls == 0  # a fresh engine instance, never invoked
+
+
+def test_cli_build_debug_emits_diagnostics_and_normal_mode_stays_silent(tmp_path, capsys, monkeypatch):
+    """Observability audit, "Debug/Verbose Mode": `--debug` adds cache
+    status, engine info, and per-frame progress; the default mode gets
+    none of it. Both runs build against a fresh target (own tmp_path) so
+    the second isn't just observing a cache hit from the first."""
+    monkeypatch.setattr("embedding.dinov2_engine.DINOv2EmbeddingEngine", _FakeDINOv2Engine)
+    main(["add", str(_write(tmp_path, "a.mp4", b"a")), "--id", "blast", "--version", "v1"])
+    capsys.readouterr()
+
+    exit_code = main(["build", "blast", "--version", "v1", "--json", "--debug"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert '"status": "built"' in captured.out  # normal --json output still on stdout, unaffected
+    assert "DEBUG: target blast/v1: compatible segment embedding not cached, build required" in captured.err
+    assert "DEBUG: engine ready: model=dinov2-synthetic" in captured.err
+    assert "DEBUG: embedding blast/v1: frame 2/2 (100.0%)" in captured.err
+    assert "DEBUG: target blast/v1: resolved 2 segment(s)" in captured.err
+
+    main(["add", str(_write(tmp_path, "b.mp4", b"b")), "--id", "blast2", "--version", "v1"])
+    capsys.readouterr()
+
+    exit_code = main(["build", "blast2", "--version", "v1", "--json"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert captured.err == ""  # no --debug: no diagnostic output at all
+
+
+def test_configure_logging_pins_known_noisy_third_party_loggers_to_warning():
+    """redis-py logs a harmless DEBUG line ("Failed to enable maintenance
+    notifications: unknown subcommand 'MAINT_NOTIFICATIONS'") when talking
+    to a Redis server that predates that optional feature -- not an error,
+    and not actionable by this project; PIL logs one line per PNG chunk
+    while decoding extracted frames. `--debug` must surface this project's
+    own diagnostics without also sweeping in third-party library-internal
+    chatter. Tested directly against `_configure_logging` (rather than
+    through a real Redis connection) so it doesn't depend on whether the
+    test Redis server happens to support MAINT_NOTIFICATIONS."""
+    from target.cli import _configure_logging
+
+    _configure_logging(debug=True)
+
+    assert logging.getLogger().getEffectiveLevel() == logging.DEBUG
+    assert logging.getLogger("redis").getEffectiveLevel() == logging.WARNING
+    assert logging.getLogger("redis.connection").getEffectiveLevel() == logging.WARNING
+    assert logging.getLogger("PIL").getEffectiveLevel() == logging.WARNING
+    assert logging.getLogger("PIL.PngImagePlugin").getEffectiveLevel() == logging.WARNING
+    assert logging.getLogger("target.cli").getEffectiveLevel() == logging.DEBUG  # this project's own loggers
 
 
 def test_cli_build_is_idempotent_second_run_reports_already_built(tmp_path, capsys, monkeypatch):

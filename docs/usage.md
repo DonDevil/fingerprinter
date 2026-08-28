@@ -148,15 +148,19 @@ that call ahead of time (see `docs/architecture/target-eager-build-
 implementation.md` for the full design/implementation record).
 
 **Why this matters:** the segment-embedding build decodes the target's
-*entire* duration via `ffmpeg`, bounded by a fixed
-`embedding.frames.DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S` (300s). For a long
-target (a full-length movie, say), that decode can approach or exceed the
-timeout — if the *first* job against that target is what triggers the
-build, the job fails with a media/timeout error before any matching
-happens, and the target cache stays empty so every subsequent job repeats
-the same failure. Run `build` once, after `add` and before submitting real
-jobs, so that failure (if it happens) is caught here, at a time of your
-choosing, instead of inside a live job.
+*entire* duration via `ffmpeg`. Runtime worker processing (both a job's
+candidate embedding and any lazy target build-on-miss) stays bounded by
+the fixed `embedding.frames.DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S` (300s), so
+if the *first* job against a target is what triggers its build, a
+long target (a full-length movie, say) can exceed that timeout and fail
+the job with a media/timeout error, leaving the target cache empty so
+every subsequent job repeats the same failure. `target.cli build` is the
+one exception: it is an explicit, operator-controlled preprocessing step,
+so it runs `ffmpeg` with **no subprocess timeout at all** — a full-length
+target is allowed to take as long as it actually takes to decode. Run
+`build` once, after `add` and before submitting real jobs, so the target
+is fully built (how ever long that takes) at a time of your choosing,
+instead of inside a live job.
 
 Unlike `add`/`list`/`get`/`update-metadata`/`delete`, `build` needs the
 embedding engine, not just `TargetService` — so it also honors
@@ -177,8 +181,9 @@ place (see "`add` is idempotent...", above); to replace a target's media,
 register a new `target_version` and `build` that.
 
 Exit codes: `0` success (built or already built), `1` a clear, typed
-failure — target not found, unusable/undecodable/timed-out media
-(`UnsupportedMediaError`), a transient inference error
+failure — target not found, unusable/undecodable media
+(`UnsupportedMediaError` — never a timeout here, since `build` imposes no
+ffmpeg subprocess timeout), a transient inference error
 (`InferenceError`, e.g. a momentary OOM — safe to retry), the shared
 artifact store being unreachable, or another build already in progress for
 this exact target that didn't finish within the poll budget

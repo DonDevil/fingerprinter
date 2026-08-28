@@ -20,7 +20,7 @@ from __future__ import annotations
 import shutil
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 import numpy as np
 import torch
@@ -35,7 +35,7 @@ from embedding.errors import (
     ModelLoadError,
     UnsupportedMediaError,
 )
-from embedding.frames import extract_frames, extract_segment_frames, make_frames_dir
+from embedding.frames import DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S, extract_frames, extract_segment_frames, make_frames_dir
 from embedding.result import (
     EMBEDDING_SCHEMA_VERSION,
     SEGMENT_EMBEDDING_SCHEMA_VERSION,
@@ -228,7 +228,11 @@ class DINOv2EmbeddingEngine:
     # -- video segment path (Phase 9) -------------------------------------
 
     def embed_video_segments(
-        self, artifact: MediaArtifact, segment_sampling_config: Optional[SegmentSamplingConfig] = None
+        self,
+        artifact: MediaArtifact,
+        segment_sampling_config: Optional[SegmentSamplingConfig] = None,
+        on_frame: Optional[Callable[[int, int], None]] = None,
+        timeout: Optional[float] = DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S,
     ) -> VideoSegmentEmbeddingResult:
         """Embed a video's *entire* duration as per-segment vectors — the
         Phase 9 representation matching is built on, per Phase 8's
@@ -237,6 +241,23 @@ class DINOv2EmbeddingEngine:
         unchanged, still governed by `SamplingConfig`'s fixed
         fps/max_frames window for Phase 6/7 compatibility), this method
         samples across the whole file via `extract_segment_frames`.
+
+        `on_frame` (optional; observability audit, "Progress Display") is
+        called as `on_frame(index, total)` once per already-embedded frame,
+        `index` 1-based — a pure progress-reporting hook with no effect on
+        the embedding itself. `None` (the default) preserves every existing
+        call site unchanged; this module makes no decision about *how*
+        progress is displayed (log line, progress bar, ...) — that's the
+        caller's concern, not this engine's (see module docstring).
+
+        `timeout` is forwarded verbatim to `extract_segment_frames` (see its
+        docstring): defaults to the existing bounded
+        `DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S`, which is what every runtime
+        caller (the fingerprint worker, both candidate embedding and
+        build-on-miss target resolution — `worker/matching_handler.py`)
+        keeps by not passing this argument. `target/build.py`'s explicit,
+        operator-triggered build command is the one caller that overrides
+        this to `None` (unbounded).
 
         Raises `UnsupportedMediaError` for non-video/undecodable input,
         same as `embed()`.
@@ -251,7 +272,8 @@ class DINOv2EmbeddingEngine:
         start = time.monotonic()
         frames_dir = make_frames_dir()
         try:
-            frame_paths = extract_segment_frames(artifact.local_path, config, frames_dir)
+            frame_paths = extract_segment_frames(artifact.local_path, config, frames_dir, timeout=timeout)
+            total_frames = len(frame_paths)
             segments: List[SegmentEmbedding] = []
             for index, frame_path in enumerate(frame_paths):
                 image = self._load_image(frame_path)
@@ -267,6 +289,8 @@ class DINOv2EmbeddingEngine:
                     )
                 )
                 frame_path.unlink(missing_ok=True)
+                if on_frame is not None:
+                    on_frame(index + 1, total_frames)
         finally:
             shutil.rmtree(frames_dir, ignore_errors=True)
 

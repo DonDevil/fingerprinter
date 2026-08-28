@@ -17,6 +17,7 @@ tests/test_matching_handler.py and benchmarks/bench_pipeline.py.
 """
 from __future__ import annotations
 
+import logging
 import os
 import signal as signal_module
 import socket
@@ -66,6 +67,7 @@ def test_config_defaults_when_env_is_empty():
     assert config.target_cache_path == "./target_cache"
     assert config.shared_artifact_store_path is None
     assert config.media_max_bytes == 100 * 1024 * 1024
+    assert config.log_level == "INFO"
 
 
 def test_config_overrides_from_env():
@@ -81,6 +83,7 @@ def test_config_overrides_from_env():
         "TARGET_CACHE_PATH": "/var/lib/fingerprinter/targets",
         "SHARED_ARTIFACT_STORE_PATH": "/mnt/shared/fingerprinter-targets",
         "MEDIA_MAX_BYTES": "1048576",
+        "WORKER_LOG_LEVEL": "debug",
     }
 
     config = WorkerConfig.from_env(env)
@@ -96,6 +99,7 @@ def test_config_overrides_from_env():
     assert config.target_cache_path == "/var/lib/fingerprinter/targets"
     assert config.shared_artifact_store_path == "/mnt/shared/fingerprinter-targets"
     assert config.media_max_bytes == 1048576
+    assert config.log_level == "DEBUG"  # normalized to uppercase
 
 
 # ---------------------------------------------------------------------------
@@ -117,6 +121,7 @@ def test_config_overrides_from_env():
         {"MEDIA_MAX_BYTES": "0"},
         {"REDIS_URL": "not-a-url"},
         {"REDIS_URL": "http://localhost:6379"},
+        {"WORKER_LOG_LEVEL": "TRACE"},
     ],
 )
 def test_invalid_config_raises_config_error(env):
@@ -130,6 +135,45 @@ def test_main_returns_nonzero_on_invalid_config(monkeypatch):
     monkeypatch.setattr(main_module.os, "environ", {"WORKER_LEASE_MS": "not-an-int"})
 
     assert main_module.main() == 1
+
+
+# ---------------------------------------------------------------------------
+# 1b. WORKER_LOG_LEVEL drives configure_logging() (observability audit,
+# "Debug/Verbose Mode") -- checked by intercepting configure_logging itself
+# rather than asserting on actual log output, so this doesn't depend on
+# JsonFormatter's exact rendering.
+# ---------------------------------------------------------------------------
+
+
+def test_main_configures_logging_at_the_requested_level(monkeypatch):
+    import worker.main as main_module
+
+    captured_levels = []
+    monkeypatch.setattr(main_module, "configure_logging", lambda level=logging.INFO: captured_levels.append(level))
+    # An invalid WORKER_LEASE_MS makes main() return 1 right after logging
+    # is configured but before anything touches Redis -- the same shortcut
+    # test_main_returns_nonzero_on_invalid_config uses.
+    monkeypatch.setattr(
+        main_module.os, "environ", {"WORKER_LOG_LEVEL": "DEBUG", "WORKER_LEASE_MS": "not-an-int"}
+    )
+
+    assert main_module.main() == 1
+    assert captured_levels == [logging.DEBUG]
+
+
+def test_main_falls_back_to_info_logging_when_log_level_itself_is_invalid(monkeypatch):
+    """An invalid WORKER_LOG_LEVEL must not crash logging setup before
+    WorkerConfig.validate() gets a chance to reject it properly -- the
+    early, direct env read in main() falls back to INFO for that one call,
+    and the config error is still raised (and logged) right after."""
+    import worker.main as main_module
+
+    captured_levels = []
+    monkeypatch.setattr(main_module, "configure_logging", lambda level=logging.INFO: captured_levels.append(level))
+    monkeypatch.setattr(main_module.os, "environ", {"WORKER_LOG_LEVEL": "NOT-A-REAL-LEVEL"})
+
+    assert main_module.main() == 1
+    assert captured_levels == [logging.INFO]
 
 
 # ---------------------------------------------------------------------------

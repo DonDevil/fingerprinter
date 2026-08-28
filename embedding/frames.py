@@ -23,13 +23,17 @@ docstring.
 """
 from __future__ import annotations
 
+import logging
 import subprocess
 import tempfile
+import time
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from embedding.config import SamplingConfig, SegmentSamplingConfig
 from embedding.errors import UnsupportedMediaError
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_FFMPEG_TIMEOUT_S = 60.0
 # Segment-mode extraction walks the whole file (no `-frames:v` cap), so a
@@ -71,6 +75,9 @@ def extract_frames(media_path: Path, sampling: SamplingConfig, frames_dir: Path)
         str(sampling.max_frames),
         output_pattern,
     ]
+    logger.debug("ffmpeg extract_frames starting: %s (fps=%s, max_frames=%s, timeout=%.1fs)",
+                 media_path, sampling.fps, sampling.max_frames, DEFAULT_FFMPEG_TIMEOUT_S)
+    started = time.monotonic()
     try:
         proc = subprocess.run(
             cmd,
@@ -79,11 +86,14 @@ def extract_frames(media_path: Path, sampling: SamplingConfig, frames_dir: Path)
             timeout=DEFAULT_FFMPEG_TIMEOUT_S,
         )
     except subprocess.TimeoutExpired as exc:
+        logger.debug("ffmpeg extract_frames timed out after %.1fs: %s", time.monotonic() - started, media_path)
         raise UnsupportedMediaError(f"ffmpeg timed out extracting frames from {media_path}") from exc
     except FileNotFoundError as exc:
         raise RuntimeError("ffmpeg is not installed / not on PATH") from exc
 
     if proc.returncode != 0:
+        logger.debug("ffmpeg extract_frames failed (returncode=%d) after %.2fs: %s",
+                     proc.returncode, time.monotonic() - started, media_path)
         raise UnsupportedMediaError(
             f"ffmpeg failed to extract frames from {media_path}: {proc.stderr.decode('utf-8', 'replace').strip()}"
         )
@@ -91,10 +101,16 @@ def extract_frames(media_path: Path, sampling: SamplingConfig, frames_dir: Path)
     frame_paths = sorted(frames_dir.glob("frame_*.png"))
     if not frame_paths:
         raise UnsupportedMediaError(f"ffmpeg produced no frames from {media_path} (empty/corrupt video)")
+    logger.debug("ffmpeg extract_frames done: %d frame(s) in %.2fs", len(frame_paths), time.monotonic() - started)
     return frame_paths
 
 
-def extract_segment_frames(media_path: Path, sampling: SegmentSamplingConfig, frames_dir: Path) -> List[Path]:
+def extract_segment_frames(
+    media_path: Path,
+    sampling: SegmentSamplingConfig,
+    frames_dir: Path,
+    timeout: Optional[float] = DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S,
+) -> List[Path]:
     """Extract one representative frame per `sampling.segment_duration_s`
     window, spanning the *entire* video (no frame-count cap) — the Phase 9
     replacement for `extract_frames`'s fixed-window sampling. Returns frame
@@ -107,6 +123,17 @@ def extract_segment_frames(media_path: Path, sampling: SegmentSamplingConfig, fr
     function's docstring for the determinism argument), just with
     `rate = 1 / segment_duration_s` and no `-frames:v` cap — ffmpeg decodes
     until the input ends rather than until a frame count is reached.
+
+    `timeout` is the subprocess execution-policy this extraction runs
+    under, seconds or `None`. It defaults to `DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S`
+    — the existing bounded behavior every pre-existing caller (runtime
+    fingerprint-worker candidate/target processing) still gets automatically.
+    Passing `timeout=None` disables the subprocess timeout entirely (no
+    `subprocess.TimeoutExpired` can occur from this call) — reserved for the
+    explicit, operator-triggered `target.cli build` path, where a
+    full-length target is allowed to take as long as it takes to decode
+    (see `target/build.py`). Never widen this to a large finite value to
+    simulate "unlimited"; pass `None`.
 
     Raises `UnsupportedMediaError` if ffmpeg exits non-zero or produces no
     frames at all (corrupt/empty/undecodable video).
@@ -126,19 +153,27 @@ def extract_segment_frames(media_path: Path, sampling: SegmentSamplingConfig, fr
         f"fps={fps!r}",
         output_pattern,
     ]
+    timeout_desc = f"{timeout:.1f}s" if timeout is not None else "unbounded"
+    logger.debug("ffmpeg extract_segment_frames starting: %s (segment_duration_s=%s, timeout=%s)",
+                 media_path, sampling.segment_duration_s, timeout_desc)
+    started = time.monotonic()
     try:
         proc = subprocess.run(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            timeout=DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S,
+            timeout=timeout,
         )
     except subprocess.TimeoutExpired as exc:
+        logger.debug("ffmpeg extract_segment_frames timed out after %.1fs: %s",
+                     time.monotonic() - started, media_path)
         raise UnsupportedMediaError(f"ffmpeg timed out extracting segment frames from {media_path}") from exc
     except FileNotFoundError as exc:
         raise RuntimeError("ffmpeg is not installed / not on PATH") from exc
 
     if proc.returncode != 0:
+        logger.debug("ffmpeg extract_segment_frames failed (returncode=%d) after %.2fs: %s",
+                     proc.returncode, time.monotonic() - started, media_path)
         raise UnsupportedMediaError(
             f"ffmpeg failed to extract segment frames from {media_path}: "
             f"{proc.stderr.decode('utf-8', 'replace').strip()}"
@@ -147,6 +182,8 @@ def extract_segment_frames(media_path: Path, sampling: SegmentSamplingConfig, fr
     frame_paths = sorted(frames_dir.glob("segment_*.png"))
     if not frame_paths:
         raise UnsupportedMediaError(f"ffmpeg produced no segment frames from {media_path} (empty/corrupt video)")
+    logger.debug("ffmpeg extract_segment_frames done: %d segment frame(s) in %.2fs",
+                 len(frame_paths), time.monotonic() - started)
     return frame_paths
 
 

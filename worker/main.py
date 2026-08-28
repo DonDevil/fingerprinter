@@ -94,6 +94,13 @@ REDIS_RETRY_ON_TIMEOUT = True
 
 _VALID_EMBEDDING_DEVICES = ("auto", "cpu", "cuda")  # mirrors embedding.dinov2_engine._VALID_DEVICES
 
+# Observability audit, "Debug/Verbose Mode": the stdlib levels this project
+# already supports end to end via `worker/observability.py`'s
+# `configure_json_logging`. DEBUG is the new addition this config wires up;
+# the other four already worked, just never had an env-driven switch.
+_VALID_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+DEFAULT_LOG_LEVEL = "INFO"
+
 
 class ConfigError(ValueError):
     """Raised when environment-derived worker configuration is invalid."""
@@ -149,6 +156,11 @@ class WorkerConfig:
     # Phase 13C
     observability_interval_ms: int = DEFAULT_OBSERVABILITY_INTERVAL_MS
     run_output: Optional[str] = None
+    # Observability audit: DEBUG opts into per-stage diagnostic logging in
+    # worker/matching_handler.py (job/target identity, cache status,
+    # embedding progress, matching metrics) in addition to the existing
+    # INFO-level lifecycle events. Never the default -- see `validate()`.
+    log_level: str = DEFAULT_LOG_LEVEL
 
     @classmethod
     def from_env(cls, env: Optional[Mapping[str, str]] = None) -> "WorkerConfig":
@@ -169,6 +181,7 @@ class WorkerConfig:
                 "WORKER_OBSERVABILITY_INTERVAL_MS", DEFAULT_OBSERVABILITY_INTERVAL_MS, env
             ),
             run_output=env.get("WORKER_RUN_OUTPUT") or None,
+            log_level=(env.get("WORKER_LOG_LEVEL") or DEFAULT_LOG_LEVEL).upper(),
         )
         config.validate()
         return config
@@ -200,6 +213,8 @@ class WorkerConfig:
             errors.append(
                 f"WORKER_OBSERVABILITY_INTERVAL_MS must be > 0, got {self.observability_interval_ms}"
             )
+        if self.log_level not in _VALID_LOG_LEVELS:
+            errors.append(f"WORKER_LOG_LEVEL must be one of {_VALID_LOG_LEVELS}, got {self.log_level!r}")
 
         if errors:
             raise ConfigError("; ".join(errors))
@@ -221,13 +236,21 @@ def _redis_db(url: str) -> str:
     return db or "0"
 
 
-def configure_logging() -> None:
+def configure_logging(level: int = logging.INFO) -> None:
     """Structured JSON logs (Phase 13C) — see worker/observability.py's
     JsonFormatter. Every pre-existing log call in this module keeps its
     original human-readable text under the JSON line's "message" key, so
     substring checks written against earlier plain-text output still see
-    that text (see JsonFormatter's docstring)."""
-    configure_json_logging(level=logging.INFO)
+    that text (see JsonFormatter's docstring).
+
+    `level` (observability audit, "Debug/Verbose Mode") defaults to INFO,
+    matching this function's prior hardcoded behavior exactly when the
+    caller doesn't pass one -- normal runs are unaffected. `main()` derives
+    it from `WORKER_LOG_LEVEL` (`WorkerConfig.log_level`) so DEBUG-level
+    diagnostics added to worker/matching_handler.py are visible without a
+    parallel logging configuration mechanism.
+    """
+    configure_json_logging(level=level)
 
 
 def config_snapshot(config: WorkerConfig, consumer_name: str) -> dict:
@@ -252,6 +275,7 @@ def config_snapshot(config: WorkerConfig, consumer_name: str) -> dict:
         "media_max_bytes": config.media_max_bytes,
         "observability_interval_ms": config.observability_interval_ms,
         "run_output": config.run_output,
+        "log_level": config.log_level,
     }
 
 
@@ -360,7 +384,16 @@ def install_shutdown_handlers(worker: Worker) -> None:
 
 
 def main() -> int:
-    configure_logging()
+    # Read WORKER_LOG_LEVEL directly (rather than waiting for
+    # WorkerConfig.from_env() below) so logging is configured -- at the
+    # requested level, when it's one of the valid ones -- before the first
+    # log line, including a config-parse-error message for some *other*
+    # env var. An invalid value here just falls back to INFO for this one
+    # early call; WorkerConfig.validate() still rejects it properly a few
+    # lines down, and that rejection is itself logged (at ERROR, so visible
+    # regardless of level).
+    requested_log_level_name = (os.environ.get("WORKER_LOG_LEVEL") or DEFAULT_LOG_LEVEL).upper()
+    configure_logging(level=getattr(logging, requested_log_level_name, logging.INFO))
     hostname_pid_fields = {"hostname": socket.gethostname(), "pid": os.getpid()}
 
     try:

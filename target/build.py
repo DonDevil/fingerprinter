@@ -4,10 +4,15 @@
 Root cause this exists to address (audit Part A): the fingerprint worker
 builds a target's segment embeddings lazily, on the first job claimed
 against it (`worker.matching_handler._resolve_target_segments` ->
-`TargetRegistry.get_or_build_segment_embedding`). For a long target (e.g. a
-full-length movie), that first build can run past
-`embedding.frames.DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S`, failing a live job
-instead of surfacing the problem at a controlled time.
+`TargetRegistry.get_or_build_segment_embedding`), bounded by
+`embedding.frames.DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S` like all other runtime
+processing. For a long target (e.g. a full-length movie), that first build
+can run past that timeout, failing a live job instead of surfacing the
+problem at a controlled time. `build_target()` below runs the same
+extraction with no subprocess timeout at all (see `build()`'s
+`embed_video_segments(..., timeout=None)` call below) — an intentional,
+operator-controlled offline/preprocessing operation is allowed to take as
+long as it takes; only runtime worker processing needs to stay bounded.
 
 `build_target()` below is *not* a new build mechanism -- it is the exact
 same `TargetRegistry.get_or_build_segment_embedding` call
@@ -19,8 +24,10 @@ from that existing method (audit §B.4.E/H).
 """
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from embedding.result import SEGMENT_EMBEDDING_SCHEMA_VERSION
 from target.artifact import target_media_artifact
@@ -35,6 +42,8 @@ if TYPE_CHECKING:
     # matches `target/cli.py`'s own "other subcommands stay torch-free"
     # property (see that module's docstring).
     from embedding.dinov2_engine import DINOv2EmbeddingEngine
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -80,20 +89,27 @@ def build_target(
     target_id: str,
     target_version: str,
     media_store: Optional[SharedTargetMediaStore] = None,
+    on_frame: Optional[Callable[[int, int], None]] = None,
 ) -> BuildResult:
     """Eagerly build (or confirm already-built) a target's segment
     embeddings, ahead of any live fingerprint job.
+
+    `on_frame` (optional; observability audit, "Progress Display") is
+    forwarded as-is to `DINOv2EmbeddingEngine.embed_video_segments` when a
+    build actually runs -- see that method's docstring. `None` (the
+    default) preserves this function's exact prior behavior and calling
+    convention.
 
     Raises:
         target.errors.TargetNotFoundError: `(target_id, target_version)`
             is not registered.
         embedding.errors.UnsupportedMediaError: the target's media is
-            missing, not a video, undecodable, or timed out during ffmpeg
-            segment extraction (e.g. an over-long file exceeding
-            `embedding.frames.DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S`) -- the
-            exact failure this command exists to surface at an
-            operator-controlled time instead of inside a live job (audit
-            Part A).
+            missing, not a video, or undecodable. ffmpeg segment extraction
+            itself runs with no subprocess timeout here (unlike the
+            worker's lazy build-on-miss path), so an over-long file cannot
+            raise this for timing out -- that was the exact failure this
+            command exists to surface at an operator-controlled time
+            instead of inside a live job (audit Part A).
         embedding.errors.InferenceError: the model failed during a forward
             pass on otherwise-valid frames -- retryable, not a permanent
             fact about the target.
@@ -114,16 +130,28 @@ def build_target(
 
     spec = _segment_spec_for_engine(engine)
     already_built = registry.has_compatible_segment_embedding(target_id, target_version, spec)
+    logger.debug(
+        "target %s/%s: compatible segment embedding %s",
+        target_id, target_version, "already cached" if already_built else "not cached, build required",
+    )
 
     def build(record):
         artifact, is_temp = target_media_artifact(record, media_store)
         try:
-            result = engine.embed_video_segments(artifact)
+            frame_kwargs = {"on_frame": on_frame} if on_frame is not None else {}
+            # Explicit, operator-triggered preprocessing (module docstring)
+            # -- unlike the worker's lazy build-on-miss path, this command
+            # deliberately imposes no ffmpeg subprocess timeout, so a
+            # full-length target is allowed to take as long as it actually
+            # takes to decode rather than failing at
+            # embedding.frames.DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S.
+            result = engine.embed_video_segments(artifact, timeout=None, **frame_kwargs)
             return result.segments, result.coarse_vector
         finally:
             if is_temp:
                 artifact.cleanup()
 
+    started = time.monotonic()
     try:
         entry = registry.get_or_build_segment_embedding(target_id, target_version, spec, build)
     except KeyError as exc:
@@ -131,6 +159,11 @@ def build_target(
         # check above and this call -- translate to the same typed error
         # the up-front check would have raised.
         raise TargetNotFoundError(str(exc)) from exc
+    logger.debug(
+        "target %s/%s: resolved %d segment(s) in %.2fs (%s)",
+        target_id, target_version, len(entry.segments), time.monotonic() - started,
+        "cache hit" if already_built else "built",
+    )
 
     return BuildResult(
         target_id=target_id, target_version=target_version, already_built=already_built, entry=entry

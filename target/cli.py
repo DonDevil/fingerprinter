@@ -3,13 +3,19 @@ metadata / delete / build a target, plus the one-time `reindex` migration
 (target-management design doc, S18/S21;
 `docs/architecture/target-eager-build-audit.md`, Part B, for `build`).
 
-    python -m target.cli add MEDIA_PATH --id ID --version VERSION [--metadata KEY=VALUE ...] [--json]
-    python -m target.cli list [--json]
-    python -m target.cli get ID --version VERSION [--json]
-    python -m target.cli update-metadata ID --version VERSION [--set KEY=VALUE ...] [--unset KEY ...] [--json]
-    python -m target.cli delete ID --version VERSION [--json]
-    python -m target.cli build ID --version VERSION [--json]
-    python -m target.cli reindex [--dry-run] [--json]
+    python -m target.cli add MEDIA_PATH --id ID --version VERSION [--metadata KEY=VALUE ...] [--json] [--debug]
+    python -m target.cli list [--json] [--debug]
+    python -m target.cli get ID --version VERSION [--json] [--debug]
+    python -m target.cli update-metadata ID --version VERSION [--set KEY=VALUE ...] [--unset KEY ...] [--json] [--debug]
+    python -m target.cli delete ID --version VERSION [--json] [--debug]
+    python -m target.cli build ID --version VERSION [--json] [--debug]
+    python -m target.cli reindex [--dry-run] [--json] [--debug]
+
+`--debug` (every subcommand) enables verbose diagnostic logging -- cache
+hit/miss, per-frame embedding progress, and stage timing for `build`; see
+docs/architecture/observability-audit.md and
+docs/architecture/observability-implementation.md. Normal output is
+unaffected; `--debug` only adds `DEBUG:`-prefixed lines to stderr.
 
 This module is a thin `TargetService` client: it parses arguments,
 constructs a `TargetRegistry`/`TargetService` pair from the environment,
@@ -49,11 +55,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from redis import Redis
 
@@ -68,6 +75,8 @@ from target.service import TargetService
 from target.shared_cache import SharedFilesystemEmbeddingCache, SharedFilesystemSegmentEmbeddingCache
 from target.shared_storage import SharedArtifactStore, SharedArtifactStoreError, SharedTargetMediaStore
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_REDIS_URL = "redis://localhost:6379/0"
 DEFAULT_TARGET_CACHE_PATH = "./target_cache"
 
@@ -80,6 +89,71 @@ _EPILOG = (
     "targets for -- delete/create operate on whatever cache and media paths "
     "this process is wired to."
 )
+
+
+# ---------------------------------------------------------------------------
+# Diagnostic logging (observability audit, "Debug/Verbose Mode") --
+# deliberately plain text, not `worker/observability.py`'s JSON format: this
+# CLI's normal output is already human `print()` lines, so `--debug`
+# diagnostics should read the same way, not as JSON meant for a daemon's log
+# aggregator. Stdlib `logging` only -- no second logging framework.
+# ---------------------------------------------------------------------------
+
+
+# Third-party libraries whose own DEBUG-level logging is noisy and not
+# useful for diagnosing *this project's* pipeline -- pinned to WARNING
+# regardless of `--debug`, so DEBUG output stays this project's
+# diagnostics rather than unrelated library-internal chatter. Concretely
+# observed: redis-py logs a harmless per-connection
+# "Failed to enable maintenance notifications: unknown subcommand
+# 'MAINT_NOTIFICATIONS'" at DEBUG when talking to a Redis server that
+# predates that (optional, auto-fallback) feature -- not an error, and not
+# something this project's code raised or can act on; PIL logs a line per
+# PNG chunk while decoding extracted frames. Both are harmless; neither
+# helps diagnose a fingerprinting job.
+_QUIET_THIRD_PARTY_LOGGERS = ("redis", "PIL")
+
+
+def _configure_logging(debug: bool) -> None:
+    """Installs one plain-text handler on the root logger at WARNING (the
+    default -- silent for every `logger.debug()` call this module or
+    `target.build`/`embedding.frames` add) or DEBUG (`--debug`). Resets any
+    previously installed handler first so repeated calls within one process
+    (e.g. this CLI's own `main()` invoked more than once in a test) don't
+    accumulate duplicate handlers or leave a stale level behind."""
+    level = logging.DEBUG if debug else logging.WARNING
+    root = logging.getLogger()
+    root.setLevel(level)
+    for handler in list(root.handlers):
+        root.removeHandler(handler)
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+    root.addHandler(stream_handler)
+    for name in _QUIET_THIRD_PARTY_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+
+def _build_progress_callback(target_id: str, target_version: str) -> Callable[[int, int], None]:
+    """DEBUG-only per-frame progress reporting for `build_target`'s optional
+    `on_frame` hook -- logs at roughly 10 evenly-spaced checkpoints
+    regardless of segment count, not once per frame, so a long target build
+    (e.g. a full-length movie at ~1,700 segments) doesn't flood the log."""
+
+    def _on_frame(index: int, total: int) -> None:
+        step = max(1, total // 10)
+        if index % step == 0 or index == total:
+            percent = 100.0 * index / total if total else 0.0
+            logger.debug("embedding %s/%s: frame %d/%d (%.1f%%)", target_id, target_version, index, total, percent)
+
+    return _on_frame
+
+
+def _log_engine_ready(engine) -> None:
+    logger.debug(
+        "engine ready: model=%s revision=%s device=%s torch_num_threads=%s model_load_duration_s=%.3f",
+        engine.model_id, engine.model_revision, engine.device, engine.torch_num_threads,
+        engine.model_load_duration_s,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -300,6 +374,8 @@ def _cmd_build(context: _Context, args: argparse.Namespace) -> int:
         _print_error(args, "ConfigError", str(exc))
         return 1
 
+    on_frame = _build_progress_callback(args.id, args.version) if args.debug else None
+
     try:
         from embedding.dinov2_engine import DINOv2EmbeddingEngine
 
@@ -307,8 +383,14 @@ def _cmd_build(context: _Context, args: argparse.Namespace) -> int:
             device=os.environ.get("EMBEDDING_DEVICE") or "auto",
             torch_num_threads=torch_num_threads,
         )
-        result = build_target(context.registry, engine, args.id, args.version, media_store=context.media_store)
+        if args.debug:
+            _log_engine_ready(engine)
+        result = build_target(
+            context.registry, engine, args.id, args.version, media_store=context.media_store, on_frame=on_frame
+        )
     except (EmbeddingError, SharedArtifactStoreError, TimeoutError, ValueError) as exc:
+        if args.debug:
+            logger.debug("target %s/%s build failed: %s", args.id, args.version, type(exc).__name__)
         _print_error(args, type(exc).__name__, str(exc))
         return 1
 
@@ -358,7 +440,18 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m target.cli", description=__doc__.splitlines()[0], epilog=_EPILOG)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    add_parser = subparsers.add_parser("add", help="Create a target")
+    # Shared `--debug` flag (observability audit, "Debug/Verbose Mode"),
+    # added to every subcommand via `parents=` rather than repeated on each
+    # `add_parser` call -- keeps the per-subcommand `--json` convention
+    # (flag comes after the subcommand name) while avoiding seven copies of
+    # the same `add_argument` call.
+    debug_flag_parser = argparse.ArgumentParser(add_help=False)
+    debug_flag_parser.add_argument(
+        "--debug", action="store_true",
+        help="Enable verbose diagnostic logging (cache status, embedding progress, stage timing)",
+    )
+
+    add_parser = subparsers.add_parser("add", help="Create a target", parents=[debug_flag_parser])
     add_parser.add_argument("media_path")
     add_parser.add_argument("--id", required=True, dest="id")
     add_parser.add_argument("--version", required=True)
@@ -366,17 +459,19 @@ def _build_parser() -> argparse.ArgumentParser:
     add_parser.add_argument("--json", action="store_true")
     add_parser.set_defaults(func=_cmd_add)
 
-    list_parser = subparsers.add_parser("list", help="List every registered target")
+    list_parser = subparsers.add_parser("list", help="List every registered target", parents=[debug_flag_parser])
     list_parser.add_argument("--json", action="store_true")
     list_parser.set_defaults(func=_cmd_list)
 
-    get_parser = subparsers.add_parser("get", help="Get one target")
+    get_parser = subparsers.add_parser("get", help="Get one target", parents=[debug_flag_parser])
     get_parser.add_argument("id")
     get_parser.add_argument("--version", required=True)
     get_parser.add_argument("--json", action="store_true")
     get_parser.set_defaults(func=_cmd_get)
 
-    update_parser = subparsers.add_parser("update-metadata", help="Patch a target's metadata")
+    update_parser = subparsers.add_parser(
+        "update-metadata", help="Patch a target's metadata", parents=[debug_flag_parser]
+    )
     update_parser.add_argument("id")
     update_parser.add_argument("--version", required=True)
     update_parser.add_argument("--set", action="append", type=_parse_key_value, metavar="KEY=VALUE")
@@ -384,19 +479,23 @@ def _build_parser() -> argparse.ArgumentParser:
     update_parser.add_argument("--json", action="store_true")
     update_parser.set_defaults(func=_cmd_update_metadata)
 
-    delete_parser = subparsers.add_parser("delete", help="Delete a target")
+    delete_parser = subparsers.add_parser("delete", help="Delete a target", parents=[debug_flag_parser])
     delete_parser.add_argument("id")
     delete_parser.add_argument("--version", required=True)
     delete_parser.add_argument("--json", action="store_true")
     delete_parser.set_defaults(func=_cmd_delete)
 
-    build_parser = subparsers.add_parser("build", help="Eagerly build a target's segment embeddings")
+    build_parser = subparsers.add_parser(
+        "build", help="Eagerly build a target's segment embeddings", parents=[debug_flag_parser]
+    )
     build_parser.add_argument("id")
     build_parser.add_argument("--version", required=True)
     build_parser.add_argument("--json", action="store_true")
     build_parser.set_defaults(func=_cmd_build)
 
-    reindex_parser = subparsers.add_parser("reindex", help="One-time: backfill the target list index")
+    reindex_parser = subparsers.add_parser(
+        "reindex", help="One-time: backfill the target list index", parents=[debug_flag_parser]
+    )
     reindex_parser.add_argument("--dry-run", action="store_true")
     reindex_parser.add_argument("--json", action="store_true")
     reindex_parser.set_defaults(func=_cmd_reindex)
@@ -407,6 +506,7 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[list] = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
+    _configure_logging(args.debug)
 
     try:
         context = _build_context()

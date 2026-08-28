@@ -40,11 +40,16 @@ class FakeEngine:
         self.segment_sampling_config = SegmentSamplingConfig()
         self._raises = raises
         self.calls = 0
+        self.timeouts_seen = []
 
-    def embed_video_segments(self, artifact):
+    def embed_video_segments(self, artifact, on_frame=None, timeout="unset"):
         self.calls += 1
+        self.timeouts_seen.append(timeout)
         if self._raises is not None:
             raise self._raises
+        if on_frame is not None:
+            for index in range(1, len(SEGMENTS) + 1):
+                on_frame(index, len(SEGMENTS))
         return SimpleNamespace(segments=SEGMENTS, coarse_vector=COARSE_VECTOR)
 
 
@@ -72,6 +77,47 @@ def test_build_target_success_builds_and_registers(registry, tmp_path):
     assert result.target_version == "v1"
     assert len(result.entry.segments) == 2
     assert engine.calls == 1
+
+
+def test_build_target_uses_unbounded_timeout(registry, tmp_path):
+    """The explicit, operator-triggered build path must never inherit
+    `embed_video_segments`'s own bounded default (`DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S`)
+    -- it must explicitly request `timeout=None` (no ffmpeg subprocess
+    timeout at all), unlike the worker's lazy build-on-miss path (see
+    `tests/test_matching_handler.py`'s equivalent bounded-timeout test)."""
+    registry.register_target("blast", "v1", str(_write(tmp_path)))
+    engine = FakeEngine()
+
+    build_target(registry, engine, "blast", "v1")
+
+    assert engine.timeouts_seen == [None]
+
+
+def test_build_target_forwards_on_frame_callback_when_a_build_actually_runs(registry, tmp_path):
+    """Observability audit, "Progress Display": `on_frame` is forwarded to
+    the engine only when a build actually runs, and not at all otherwise
+    (default None keeps every other call site's exact prior behavior)."""
+    registry.register_target("blast", "v1", str(_write(tmp_path)))
+    engine = FakeEngine()
+    calls = []
+
+    result = build_target(registry, engine, "blast", "v1", on_frame=lambda index, total: calls.append((index, total)))
+
+    assert result.already_built is False
+    assert calls == [(1, 2), (2, 2)]
+
+
+def test_build_target_on_frame_not_invoked_on_cache_hit(registry, tmp_path):
+    registry.register_target("blast", "v1", str(_write(tmp_path)))
+    build_target(registry, FakeEngine(), "blast", "v1")  # warm the cache
+
+    calls = []
+    result = build_target(
+        registry, FakeEngine(), "blast", "v1", on_frame=lambda index, total: calls.append((index, total))
+    )
+
+    assert result.already_built is True
+    assert calls == []  # no build ran, so on_frame was never called
 
 
 def test_build_target_not_found_raises_without_calling_engine(registry):

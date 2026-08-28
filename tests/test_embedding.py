@@ -16,6 +16,7 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -25,7 +26,7 @@ from acquisition.artifact import MediaArtifact
 from embedding.config import IMAGE_SAMPLING_CONFIG, PreprocessingConfig, SamplingConfig, SegmentSamplingConfig
 from embedding.dinov2_engine import DINOv2EmbeddingEngine
 from embedding.errors import DeviceUnavailableError, UnsupportedMediaError
-from embedding.frames import extract_frames, extract_segment_frames, make_frames_dir
+from embedding.frames import DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S, extract_frames, extract_segment_frames, make_frames_dir
 from target.cache import FilesystemEmbeddingCache
 from target.segment_cache import FilesystemSegmentEmbeddingCache
 from target.versioning import EmbeddingSpec
@@ -389,3 +390,80 @@ def test_embed_video_segments_rejects_non_video_artifact():
     engine = DINOv2EmbeddingEngine(device="cpu", segment_sampling_config=SegmentSamplingConfig(segment_duration_s=0.5))
     with pytest.raises(UnsupportedMediaError):
         engine.embed_video_segments(_image_artifact())
+
+
+# -- ffmpeg timeout policy: explicit unbounded target-build vs. bounded
+# runtime/worker processing (separates target.cli build from worker.main;
+# see embedding/frames.py, embedding/dinov2_engine.py, target/build.py).
+# Mocked subprocess.run / extract_segment_frames throughout -- these test
+# the timeout *plumbing*, not real ffmpeg decode duration.
+
+
+# 23. extract_segment_frames keeps its existing bounded default when no
+# caller opts out of it
+def test_extract_segment_frames_default_timeout_is_the_existing_bounded_constant(tmp_path, monkeypatch):
+    captured = {}
+
+    def fake_run(cmd, stdout=None, stderr=None, timeout=None):
+        captured["timeout"] = timeout
+        (tmp_path / "segment_000001.png").write_bytes(TINY_IMAGE.read_bytes())
+        return SimpleNamespace(returncode=0, stderr=b"")
+
+    monkeypatch.setattr("embedding.frames.subprocess.run", fake_run)
+
+    extract_segment_frames(TINY_VIDEO, SegmentSamplingConfig(segment_duration_s=0.5), tmp_path)
+
+    assert captured["timeout"] == DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S
+
+
+# 24. timeout=None reaches subprocess.run as None -- no accidental fallback
+# to the old 300s ceiling for an explicitly-unbounded caller
+def test_extract_segment_frames_timeout_none_disables_the_subprocess_timeout(tmp_path, monkeypatch):
+    captured = {}
+
+    def fake_run(cmd, stdout=None, stderr=None, timeout=None):
+        captured["timeout"] = timeout
+        (tmp_path / "segment_000001.png").write_bytes(TINY_IMAGE.read_bytes())
+        return SimpleNamespace(returncode=0, stderr=b"")
+
+    monkeypatch.setattr("embedding.frames.subprocess.run", fake_run)
+
+    extract_segment_frames(TINY_VIDEO, SegmentSamplingConfig(segment_duration_s=0.5), tmp_path, timeout=None)
+
+    assert captured["timeout"] is None
+    assert captured["timeout"] != DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S
+
+
+# 25. a bounded call that actually times out still raises the existing
+# UnsupportedMediaError -- the timeout-policy change doesn't touch this
+# exception mapping for callers that keep a finite timeout
+def test_extract_segment_frames_bounded_timeout_expiry_still_raises_unsupported_media_error(tmp_path, monkeypatch):
+    def fake_run(cmd, stdout=None, stderr=None, timeout=None):
+        raise subprocess.TimeoutExpired(cmd=cmd, timeout=timeout)
+
+    monkeypatch.setattr("embedding.frames.subprocess.run", fake_run)
+
+    with pytest.raises(UnsupportedMediaError):
+        extract_segment_frames(TINY_VIDEO, SegmentSamplingConfig(segment_duration_s=0.5), tmp_path)
+
+
+# 26. embed_video_segments forwards its own `timeout` argument to
+# extract_segment_frames unmodified -- default (bounded) when a caller
+# (e.g. the worker) doesn't pass one, `None` (unbounded) only when a
+# caller (target/build.py) explicitly overrides it
+def test_embed_video_segments_forwards_timeout_to_extract_segment_frames(monkeypatch):
+    captured = []
+
+    def fake_extract(media_path, sampling, frames_dir, timeout=DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S):
+        captured.append(timeout)
+        frame_path = frames_dir / "segment_000001.png"
+        frame_path.write_bytes(TINY_IMAGE.read_bytes())
+        return [frame_path]
+
+    monkeypatch.setattr("embedding.dinov2_engine.extract_segment_frames", fake_extract)
+    engine = DINOv2EmbeddingEngine(device="cpu", segment_sampling_config=SegmentSamplingConfig(segment_duration_s=0.5))
+
+    engine.embed_video_segments(_video_artifact())
+    engine.embed_video_segments(_video_artifact(), timeout=None)
+
+    assert captured == [DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S, None]

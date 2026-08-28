@@ -108,6 +108,20 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str)
 
 
+# Third-party libraries whose own DEBUG-level logging is noisy and not
+# useful for diagnosing *this project's* pipeline -- pinned to WARNING
+# regardless of the requested root level (observability audit, "Debug/
+# Verbose Mode"), so WORKER_LOG_LEVEL=DEBUG surfaces this project's own
+# diagnostics rather than unrelated library-internal chatter. Concretely
+# observed: redis-py logs a harmless per-connection "Failed to enable
+# maintenance notifications: unknown subcommand 'MAINT_NOTIFICATIONS'" at
+# DEBUG when talking to a Redis server that predates that (optional,
+# auto-fallback) feature -- not an error, and not something this project's
+# code raised or can act on; PIL logs a line per PNG chunk while decoding
+# extracted frames. Kept in sync with target/cli.py's identical list.
+_QUIET_THIRD_PARTY_LOGGERS = ("redis", "PIL")
+
+
 def configure_json_logging(level: int = logging.INFO) -> None:
     """Install `JsonFormatter` on the root logger. Replaces whatever
     handlers were previously attached (mirrors `logging.basicConfig`'s own
@@ -121,6 +135,8 @@ def configure_json_logging(level: int = logging.INFO) -> None:
     stream_handler = logging.StreamHandler()
     stream_handler.setFormatter(JsonFormatter())
     root.addHandler(stream_handler)
+    for name in _QUIET_THIRD_PARTY_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
 
 
 def log_event(

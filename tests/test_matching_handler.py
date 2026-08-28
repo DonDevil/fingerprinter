@@ -25,14 +25,17 @@ declared content-type — easiest to construct directly, not through HTTP.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 import pytest
 
+import embedding.dinov2_engine as dinov2_engine_module
 from acquisition import MediaAcquirer
 from acquisition.artifact import MediaArtifact
 from embedding.config import SegmentSamplingConfig
 from embedding.dinov2_engine import DINOv2EmbeddingEngine
+from embedding.frames import DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S
 from target.cache import FilesystemEmbeddingCache
 from target.registry import TargetRegistry
 from target.segment_cache import FilesystemSegmentEmbeddingCache
@@ -41,7 +44,7 @@ from work_queue.producer import JobProducer
 from work_queue.results import ResultDecision, ResultStore
 from work_queue.state import JobStatus
 from worker.fingerprint_worker import Worker
-from worker.matching_handler import build_matching_handler
+from worker.matching_handler import _redact_url, build_matching_handler
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 TINY_VIDEO = FIXTURES_DIR / "tiny_video.mp4"
@@ -148,6 +151,37 @@ def test_self_match_is_detected_end_to_end(redis_client, make_job, media_server,
     assert evidence[0]["detail"]["temporal_offset_s"] == pytest.approx(0.0, abs=1e-6)
 
 
+def test_worker_uses_bounded_ffmpeg_timeout_for_candidate_and_target_build(
+    redis_client, make_job, media_server, engine, registry, monkeypatch
+):
+    """Runtime worker processing must keep the existing bounded
+    `DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S` for ffmpeg segment extraction --
+    both for the candidate (always) and for a target build-on-miss (this
+    job is the target's first) -- unlike `target.cli build`'s explicit
+    `timeout=None` override (see tests/test_target_build.py /
+    tests/test_target_cli.py's equivalent unbounded-timeout tests)."""
+    registry.register_target("target-1", "v1", str(TINY_VIDEO))
+    captured_timeouts = []
+    real_extract_segment_frames = dinov2_engine_module.extract_segment_frames
+
+    def _spy(media_path, sampling, frames_dir, timeout=DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S):
+        captured_timeouts.append(timeout)
+        return real_extract_segment_frames(media_path, sampling, frames_dir, timeout=timeout)
+
+    monkeypatch.setattr(dinov2_engine_module, "extract_segment_frames", _spy)
+
+    job = make_job(media_url=media_server.url("/video"), target_id="target-1", target_version="v1")
+    JobProducer(redis_client).enqueue(job)
+    worker = _worker(redis_client)
+
+    entry = worker.claim_one()
+    worker.process_claim(entry, _real_handler(engine, registry))
+
+    # one call for the candidate, one for the target build-on-miss
+    assert len(captured_timeouts) == 2
+    assert captured_timeouts == [DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S, DEFAULT_SEGMENT_FFMPEG_TIMEOUT_S]
+
+
 def test_target_segment_embedding_is_cached_after_first_job(redis_client, make_job, media_server, engine, registry):
     registry.register_target("target-1", "v1", str(TINY_VIDEO))
     spec = _spec_for(engine)
@@ -224,3 +258,107 @@ def test_job_without_supported_technique_raises_permanent_failure(engine, regist
 
     with pytest.raises(PermanentFailure):
         handler(job)
+
+
+# -- DEBUG-mode diagnostics (observability audit) ---------------------------
+#
+# These assert on structured event names/fields (LogRecord.event /
+# .fields, set by worker/observability.py:log_event), not on rendered
+# message text or timestamps -- stable across any future formatting change.
+
+
+def _debug_events(records) -> dict:
+    return {r.event: r for r in records if r.name == "worker.matching_handler" and hasattr(r, "event")}
+
+
+def test_debug_mode_emits_stage_events_with_expected_fields(caplog, engine, registry, make_job, tmp_path):
+    caplog.set_level(logging.DEBUG, logger="worker.matching_handler")
+    registry.register_target("target-1", "v1", str(TINY_VIDEO))
+    artifact = _candidate_artifact(tmp_path)
+    handler = build_matching_handler(_FakeAcquirer(artifact), engine, registry)
+    job = make_job(target_id="target-1", target_version="v1")
+
+    handler(job)
+
+    events = _debug_events(caplog.records)
+    assert events["job_processing_started"].fields["target_id"] == "target-1"
+    assert events["job_processing_started"].fields["target_version"] == "v1"
+    assert events["job_processing_started"].fields["candidate_url"] == "https://example.com/video.mp4"
+
+    assert events["candidate_acquired"].fields["content_type"] == "video/mp4"
+    assert events["candidate_embedded"].fields["candidate_segment_count"] == 4
+    assert events["target_resolved"].fields["target_segment_count"] == 4
+    assert events["target_resolution_started"].fields["cache_status"] == "miss"
+
+    matching = events["matching_completed"].fields
+    assert matching["decision"] == "MATCH"  # byte-identical candidate, same as test_self_match_is_detected
+    assert matching["matched_segment_count"] == 4
+    assert matching["target_segment_count"] == 4
+    assert matching["candidate_segment_count"] == 4
+    assert matching["target_coverage_hits"] == pytest.approx(1.0)
+    assert matching["target_coverage_span"] == pytest.approx(1.0)
+    assert matching["candidate_coverage"] == pytest.approx(1.0)
+    assert matching["similarity_threshold"] == pytest.approx(0.90)
+    assert matching["min_matched_segments"] == 3
+
+
+def test_debug_events_are_suppressed_without_debug_logging_enabled(caplog, engine, registry, make_job, tmp_path):
+    """Default (INFO-effective) level: none of the new DEBUG diagnostics
+    are emitted at all -- normal-mode output stays exactly as concise as
+    before this change."""
+    registry.register_target("target-1", "v1", str(TINY_VIDEO))
+    artifact = _candidate_artifact(tmp_path)
+    handler = build_matching_handler(_FakeAcquirer(artifact), engine, registry)
+    job = make_job(target_id="target-1", target_version="v1")
+
+    handler(job)
+
+    assert [r for r in caplog.records if r.name == "worker.matching_handler"] == []
+
+
+def test_debug_mode_reports_cache_miss_then_hit(caplog, engine, registry, make_job, tmp_path):
+    registry.register_target("target-1", "v1", str(TINY_VIDEO))
+    caplog.set_level(logging.DEBUG, logger="worker.matching_handler")
+
+    handler_a = build_matching_handler(_FakeAcquirer(_candidate_artifact(tmp_path)), engine, registry)
+    handler_a(make_job(job_id="job-a", target_id="target-1", target_version="v1"))
+    first_status = _debug_events(caplog.records)["target_resolution_started"].fields["cache_status"]
+    caplog.clear()
+
+    handler_b = build_matching_handler(_FakeAcquirer(_candidate_artifact(tmp_path)), engine, registry)
+    handler_b(make_job(job_id="job-b", target_id="target-1", target_version="v1"))
+    second_status = _debug_events(caplog.records)["target_resolution_started"].fields["cache_status"]
+
+    assert first_status == "miss"
+    assert second_status == "hit"
+
+
+def test_debug_mode_logs_stage_failed_on_candidate_embedding_failure(caplog, engine, registry, make_job, tmp_path):
+    caplog.set_level(logging.DEBUG, logger="worker.matching_handler")
+    registry.register_target("target-1", "v1", str(TINY_VIDEO))
+    garbage = tmp_path / "not-really-a-video.mp4"
+    garbage.write_bytes(b"not a real video, just garbage bytes" * 10)
+    artifact = _video_artifact(garbage)
+    handler = build_matching_handler(_FakeAcquirer(artifact), engine, registry)
+    job = make_job(target_id="target-1", target_version="v1")
+
+    result = handler(job)
+
+    assert result.decision == ResultDecision.PROCESSING_FAILURE
+    failure_event = _debug_events(caplog.records)["stage_failed"]
+    assert failure_event.fields["stage"] == "candidate_embedding"
+    assert failure_event.fields["error_type"] == "UnsupportedMediaError"
+
+
+def test_redact_url_strips_credentials_and_query_string():
+    assert (
+        _redact_url("https://user:pass@example.com:8443/path/to/video.mp4?token=secret123")
+        == "https://example.com/path/to/video.mp4"
+    )
+
+
+def test_redact_url_truncates_very_long_urls():
+    long_path = "/" + ("a" * 500)
+    redacted = _redact_url(f"https://example.com{long_path}")
+    assert len(redacted) <= 200
+    assert redacted.endswith("...")

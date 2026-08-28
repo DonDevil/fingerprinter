@@ -35,6 +35,7 @@ from worker.observability import (
     ResourceSampler,
     WorkerIdentity,
     classify_error_type,
+    configure_json_logging,
     log_event,
     redis_health_snapshot,
 )
@@ -142,6 +143,31 @@ def test_config_snapshot_does_not_leak_redis_credentials():
     assert "myuser" not in dumped
     assert snapshot["redis_endpoint"] == "redis://redis.internal:6379/2"
     assert snapshot["redis_db"] == "2"
+    assert snapshot["log_level"] == "INFO"
+
+
+def test_configure_json_logging_pins_known_noisy_third_party_loggers_to_warning():
+    """Same reasoning as target/cli.py's identical guard: redis-py's
+    harmless "Failed to enable maintenance notifications" DEBUG line (and
+    PIL's per-PNG-chunk decode logging) must not drown out this project's
+    own DEBUG diagnostics when WORKER_LOG_LEVEL=DEBUG. Saves/restores the
+    root logger's level and handlers -- `configure_json_logging` mutates
+    the root logger by design (this is what makes it work in a real
+    process), which would otherwise leak into other tests sharing this
+    pytest process."""
+    root = logging.getLogger()
+    original_level = root.level
+    original_handlers = list(root.handlers)
+    try:
+        configure_json_logging(level=logging.DEBUG)
+
+        assert root.getEffectiveLevel() == logging.DEBUG
+        assert logging.getLogger("redis").getEffectiveLevel() == logging.WARNING
+        assert logging.getLogger("PIL").getEffectiveLevel() == logging.WARNING
+        assert logging.getLogger("worker.matching_handler").getEffectiveLevel() == logging.DEBUG
+    finally:
+        root.setLevel(original_level)
+        root.handlers[:] = original_handlers
 
 
 # ---------------------------------------------------------------------------
