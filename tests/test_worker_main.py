@@ -68,6 +68,7 @@ def test_config_defaults_when_env_is_empty():
     assert config.shared_artifact_store_path is None
     assert config.media_max_bytes == 100 * 1024 * 1024
     assert config.log_level == "INFO"
+    assert config.log_format == "auto"
 
 
 def test_config_overrides_from_env():
@@ -84,6 +85,7 @@ def test_config_overrides_from_env():
         "SHARED_ARTIFACT_STORE_PATH": "/mnt/shared/fingerprinter-targets",
         "MEDIA_MAX_BYTES": "1048576",
         "WORKER_LOG_LEVEL": "debug",
+        "WORKER_LOG_FORMAT": "Human",
     }
 
     config = WorkerConfig.from_env(env)
@@ -100,6 +102,7 @@ def test_config_overrides_from_env():
     assert config.shared_artifact_store_path == "/mnt/shared/fingerprinter-targets"
     assert config.media_max_bytes == 1048576
     assert config.log_level == "DEBUG"  # normalized to uppercase
+    assert config.log_format == "human"  # normalized to lowercase
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +125,7 @@ def test_config_overrides_from_env():
         {"REDIS_URL": "not-a-url"},
         {"REDIS_URL": "http://localhost:6379"},
         {"WORKER_LOG_LEVEL": "TRACE"},
+        {"WORKER_LOG_FORMAT": "yaml"},
     ],
 )
 def test_invalid_config_raises_config_error(env):
@@ -174,6 +178,61 @@ def test_main_falls_back_to_info_logging_when_log_level_itself_is_invalid(monkey
 
     assert main_module.main() == 1
     assert captured_levels == [logging.INFO]
+
+
+# ---------------------------------------------------------------------------
+# 1c. WORKER_LOG_FORMAT drives configure_logging()'s console-format choice
+# (human-readable terminal output) -- checked by intercepting
+# configure_console_logging itself, same approach 1b uses for the level, so
+# this doesn't depend on HumanConsoleHandler's/JsonFormatter's exact
+# rendering.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("requested,expected", [("json", "json"), ("human", "human"), ("auto", "auto")])
+def test_configure_logging_passes_requested_format_through(monkeypatch, requested, expected):
+    import worker.main as main_module
+
+    captured = []
+    monkeypatch.setattr(
+        main_module, "configure_console_logging",
+        lambda level=logging.INFO, format_="auto", stream=None: captured.append(format_),
+    )
+    monkeypatch.setenv("WORKER_LOG_FORMAT", requested)
+
+    main_module.configure_logging(level=logging.INFO)
+
+    assert captured == [expected]
+
+
+def test_configure_logging_defaults_to_auto_format_when_unset(monkeypatch):
+    import worker.main as main_module
+
+    captured = []
+    monkeypatch.setattr(
+        main_module, "configure_console_logging",
+        lambda level=logging.INFO, format_="auto", stream=None: captured.append(format_),
+    )
+    monkeypatch.delenv("WORKER_LOG_FORMAT", raising=False)
+
+    main_module.configure_logging(level=logging.INFO)
+
+    assert captured == ["auto"]
+
+
+def test_configure_logging_falls_back_to_auto_when_format_is_invalid(monkeypatch):
+    import worker.main as main_module
+
+    captured = []
+    monkeypatch.setattr(
+        main_module, "configure_console_logging",
+        lambda level=logging.INFO, format_="auto", stream=None: captured.append(format_),
+    )
+    monkeypatch.setenv("WORKER_LOG_FORMAT", "not-a-real-format")
+
+    main_module.configure_logging(level=logging.INFO)
+
+    assert captured == ["auto"]
 
 
 # ---------------------------------------------------------------------------

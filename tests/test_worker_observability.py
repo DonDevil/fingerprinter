@@ -144,6 +144,7 @@ def test_config_snapshot_does_not_leak_redis_credentials():
     assert snapshot["redis_endpoint"] == "redis://redis.internal:6379/2"
     assert snapshot["redis_db"] == "2"
     assert snapshot["log_level"] == "INFO"
+    assert snapshot["log_format"] == "auto"
 
 
 def test_configure_json_logging_pins_known_noisy_third_party_loggers_to_warning():

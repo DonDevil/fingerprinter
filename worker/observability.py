@@ -41,7 +41,8 @@ import threading
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, TextIO
+from urllib.parse import urlparse
 
 from redis import Redis
 from redis.exceptions import RedisError
@@ -122,21 +123,441 @@ class JsonFormatter(logging.Formatter):
 _QUIET_THIRD_PARTY_LOGGERS = ("redis", "PIL")
 
 
-def configure_json_logging(level: int = logging.INFO) -> None:
+def configure_json_logging(level: int = logging.INFO, stream: Optional[TextIO] = None) -> None:
     """Install `JsonFormatter` on the root logger. Replaces whatever
     handlers were previously attached (mirrors `logging.basicConfig`'s own
     "only do this once, at process startup" contract) — safe to call
     exactly once, from `worker/main.py`'s `main()`.
+
+    `stream` defaults to `logging.StreamHandler`'s own default (`sys.stderr`)
+    when omitted; only tests pass one explicitly, to capture output without
+    touching the process's real stderr.
     """
     root = logging.getLogger()
     root.setLevel(level)
     for handler in list(root.handlers):
         root.removeHandler(handler)
-    stream_handler = logging.StreamHandler()
+    stream_handler = logging.StreamHandler(stream) if stream is not None else logging.StreamHandler()
     stream_handler.setFormatter(JsonFormatter())
     root.addHandler(stream_handler)
     for name in _QUIET_THIRD_PARTY_LOGGERS:
         logging.getLogger(name).setLevel(logging.WARNING)
+
+
+# ---------------------------------------------------------------------------
+# Human-readable console output (terminal presentation only)
+#
+# This section is purely a presentation layer over the exact same structured
+# events `JsonFormatter`/`log_event` already produce (`record.event` /
+# `record.fields`, set by `log_event` above) — it reads that structured
+# payload and renders it as short, aligned terminal lines instead of a JSON
+# object. It never changes what is logged, only how it looks on an
+# interactive console: JSON logging (`configure_json_logging`, above) is
+# unaffected and remains the machine-readable path for run records / log
+# ingestion. See `configure_console_logging` for how a process picks one or
+# the other.
+# ---------------------------------------------------------------------------
+
+_SEP = "─" * 64  # matches the box-drawing separator style used elsewhere in this project's docs
+_LABEL_WIDTH = 12
+_PROGRESS_BAR_WIDTH = 24
+
+_STAGE_LABELS = {
+    "candidate_embedding": "Embedding",
+    "target_build": "Target build",
+}
+
+
+def _kv(label: str, value: object) -> str:
+    return f"{label:<{_LABEL_WIDTH}}: {value}"
+
+
+def _job_kv(label: str, value: object) -> str:
+    return f"  {label:<{_LABEL_WIDTH}}: {value}"
+
+
+def _fmt_ms(value: Optional[float]) -> str:
+    if value is None:
+        return "n/a"
+    return f"{value / 1000:.2f}s" if value >= 1000 else f"{value:.0f}ms"
+
+
+def _fmt_duration_s(value: Optional[float]) -> str:
+    if value is None:
+        return "n/a"
+    return f"{value:.2f}s"
+
+
+def _fmt_pct(fraction: Optional[float]) -> str:
+    if fraction is None:
+        return "n/a"
+    return f"{fraction * 100:.2f}%"
+
+
+def _fmt_num(value: Optional[float], ndigits: int = 4) -> str:
+    if value is None:
+        return "n/a"
+    return f"{value:.{ndigits}f}"
+
+
+def _fmt_bytes(n: Optional[int]) -> str:
+    if n is None:
+        return "n/a"
+    value = float(n)
+    for unit in ("B", "KB", "MB", "GB"):
+        if value < 1024 or unit == "GB":
+            return f"{int(value)}{unit}" if unit == "B" else f"{value:.1f}{unit}"
+        value /= 1024
+    return f"{value:.1f}TB"
+
+
+def shorten_url(url: Optional[str], max_len: int = 72) -> str:
+    """Best-effort, terminal-friendly summary of an already-redacted URL
+    (see `worker/matching_handler.py`'s `_redact_url` — userinfo/query/
+    fragment are stripped upstream of this function; this only shortens for
+    *display width*, it does no additional redaction). Keeps enough of the
+    URL to identify the candidate: scheme + host + the final path segment.
+    """
+    if not url:
+        return "n/a"
+    if len(url) <= max_len:
+        return url
+    parsed = urlparse(url)
+    prefix = f"{parsed.scheme}://{parsed.hostname or ''}"
+    tail = (parsed.path or "").rsplit("/", 1)[-1] or (parsed.path or "")
+    candidate = f"{prefix}/…/{tail}"
+    if len(candidate) <= max_len:
+        return candidate
+    keep = max(0, max_len - len(prefix) - 5)
+    return f"{prefix}/…/{tail[-keep:]}" if keep else f"{prefix}/…"
+
+
+def _render_worker_started(handler: "HumanConsoleHandler", record: logging.LogRecord, fields: dict) -> str:
+    cfg = fields.get("configuration") or {}
+    lines = [
+        _SEP,
+        "FINGERPRINTER WORKER",
+        _SEP,
+        _kv("Worker", cfg.get("worker_id", "?")),
+        _kv("Device", str(cfg.get("embedding_device", "?")).upper()),
+        _kv("Redis", f"{cfg.get('redis_endpoint', '?')}/{cfg.get('redis_db', '?')}"),
+        _kv("Namespace", cfg.get("namespace", "?")),
+        _kv("Log level", cfg.get("log_level", "?")),
+        _SEP,
+    ]
+    return "\n".join(lines)
+
+
+def _render_worker_ready(handler: "HumanConsoleHandler", record: logging.LogRecord, fields: dict) -> str:
+    return f"[READY] {record.getMessage()}"
+
+
+def _render_worker_shutdown_requested(handler: "HumanConsoleHandler", record: logging.LogRecord, fields: dict) -> str:
+    return f"[SHUTDOWN] {record.getMessage()}"
+
+
+def _render_worker_fatal_error(handler: "HumanConsoleHandler", record: logging.LogRecord, fields: dict) -> str:
+    return f"[FATAL] {record.getMessage()}"
+
+
+def _render_worker_stopped(handler: "HumanConsoleHandler", record: logging.LogRecord, fields: dict) -> str:
+    lines = [
+        _SEP,
+        "WORKER STOPPED",
+        _kv("Reason", fields.get("shutdown_reason", "?")),
+        _kv("Clean", fields.get("clean", "?")),
+        _kv("Uptime", _fmt_duration_s(fields.get("uptime_s"))),
+        _kv("Claimed", fields.get("jobs_claimed", 0)),
+        _kv("Completed", fields.get("jobs_completed", 0)),
+        _kv("Failed", fields.get("jobs_failed", 0)),
+        _kv("Avg latency", _fmt_ms(fields.get("average_job_latency_ms"))),
+        _SEP,
+    ]
+    return "\n".join(lines)
+
+
+def _render_worker_health(handler: "HumanConsoleHandler", record: logging.LogRecord, fields: dict) -> str:
+    redis = fields.get("redis") or {}
+    return (
+        f"[HEALTH] uptime={_fmt_duration_s(fields.get('uptime_s'))} "
+        f"jobs(claimed={fields.get('jobs_claimed', 0)} completed={fields.get('jobs_completed', 0)} "
+        f"failed={fields.get('jobs_failed', 0)} active={fields.get('active_jobs', 0)}) "
+        f"avg_latency={_fmt_ms(fields.get('average_job_latency_ms'))} "
+        f"queue_lag={redis.get('group_lag', 'n/a') if redis else 'n/a'}"
+    )
+
+
+def _make_job_started_renderer(label: str) -> Callable[["HumanConsoleHandler", logging.LogRecord, dict], str]:
+    def _render(handler: "HumanConsoleHandler", record: logging.LogRecord, fields: dict) -> str:
+        job_id = fields.get("job_id", "?")
+        handler._jobs[job_id] = {"attempt": fields.get("attempt")}
+        return f"{_SEP}\n[{label}] {job_id}  (attempt {fields.get('attempt', '?')})"
+
+    return _render
+
+
+def _render_job_rejected(handler: "HumanConsoleHandler", record: logging.LogRecord, fields: dict) -> str:
+    return (
+        f"[JOB REJECTED] entry={fields.get('entry_id', '?')} "
+        f"source={fields.get('source', '?')} error={fields.get('error', '?')}"
+    )
+
+
+def _render_job_processing_started(handler: "HumanConsoleHandler", record: logging.LogRecord, fields: dict) -> str:
+    job_id = fields.get("job_id", "?")
+    state = handler._jobs.setdefault(job_id, {})
+    state["target_id"] = fields.get("target_id")
+    state["target_version"] = fields.get("target_version")
+    target = f"{fields.get('target_id', '?')} / {fields.get('target_version', '?')}"
+    return (
+        f"{_job_kv('Target', target)}\n"
+        f"{_job_kv('Candidate', shorten_url(fields.get('candidate_url')))}"
+    )
+
+
+def _render_candidate_acquired(handler: "HumanConsoleHandler", record: logging.LogRecord, fields: dict) -> str:
+    return _job_kv(
+        "Acquired",
+        f"{fields.get('content_type', '?')}, {_fmt_bytes(fields.get('byte_size'))} "
+        f"in {_fmt_duration_s(fields.get('duration_s'))}",
+    )
+
+
+def _render_candidate_embedded(handler: "HumanConsoleHandler", record: logging.LogRecord, fields: dict) -> str:
+    return _job_kv(
+        "Embedded",
+        f"candidate — {fields.get('candidate_segment_count', '?')} segments "
+        f"in {_fmt_duration_s(fields.get('duration_s'))}",
+    )
+
+
+def _render_target_resolution_started(
+    handler: "HumanConsoleHandler", record: logging.LogRecord, fields: dict
+) -> Optional[str]:
+    if fields.get("cache_status") != "miss":
+        # The common HIT path is fully reported by target_resolved a moment
+        # later — printing both would just double the line for no new
+        # information (see module docstring, "avoid excessive lines").
+        return None
+    return _job_kv(
+        "Target",
+        f"{fields.get('target_id', '?')}/{fields.get('target_version', '?')} — cache MISS, building…",
+    )
+
+
+def _render_target_resolved(handler: "HumanConsoleHandler", record: logging.LogRecord, fields: dict) -> str:
+    job_id = fields.get("job_id", "?")
+    state = handler._jobs.setdefault(job_id, {})
+    state["target_segment_count"] = fields.get("target_segment_count")
+    state["cache_status"] = fields.get("cache_status")
+    return _job_kv(
+        "Target",
+        f"{fields.get('target_id', '?')} / {fields.get('target_version', '?')} "
+        f"— cache {str(fields.get('cache_status', '?')).upper()} "
+        f"— {fields.get('target_segment_count', '?')} segments",
+    )
+
+
+def _render_matching_completed(handler: "HumanConsoleHandler", record: logging.LogRecord, fields: dict) -> str:
+    job_id = fields.get("job_id", "?")
+    state = handler._jobs.setdefault(job_id, {})
+    state["matching"] = dict(fields)
+    return _job_kv(
+        "Matching",
+        f"{fields.get('matched_segment_count', '?')}/{fields.get('candidate_segment_count', '?')} matched · "
+        f"candidate {_fmt_pct(fields.get('candidate_coverage'))} · "
+        f"target {_fmt_pct(fields.get('target_coverage_hits'))} · "
+        f"mean {_fmt_num(fields.get('mean_similarity'))} · "
+        f"coarse {_fmt_num(fields.get('coarse_similarity'))} · "
+        f"offset {_fmt_num(fields.get('temporal_offset_s'), 1)}s · "
+        f"threshold {_fmt_num(fields.get('similarity_threshold'))} "
+        f"→ {str(fields.get('decision', '?')).upper()}",
+    )
+
+
+def _render_stage_failed(handler: "HumanConsoleHandler", record: logging.LogRecord, fields: dict) -> str:
+    return f"  ! {fields.get('stage', '?')} failed: {fields.get('error_type', '?')}"
+
+
+def _render_job_completed(handler: "HumanConsoleHandler", record: logging.LogRecord, fields: dict) -> str:
+    job_id = fields.get("job_id", "?")
+    state = handler._jobs.pop(job_id, {}) or {}
+    decision = fields.get("decision")
+    if decision is None:
+        decision = (state.get("matching") or {}).get("decision")
+    decision_label = str(decision).upper() if decision is not None else "COMPLETED"
+    line = _job_kv("Result", f"{decision_label}   latency={_fmt_ms(fields.get('latency_ms'))}")
+    return f"{line}\n{_SEP}"
+
+
+def _make_job_ended_renderer(label: str) -> Callable[["HumanConsoleHandler", logging.LogRecord, dict], str]:
+    def _render(handler: "HumanConsoleHandler", record: logging.LogRecord, fields: dict) -> str:
+        job_id = fields.get("job_id", "?")
+        handler._jobs.pop(job_id, None)
+        line = _job_kv(
+            "Result",
+            f"{label} ({fields.get('error_type', '?')}/{fields.get('error_category', '?')})   "
+            f"latency={_fmt_ms(fields.get('latency_ms'))}   attempt={fields.get('attempt', '?')}",
+        )
+        return f"{line}\n{_SEP}"
+
+    return _render
+
+
+def _render_generic(handler: "HumanConsoleHandler", record: logging.LogRecord, fields: dict) -> str:
+    message = record.getMessage()
+    exc_type = record.exc_info[0].__name__ if record.exc_info and record.exc_info[0] is not None else None
+    if exc_type:
+        message = f"{message} ({exc_type})"
+    if record.levelno == logging.INFO:
+        return message
+    return f"[{record.levelname}] {message}"
+
+
+_RENDERERS: Dict[str, Callable[["HumanConsoleHandler", logging.LogRecord, dict], Optional[str]]] = {
+    "worker_started": _render_worker_started,
+    "worker_ready": _render_worker_ready,
+    "worker_shutdown_requested": _render_worker_shutdown_requested,
+    "worker_fatal_error": _render_worker_fatal_error,
+    "worker_stopped": _render_worker_stopped,
+    "worker_health": _render_worker_health,
+    "job_claimed": _make_job_started_renderer("JOB CLAIMED"),
+    "job_reclaimed": _make_job_started_renderer("JOB RECLAIMED"),
+    "job_rejected": _render_job_rejected,
+    "job_processing_started": _render_job_processing_started,
+    "candidate_acquired": _render_candidate_acquired,
+    "candidate_embedded": _render_candidate_embedded,
+    "target_resolution_started": _render_target_resolution_started,
+    "target_resolved": _render_target_resolved,
+    "matching_completed": _render_matching_completed,
+    "stage_failed": _render_stage_failed,
+    "job_completed": _render_job_completed,
+    "job_failed": _make_job_ended_renderer("FAILED"),
+    "job_retry_scheduled": _make_job_ended_renderer("RETRY SCHEDULED"),
+    "job_permanently_failed": _make_job_ended_renderer("PERMANENTLY FAILED"),
+}
+
+
+class HumanConsoleHandler(logging.StreamHandler):
+    """Renders the same structured events `JsonFormatter` serializes to JSON
+    (`record.event` / `record.fields`, set by `log_event`) as short,
+    human-readable terminal lines instead — a presentation-only alternative
+    output, not a replacement for structured logging (see module docstring
+    above and `configure_console_logging`).
+
+    Two behaviors beyond a plain per-record `Formatter`:
+
+    - `embedding_progress` events (emitted ~10 times per embedding stage by
+      `worker/matching_handler.py`'s `_make_progress_logger`) are rendered
+      as a single in-place-updating progress line (carriage return, no
+      newline until the final checkpoint) instead of one line per
+      checkpoint — requirement #3 ("do not print N separate frame lines").
+    - A small amount of per-job_id state (target id/version, cache status,
+      matching stats) is kept in `_jobs` purely so the closing `[Result]`
+      line for a job can mention its decision even when only INFO-level
+      events reached this handler (`job_completed` alone doesn't carry
+      target/matching detail — those are DEBUG-only fields on other
+      events). Cleared as soon as each job's terminal event is rendered, so
+      this never grows unbounded across a long-running worker.
+    """
+
+    def __init__(self, stream: Optional[TextIO] = None):
+        super().__init__(stream)
+        self._jobs: Dict[str, dict] = {}
+        self._progress_open = False
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            event = getattr(record, "event", None) or record.name
+            fields = getattr(record, "fields", None) or {}
+            if event == "embedding_progress":
+                self._render_embedding_progress(fields)
+                return
+            self._end_progress()
+            renderer = _RENDERERS.get(event, _render_generic)
+            text = renderer(self, record, fields)
+            if text:
+                self._write_line(text)
+        except Exception:
+            self.handleError(record)
+
+    def _render_embedding_progress(self, fields: dict) -> None:
+        stage = fields.get("stage", "embedding")
+        label = _STAGE_LABELS.get(stage, stage)
+        frame, total, percent = fields.get("frame"), fields.get("total"), fields.get("percent")
+        if not total:
+            self._end_progress()
+            self._write_line(_job_kv(label, f"frame {frame}"))
+            return
+        filled = max(0, min(_PROGRESS_BAR_WIDTH, int(round(_PROGRESS_BAR_WIDTH * (percent or 0) / 100))))
+        bar = "#" * filled + "-" * (_PROGRESS_BAR_WIDTH - filled)
+        text = f"  {label:<{_LABEL_WIDTH}}: [{bar}] {frame}/{total} ({(percent if percent is not None else 0):5.1f}%)"
+        self._write_progress(text, final=(frame == total))
+
+    def _end_progress(self) -> None:
+        if self._progress_open:
+            self.stream.write("\n")
+            self._progress_open = False
+
+    def _write_line(self, text: str) -> None:
+        self.stream.write(text if text.endswith("\n") else text + "\n")
+        self.flush()
+
+    def _write_progress(self, text: str, *, final: bool) -> None:
+        self.stream.write("\r" + text)
+        if final:
+            self.stream.write("\n")
+            self._progress_open = False
+        else:
+            self._progress_open = True
+        self.flush()
+
+
+def configure_human_logging(level: int = logging.INFO, stream: Optional[TextIO] = None) -> None:
+    """Install `HumanConsoleHandler` on the root logger — the human-readable
+    counterpart to `configure_json_logging`, same "replace whatever was
+    there, safe to call once at startup" contract."""
+    root = logging.getLogger()
+    root.setLevel(level)
+    for handler in list(root.handlers):
+        root.removeHandler(handler)
+    root.addHandler(HumanConsoleHandler(stream))
+    for name in _QUIET_THIRD_PARTY_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
+
+
+def _stream_is_tty(stream: TextIO) -> bool:
+    try:
+        return bool(stream.isatty())
+    except (AttributeError, ValueError):
+        return False
+
+
+def configure_console_logging(
+    level: int = logging.INFO, format_: str = "auto", stream: Optional[TextIO] = None
+) -> None:
+    """Single entry point `worker/main.py` uses to pick console output.
+
+    `format_`:
+      - "human": always `HumanConsoleHandler` (interactive/dev use).
+      - "json": always `JsonFormatter` (unchanged pre-existing behavior;
+        what any external log ingestion/dashboard should keep pointing at).
+      - "auto" (default): `HumanConsoleHandler` when the target stream is an
+        interactive terminal, `JsonFormatter` otherwise. This means an
+        operator running the worker directly in a terminal gets readable
+        output with no configuration, while a process manager/container
+        that captures stdout/stderr via a pipe (not a tty) — the normal
+        production deployment shape, and also how `subprocess.PIPE`-based
+        tests invoke this process — keeps getting exactly the structured
+        JSON it got before this option existed.
+    """
+    resolved = format_
+    if resolved == "auto":
+        resolved = "human" if _stream_is_tty(stream if stream is not None else sys.stderr) else "json"
+    if resolved == "human":
+        configure_human_logging(level=level, stream=stream)
+    else:
+        configure_json_logging(level=level, stream=stream)
 
 
 def log_event(

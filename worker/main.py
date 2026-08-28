@@ -55,7 +55,7 @@ from worker.observability import (
     NAMESPACE,
     ObservingWorkerObserver,
     WorkerIdentity,
-    configure_json_logging,
+    configure_console_logging,
     log_event,
 )
 
@@ -96,10 +96,20 @@ _VALID_EMBEDDING_DEVICES = ("auto", "cpu", "cuda")  # mirrors embedding.dinov2_e
 
 # Observability audit, "Debug/Verbose Mode": the stdlib levels this project
 # already supports end to end via `worker/observability.py`'s
-# `configure_json_logging`. DEBUG is the new addition this config wires up;
-# the other four already worked, just never had an env-driven switch.
+# `configure_console_logging`. DEBUG is the new addition this config wires
+# up; the other four already worked, just never had an env-driven switch.
 _VALID_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
 DEFAULT_LOG_LEVEL = "INFO"
+
+# Console presentation only -- never changes what is logged, only how it's
+# displayed locally (see worker/observability.py's "Human-readable console
+# output" section). "auto" (the default) picks HumanConsoleHandler for an
+# interactive terminal and JsonFormatter otherwise, so existing JSON-log
+# consumers (dashboards, subprocess-piped tests, log ingestion) keep getting
+# exactly what they got before this option existed without configuring
+# anything.
+_VALID_LOG_FORMATS = ("auto", "json", "human")
+DEFAULT_LOG_FORMAT = "auto"
 
 
 class ConfigError(ValueError):
@@ -161,6 +171,15 @@ class WorkerConfig:
     # embedding progress, matching metrics) in addition to the existing
     # INFO-level lifecycle events. Never the default -- see `validate()`.
     log_level: str = DEFAULT_LOG_LEVEL
+    # Console presentation only -- see _VALID_LOG_FORMATS above. Recorded
+    # here (and in config_snapshot) purely for startup-event visibility;
+    # the value actually used to configure the handler is read directly
+    # from the environment in main(), before this config is parsed/
+    # validated -- same "read raw, configure logging, validate/record
+    # separately" split main() already uses for log_level, and for the
+    # same reason (logging must exist before a config-parse error can be
+    # logged).
+    log_format: str = DEFAULT_LOG_FORMAT
 
     @classmethod
     def from_env(cls, env: Optional[Mapping[str, str]] = None) -> "WorkerConfig":
@@ -182,6 +201,7 @@ class WorkerConfig:
             ),
             run_output=env.get("WORKER_RUN_OUTPUT") or None,
             log_level=(env.get("WORKER_LOG_LEVEL") or DEFAULT_LOG_LEVEL).upper(),
+            log_format=(env.get("WORKER_LOG_FORMAT") or DEFAULT_LOG_FORMAT).lower(),
         )
         config.validate()
         return config
@@ -215,6 +235,8 @@ class WorkerConfig:
             )
         if self.log_level not in _VALID_LOG_LEVELS:
             errors.append(f"WORKER_LOG_LEVEL must be one of {_VALID_LOG_LEVELS}, got {self.log_level!r}")
+        if self.log_format not in _VALID_LOG_FORMATS:
+            errors.append(f"WORKER_LOG_FORMAT must be one of {_VALID_LOG_FORMATS}, got {self.log_format!r}")
 
         if errors:
             raise ConfigError("; ".join(errors))
@@ -237,11 +259,12 @@ def _redis_db(url: str) -> str:
 
 
 def configure_logging(level: int = logging.INFO) -> None:
-    """Structured JSON logs (Phase 13C) — see worker/observability.py's
-    JsonFormatter. Every pre-existing log call in this module keeps its
-    original human-readable text under the JSON line's "message" key, so
-    substring checks written against earlier plain-text output still see
-    that text (see JsonFormatter's docstring).
+    """Installs this process's console log handler — see
+    worker/observability.py's `configure_console_logging`. Every
+    pre-existing log call in this module keeps its original human-readable
+    text under the `message` key/field (see `JsonFormatter`'s docstring),
+    so substring checks written against earlier plain-text output still see
+    that text regardless of which console format is active.
 
     `level` (observability audit, "Debug/Verbose Mode") defaults to INFO,
     matching this function's prior hardcoded behavior exactly when the
@@ -249,8 +272,18 @@ def configure_logging(level: int = logging.INFO) -> None:
     it from `WORKER_LOG_LEVEL` (`WorkerConfig.log_level`) so DEBUG-level
     diagnostics added to worker/matching_handler.py are visible without a
     parallel logging configuration mechanism.
+
+    The console *format* (JSON vs. human-readable) is read directly from
+    `WORKER_LOG_FORMAT` here rather than taking a parameter, for the same
+    reason `main()` reads `WORKER_LOG_LEVEL` directly for its first call to
+    this function: logging must be configured before `WorkerConfig.from_env()`
+    can run and log its own validation errors. Defaults to "auto" — see
+    `_VALID_LOG_FORMATS` and `configure_console_logging`'s docstring.
     """
-    configure_json_logging(level=level)
+    requested_format = (os.environ.get("WORKER_LOG_FORMAT") or DEFAULT_LOG_FORMAT).lower()
+    if requested_format not in _VALID_LOG_FORMATS:
+        requested_format = DEFAULT_LOG_FORMAT
+    configure_console_logging(level=level, format_=requested_format)
 
 
 def config_snapshot(config: WorkerConfig, consumer_name: str) -> dict:
@@ -276,6 +309,7 @@ def config_snapshot(config: WorkerConfig, consumer_name: str) -> dict:
         "observability_interval_ms": config.observability_interval_ms,
         "run_output": config.run_output,
         "log_level": config.log_level,
+        "log_format": config.log_format,
     }
 
 
