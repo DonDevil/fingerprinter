@@ -7,7 +7,14 @@ import time
 import pytest
 
 from work_queue.jobs import Job
-from work_queue.keys import CONSUMER_GROUP, result_key, results_stream_key, state_key, stream_key
+from work_queue.keys import (
+    CONSUMER_GROUP,
+    match_index_key,
+    result_key,
+    results_stream_key,
+    state_key,
+    stream_key,
+)
 from work_queue.producer import JobProducer
 from work_queue.results import Result, ResultDecision, ResultStore
 from work_queue.state import JobStatus
@@ -284,3 +291,107 @@ def test_completed_job_always_has_a_result_under_normal_operation(redis_client, 
     assert ResultStore(redis_client).get(sample_job.job_id) is not None
     assert redis_client.xpending(stream_key(), CONSUMER_GROUP)["pending"] == 0
     assert redis_client.xlen(results_stream_key()) == 1
+
+
+# ---------------------------------------------------------------------------
+# Per-target MATCH index (`work_queue.keys.match_index_key`), written
+# atomically by `Worker.commit_result` alongside the result/state/event.
+# ---------------------------------------------------------------------------
+
+
+def test_match_result_creates_target_match_index_entry(redis_client, sample_job):
+    JobProducer(redis_client).enqueue(sample_job)
+    worker = _worker(redis_client)
+    entry = worker.claim_one()
+
+    worker.process_claim(entry, lambda job: _synthetic_result(ResultDecision.MATCH))
+
+    index_key = match_index_key(sample_job.target_id, sample_job.target_version)
+    assert redis_client.zrange(index_key, 0, -1) == [sample_job.job_id]
+
+
+def test_match_index_score_is_processing_completed_at(redis_client, sample_job):
+    JobProducer(redis_client).enqueue(sample_job)
+    worker = _worker(redis_client)
+    entry = worker.claim_one()
+
+    completed_at = time.time()
+    worker.process_claim(
+        entry, lambda job: _synthetic_result(ResultDecision.MATCH, processing_completed_at=completed_at)
+    )
+
+    index_key = match_index_key(sample_job.target_id, sample_job.target_version)
+    score = redis_client.zscore(index_key, sample_job.job_id)
+    assert score == pytest.approx(completed_at)
+
+
+def test_no_match_result_does_not_create_index_entry(redis_client, sample_job):
+    JobProducer(redis_client).enqueue(sample_job)
+    worker = _worker(redis_client)
+    entry = worker.claim_one()
+
+    worker.process_claim(entry, lambda job: _synthetic_result(ResultDecision.NO_MATCH))
+
+    index_key = match_index_key(sample_job.target_id, sample_job.target_version)
+    assert redis_client.exists(index_key) == 0
+
+
+def test_processing_failure_result_does_not_create_index_entry(redis_client, sample_job):
+    JobProducer(redis_client).enqueue(sample_job)
+    worker = _worker(redis_client)
+    entry = worker.claim_one()
+
+    worker.process_claim(entry, lambda job: _synthetic_result(ResultDecision.PROCESSING_FAILURE))
+
+    index_key = match_index_key(sample_job.target_id, sample_job.target_version)
+    assert redis_client.exists(index_key) == 0
+
+
+def test_match_index_contains_multiple_jobs_for_same_target(redis_client, make_job):
+    job_a = make_job(job_id="job-a", target_id="target-shared", target_version="v1")
+    job_b = make_job(job_id="job-b", target_id="target-shared", target_version="v1")
+    JobProducer(redis_client).enqueue(job_a)
+    JobProducer(redis_client).enqueue(job_b)
+
+    worker = _worker(redis_client)
+    worker.process_claim(worker.claim_one(), lambda job: _synthetic_result(ResultDecision.MATCH))
+    worker.process_claim(worker.claim_one(), lambda job: _synthetic_result(ResultDecision.MATCH))
+
+    index_key = match_index_key("target-shared", "v1")
+    assert set(redis_client.zrange(index_key, 0, -1)) == {"job-a", "job-b"}
+
+
+def test_match_for_one_target_not_visible_under_another_target(redis_client, make_job):
+    job_a = make_job(job_id="job-a", target_id="target-A", target_version="v1")
+    job_b = make_job(job_id="job-b", target_id="target-B", target_version="v1")
+    JobProducer(redis_client).enqueue(job_a)
+    JobProducer(redis_client).enqueue(job_b)
+
+    worker = _worker(redis_client)
+    worker.process_claim(worker.claim_one(), lambda job: _synthetic_result(ResultDecision.MATCH))
+    worker.process_claim(worker.claim_one(), lambda job: _synthetic_result(ResultDecision.MATCH))
+
+    assert redis_client.zrange(match_index_key("target-A", "v1"), 0, -1) == ["job-a"]
+    assert redis_client.zrange(match_index_key("target-B", "v1"), 0, -1) == ["job-b"]
+
+
+def test_stale_attempt_commit_cannot_create_duplicate_index_state(redis_client, sample_job):
+    """The same CAS that rejects a stale attempt's result/state/event write
+    (test_stale_attempt_cannot_overwrite_newer_result) also rejects its
+    index write -- the ZADD lives inside the same gated script."""
+    JobProducer(redis_client).enqueue(sample_job)
+    worker_a = _worker(redis_client, consumer_name="worker-a")
+    worker_b = _worker(redis_client, consumer_name="worker-b")
+
+    stale_entry = worker_a.claim_one()
+    time.sleep((LEASE_MS / 1000) + 0.1)
+    new_entry = worker_b.reclaim_stale()[0]
+
+    committed = worker_b.commit_result(new_entry, _synthetic_result(ResultDecision.MATCH))
+    assert committed is not None
+
+    stale_result = worker_a.commit_result(stale_entry, _synthetic_result(ResultDecision.MATCH))
+    assert stale_result is None  # rejected outright -- no second ZADD attempt
+
+    index_key = match_index_key(sample_job.target_id, sample_job.target_version)
+    assert redis_client.zrange(index_key, 0, -1) == [sample_job.job_id]  # exactly one member, not duplicated

@@ -1,0 +1,32 @@
+{
+  "configuration": {
+    "block_ms": 5000,
+    "consumer_group": "fingerprinter-workers",
+    "embedding_device": "cuda",
+    "lease_ms": 30000,
+    "log_format": "human",
+    "log_level": "DEBUG",
+    "media_max_bytes": 104857600,
+    "namespace": "fingerprint",
+    "observability_interval_ms": 60000,
+    "reclaim_interval_ms": null,
+    "redis_db": "0",
+    "redis_endpoint": "redis://localhost:6379/0",
+    "run_output": "benchmark/results/aug_29.json",
+    "shared_artifact_store_path": null,
+    "stream": "fingerprint:jobs:stream:default",
+    "target_cache_path": "./target_cache",
+    "torch_num_threads": 1,
+    "worker_id": "worker-Ubuntu-24-04-7655-133720291098752"
+  },
+  "metadata": {
+    "consumer_group": "fingerprinter-workers",
+    "consumer_name": "worker-Ubuntu-24-04-7655-133720291098752",
+    "hostname": "Ubuntu-24-04",
+    "namespace": "fingerprint",
+    "pid": 7655,
+    "stream": "fingerprint:jobs:stream:default",
+    "worker_id": "worker-Ubuntu-24-04-7655-133720291098752"
+  },
+  "started_at": 1787968473.99373
+}

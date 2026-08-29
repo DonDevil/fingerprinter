@@ -21,6 +21,7 @@ from work_queue.jobs import Job, JobValidationError
 from work_queue.keys import (
     CONSUMER_GROUP,
     DEFAULT_PRIORITY,
+    match_index_key,
     result_key,
     results_stream_key,
     retry_zset_key,
@@ -172,7 +173,15 @@ return 1
 # for plain completion: a stale worker can't write a result, can't emit a
 # stream event for one, and can't remove the current owner's PEL entry.
 #
+# A MATCH decision additionally gets one more write in the same atomic
+# script: a ZADD into the per-target match index (`work_queue.keys.
+# match_index_key`), member=job_id, score=processing_completed_at (ARGV[4],
+# already computed for the state/result writes above -- no new argument).
+# Gated on the same CAS as everything else here, so the index can never
+# desync from the result it indexes: either both are written, or neither is.
+#
 # KEYS: [1] state_key  [2] result_key  [3] stream_key  [4] results_stream_key
+#       [5] match_index_key
 # ARGV: [1] group  [2] entry_id  [3] expected_attempt  [4] completed_at
 #       [5] result_fields (json map)  [6] event_fields (json map)
 _COMMIT_RESULT_IF_CURRENT = """
@@ -197,6 +206,10 @@ for k, v in pairs(event_fields) do
     table.insert(xadd_args, v)
 end
 local event_id = redis.call(unpack(xadd_args))
+
+if result_fields.decision == 'match' then
+    redis.call('ZADD', KEYS[5], ARGV[4], result_fields.job_id)
+end
 
 redis.call('XACK', KEYS[3], ARGV[1], ARGV[2])
 return event_id
@@ -397,9 +410,9 @@ class Worker:
     def commit_result(self, entry: ClaimedEntry, result: Result) -> Optional[str]:
         """Atomically commit a handler's Result as the job's durable,
         terminal outcome: write the result hash, mark job state completed,
-        XADD a result-stream event, and XACK the original entry — all in
-        one Redis-atomic script, gated by the same attempt fencing as
-        ack().
+        XADD a result-stream event, ZADD into the per-target match index iff
+        the decision is MATCH, and XACK the original entry — all in one
+        Redis-atomic script, gated by the same attempt fencing as ack().
 
         Returns the result-stream event id, or None if `entry.attempt` is
         no longer current (stale worker) — in which case nothing was
@@ -421,6 +434,7 @@ class Worker:
                 result_key(job.job_id),
                 self._stream,
                 self._results_stream,
+                match_index_key(job.target_id, job.target_version),
             ],
             args=[
                 CONSUMER_GROUP,

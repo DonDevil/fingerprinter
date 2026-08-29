@@ -2,6 +2,7 @@ from work_queue.jobs import Job, JobValidationError
 from work_queue.keys import (
     CONSUMER_GROUP,
     DEFAULT_PRIORITY,
+    match_index_key,
     result_key,
     results_stream_key,
     retry_zset_key,
@@ -30,4 +31,5 @@ __all__ = [
     "retry_zset_key",
     "result_key",
     "results_stream_key",
+    "match_index_key",
 ]
