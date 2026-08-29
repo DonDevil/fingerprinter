@@ -35,7 +35,8 @@ structured `worker_fatal_error` log line if anything is invalid.
 | `MEDIA_MAX_BYTES` | Max bytes accepted for one acquired media file | `104857600` (100 MiB) | No |
 | `WORKER_OBSERVABILITY_INTERVAL_MS` | Interval between periodic `worker_health` log summaries | `60000` | No |
 | `WORKER_RUN_OUTPUT` | Path to write a machine-readable run record (and `<path>.marker` at startup) | unset (no run record written) | No |
-
+| `WORKER_LOG_LEVEL` | Terminal output log intensity level. `INFO`, `DEBUG`. | `INFO` | No |
+| 'WORKER_LOG_FORMAT | Terminal output log format. `auto`, `json`, `human`. | `auto` | No |
 Notes:
 
 - `TORCH_NUM_THREADS` defaults to `1`, not "however many cores this host
