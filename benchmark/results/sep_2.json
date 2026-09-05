@@ -1,0 +1,91 @@
+{
+  "configuration": {
+    "block_ms": 5000,
+    "consumer_group": "fingerprinter-workers",
+    "embedding_device": "cuda",
+    "lease_ms": 30000,
+    "log_format": "human",
+    "log_level": "DEBUG",
+    "media_max_bytes": 104857600,
+    "namespace": "fingerprint",
+    "observability_interval_ms": 60000,
+    "reclaim_interval_ms": null,
+    "redis_db": "0",
+    "redis_endpoint": "redis://localhost:6379/0",
+    "run_output": "benchmark/results/sep_2.json",
+    "shared_artifact_store_path": null,
+    "stream": "fingerprint:jobs:stream:default",
+    "target_cache_path": "./target_cache",
+    "torch_num_threads": 1,
+    "worker_id": "worker-Ubuntu-24-04-5600-134023324070016"
+  },
+  "counters": {
+    "active_jobs": 0,
+    "jobs_claimed": 0,
+    "jobs_completed": 0,
+    "jobs_failed": 0,
+    "jobs_permanently_failed": 0,
+    "jobs_reclaimed": 0,
+    "jobs_rejected": 0,
+    "jobs_retried": 0,
+    "total_job_attempts": 0
+  },
+  "error_categories": {},
+  "latency": {
+    "claim_to_completion_ms": {
+      "avg": null,
+      "count": 0,
+      "max": null,
+      "min": null,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "sample_window": 0
+    },
+    "claim_to_failure_ms": {
+      "avg": null,
+      "count": 0,
+      "max": null,
+      "min": null,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "sample_window": 0
+    }
+  },
+  "metadata": {
+    "consumer_group": "fingerprinter-workers",
+    "consumer_name": "worker-Ubuntu-24-04-5600-134023324070016",
+    "hostname": "Ubuntu-24-04",
+    "namespace": "fingerprint",
+    "pid": 5600,
+    "schema_version": 1,
+    "stream": "fingerprint:jobs:stream:default",
+    "worker_id": "worker-Ubuntu-24-04-5600-134023324070016"
+  },
+  "pipeline_stage_metrics": {},
+  "redis": {
+    "consumer_pending": 0,
+    "group_lag": 0,
+    "group_pending": 0,
+    "oldest_pending_idle_ms": null,
+    "stream_length": 317
+  },
+  "resources": {
+    "cpu_percent": 59.6,
+    "cpu_time_s": 5.689,
+    "open_fds": 38,
+    "rss_current_bytes": 840515584,
+    "rss_peak_bytes": 1185902592,
+    "thread_count": 2
+  },
+  "shutdown": {
+    "clean": true,
+    "reason": "graceful_shutdown"
+  },
+  "timing": {
+    "ended_at": 1788289138.4454782,
+    "started_at": 1788289125.8304088,
+    "uptime_s": 12.615
+  }
+}

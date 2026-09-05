@@ -1,0 +1,145 @@
+{
+  "configuration": {
+    "block_ms": 5000,
+    "consumer_group": "fingerprinter-workers",
+    "embedding_device": "cuda",
+    "lease_ms": 30000,
+    "log_format": "human",
+    "log_level": "DEBUG",
+    "media_max_bytes": 104857600,
+    "namespace": "fingerprint",
+    "observability_interval_ms": 60000,
+    "reclaim_interval_ms": null,
+    "redis_db": "0",
+    "redis_endpoint": "redis://localhost:6379/0",
+    "run_output": "benchmark/results/aug_29.json",
+    "shared_artifact_store_path": null,
+    "stream": "fingerprint:jobs:stream:default",
+    "target_cache_path": "./target_cache",
+    "torch_num_threads": 1,
+    "worker_id": "worker-Ubuntu-24-04-7655-133720291098752"
+  },
+  "counters": {
+    "active_jobs": 0,
+    "jobs_claimed": 182,
+    "jobs_completed": 26,
+    "jobs_failed": 153,
+    "jobs_permanently_failed": 1,
+    "jobs_reclaimed": 0,
+    "jobs_rejected": 0,
+    "jobs_retried": 2,
+    "total_job_attempts": 182
+  },
+  "error_categories": {
+    "permanent_acquisition_failure": 153,
+    "transient_acquisition_failure": 3
+  },
+  "latency": {
+    "claim_to_completion_ms": {
+      "avg": 6618.64,
+      "count": 26,
+      "max": 77648.38787700047,
+      "min": 261.30846300111443,
+      "p50": 2550.3632130003098,
+      "p95": 10441.270387000259,
+      "p99": 77648.38787700047,
+      "sample_window": 26
+    },
+    "claim_to_failure_ms": {
+      "avg": 1513.158,
+      "count": 156,
+      "max": 20017.34211599978,
+      "min": 71.20246499971472,
+      "p50": 628.7425169994094,
+      "p95": 7443.706768000084,
+      "p99": 20016.94790199963,
+      "sample_window": 156
+    }
+  },
+  "metadata": {
+    "consumer_group": "fingerprinter-workers",
+    "consumer_name": "worker-Ubuntu-24-04-7655-133720291098752",
+    "hostname": "Ubuntu-24-04",
+    "namespace": "fingerprint",
+    "pid": 7655,
+    "schema_version": 1,
+    "stream": "fingerprint:jobs:stream:default",
+    "worker_id": "worker-Ubuntu-24-04-7655-133720291098752"
+  },
+  "pipeline_stage_metrics": {
+    "aggregation": {
+      "avg": 0.053,
+      "count": 24,
+      "max": 0.07453400030499324,
+      "min": 0.04384800013212953,
+      "p50": 0.04981500023859553,
+      "p95": 0.06451100034610135,
+      "p99": 0.07453400030499324,
+      "sample_window": 24
+    },
+    "candidate_embedding": {
+      "avg": 366.267,
+      "count": 26,
+      "max": 1454.4755379993148,
+      "min": 81.31524899908982,
+      "p50": 234.53533700012485,
+      "p95": 1132.6422539996202,
+      "p99": 1454.4755379993148,
+      "sample_window": 26
+    },
+    "matching": {
+      "avg": 0.459,
+      "count": 24,
+      "max": 0.7265940002980642,
+      "min": 0.38139099979161983,
+      "p50": 0.41682799928821623,
+      "p95": 0.6617840008402709,
+      "p99": 0.7265940002980642,
+      "sample_window": 24
+    },
+    "media_acquisition": {
+      "avg": 2083.884,
+      "count": 182,
+      "max": 75836.8285309998,
+      "min": 70.58955799993782,
+      "p50": 645.0582279994705,
+      "p95": 7588.68385400001,
+      "p99": 20016.550751000068,
+      "sample_window": 182
+    },
+    "target_resolution": {
+      "avg": 788.557,
+      "count": 24,
+      "max": 1402.405321000515,
+      "min": 665.2127819997986,
+      "p50": 759.0486979997877,
+      "p95": 905.0157379997472,
+      "p99": 1402.405321000515,
+      "sample_window": 24
+    }
+  },
+  "redis": {
+    "consumer_pending": 0,
+    "group_lag": 0,
+    "group_pending": 0,
+    "oldest_pending_idle_ms": null,
+    "stream_length": 223
+  },
+  "resources": {
+    "cpu_percent": 92.2,
+    "cpu_time_s": 41.183,
+    "open_fds": 44,
+    "rss_current_bytes": 1070862336,
+    "rss_peak_bytes": 1193013248,
+    "thread_count": 2
+  },
+  "shutdown": {
+    "clean": true,
+    "reason": "graceful_shutdown"
+  },
+  "timing": {
+    "ended_at": 1787979682.4363425,
+    "started_at": 1787968473.99373,
+    "uptime_s": 11208.443
+  }
+}

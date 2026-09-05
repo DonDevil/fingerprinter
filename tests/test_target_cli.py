@@ -386,3 +386,36 @@ def test_cli_reindex_dry_run_then_real_then_idempotent(tmp_path, capsys, redis_c
     exit_code = main(["reindex", "--json"])
     idempotent_payload = json.loads(capsys.readouterr().out)
     assert idempotent_payload["added"] == []
+
+
+def test_cli_clear_db_wipes_run_state_but_preserves_targets_by_default(tmp_path, capsys, redis_client):
+    main(["add", str(_write(tmp_path, "a.mp4", b"a")), "--id", "blast", "--version", "v1"])
+    capsys.readouterr()
+    redis_client.hset("fingerprint:job:job-1:state", mapping={"status": "queued"})
+    redis_client.xadd("fingerprint:results:stream:default", {"job_id": "job-1"})
+
+    exit_code = main(["clear-db", "--json"])
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "ok"
+    assert payload["include_targets"] is False
+    assert payload["deleted_keys"] >= 2
+
+    assert redis_client.exists("fingerprint:job:job-1:state") == 0
+    assert redis_client.exists("fingerprint:results:stream:default") == 0
+    # Targets are reference data, not per-run state -- left alone by default.
+    assert main(["get", "blast", "--version", "v1", "--json"]) == 0
+    capsys.readouterr()
+
+
+def test_cli_clear_db_include_targets_wipes_everything(tmp_path, capsys, redis_client):
+    main(["add", str(_write(tmp_path, "a.mp4", b"a")), "--id", "blast", "--version", "v1"])
+    capsys.readouterr()
+
+    exit_code = main(["clear-db", "--include-targets", "--json"])
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["include_targets"] is True
+
+    assert main(["get", "blast", "--version", "v1", "--json"]) == 1  # not found
+    capsys.readouterr()

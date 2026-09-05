@@ -12,21 +12,21 @@
     "reclaim_interval_ms": null,
     "redis_db": "0",
     "redis_endpoint": "redis://localhost:6379/0",
-    "run_output": "benchmark/results/aug_29.json",
+    "run_output": "benchmark/results/sep_2.json",
     "shared_artifact_store_path": null,
     "stream": "fingerprint:jobs:stream:default",
     "target_cache_path": "./target_cache",
     "torch_num_threads": 1,
-    "worker_id": "worker-Ubuntu-24-04-7655-133720291098752"
+    "worker_id": "worker-Ubuntu-24-04-5630-131030759317632"
   },
   "metadata": {
     "consumer_group": "fingerprinter-workers",
-    "consumer_name": "worker-Ubuntu-24-04-7655-133720291098752",
+    "consumer_name": "worker-Ubuntu-24-04-5630-131030759317632",
     "hostname": "Ubuntu-24-04",
     "namespace": "fingerprint",
-    "pid": 7655,
+    "pid": 5630,
     "stream": "fingerprint:jobs:stream:default",
-    "worker_id": "worker-Ubuntu-24-04-7655-133720291098752"
+    "worker_id": "worker-Ubuntu-24-04-5630-131030759317632"
   },
-  "started_at": 1787968473.99373
+  "started_at": 1788289213.7342503
 }

@@ -74,6 +74,7 @@ from target.segment_cache import FilesystemSegmentEmbeddingCache
 from target.service import TargetService
 from target.shared_cache import SharedFilesystemEmbeddingCache, SharedFilesystemSegmentEmbeddingCache
 from target.shared_storage import SharedArtifactStore, SharedArtifactStoreError, SharedTargetMediaStore
+from work_queue.admin import clear_all
 
 logger = logging.getLogger(__name__)
 
@@ -199,14 +200,16 @@ def _build_registry(
 @dataclass
 class _Context:
     """Everything a subcommand handler might need, built once per CLI
-    invocation. Every subcommand uses `service`; only `build` additionally
-    needs `registry`/`media_store` directly, since `TargetService` is
-    deliberately Redis/torch-free and has no embedding-build method of its
-    own (see module docstring)."""
+    invocation. Every subcommand uses `service`; `build` additionally needs
+    `registry`/`media_store` directly, since `TargetService` is deliberately
+    Redis/torch-free and has no embedding-build method of its own (see
+    module docstring); `clear-db` needs the raw `redis_client` since it
+    operates on the whole `fingerprint:*` keyspace, not just targets."""
 
     service: TargetService
     registry: TargetRegistry
     media_store: Optional[SharedTargetMediaStore]
+    redis_client: Redis
 
 
 def _build_context() -> _Context:
@@ -214,7 +217,9 @@ def _build_context() -> _Context:
     store = _build_shared_store()
     media_store = _build_media_store(store)
     registry = _build_registry(redis_client, store, media_store)
-    return _Context(service=TargetService(registry), registry=registry, media_store=media_store)
+    return _Context(
+        service=TargetService(registry), registry=registry, media_store=media_store, redis_client=redis_client
+    )
 
 
 def _getenv_optional_int(name: str) -> Optional[int]:
@@ -414,6 +419,21 @@ def _cmd_build(context: _Context, args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_clear_db(context: _Context, args: argparse.Namespace) -> None:
+    """Wipe fingerprinter run state so the next job is the first job --
+    the fingerprinter's equivalent of the crawler's `main.py --clear-db`
+    (`work_queue/admin.py::clear_all` docstring for exactly what is/isn't
+    touched). Run once, before starting the worker fleet for a fresh run --
+    never as part of a supervised/auto-restart worker command line, since
+    that would wipe in-flight jobs on every crash-restart."""
+    deleted = clear_all(context.redis_client, include_targets=args.include_targets)
+    if args.json:
+        _print_json({"status": "ok", "deleted_keys": deleted, "include_targets": args.include_targets})
+    else:
+        print(f"cleared {deleted} key(s) under 'fingerprint:*'" + ("" if args.include_targets else
+              " (registered targets/embeddings/locks preserved -- pass --include-targets to also wipe those)"))
+
+
 def _cmd_reindex(context: _Context, args: argparse.Namespace) -> None:
     result: ReindexResult = context.service.reindex(dry_run=args.dry_run)
     if args.json:
@@ -492,6 +512,20 @@ def _build_parser() -> argparse.ArgumentParser:
     build_parser.add_argument("--version", required=True)
     build_parser.add_argument("--json", action="store_true")
     build_parser.set_defaults(func=_cmd_build)
+
+    clear_db_parser = subparsers.add_parser(
+        "clear-db",
+        help="Delete all fingerprinter job/result/retry/match state in Redis to start a fresh run",
+        parents=[debug_flag_parser],
+    )
+    clear_db_parser.add_argument(
+        "--include-targets", action="store_true",
+        help="Also delete registered targets, their content index, embeddings, and locks "
+        "(fingerprint:target:*, fingerprint:lock:*). Off by default: targets are reference data "
+        "registered once, not per-run state, and rebuilding their embeddings is expensive.",
+    )
+    clear_db_parser.add_argument("--json", action="store_true")
+    clear_db_parser.set_defaults(func=_cmd_clear_db)
 
     reindex_parser = subparsers.add_parser(
         "reindex", help="One-time: backfill the target list index", parents=[debug_flag_parser]
