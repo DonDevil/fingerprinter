@@ -118,3 +118,58 @@ def test_graceful_worker_shutdown(redis_client):
 
     assert not thread.is_alive()
     assert handled == []
+
+
+# ---------------------------------------------------------------------------
+# --runtime / WORKER_RUNTIME_MINUTES: a process-lifetime bound passed to
+# run() as a time.monotonic() deadline -- never a per-job timeout. See
+# worker/main.py (env-var driven, no argparse flag on this entrypoint) and
+# Worker.run()'s docstring.
+# ---------------------------------------------------------------------------
+
+
+def test_run_stops_gracefully_when_deadline_has_already_elapsed(redis_client, sample_job):
+    """An already-past deadline must stop the run loop before it ever
+    claims a job -- proves the deadline check happens before any blocking
+    work, not after."""
+    JobProducer(redis_client).enqueue(sample_job)
+    worker = Worker(redis_client, consumer_name="w1", block_ms=BLOCK_MS)
+    handled = []
+
+    worker.run(handled.append, deadline=time.monotonic() - 1.0)
+
+    assert handled == []
+    assert worker._stop_event.is_set()
+
+
+def test_deadline_does_not_stop_worker_before_it_elapses(redis_client):
+    """A deadline far in the future must not interfere with the existing
+    stop()-driven graceful shutdown -- mirrors test_graceful_worker_shutdown
+    but with a deadline supplied, proving it doesn't fire prematurely."""
+    worker = Worker(redis_client, consumer_name="w1", block_ms=BLOCK_MS)
+    handled = []
+
+    thread = threading.Thread(
+        target=worker.run, args=(handled.append,), kwargs={"deadline": time.monotonic() + 30}
+    )
+    thread.start()
+    time.sleep(0.05)
+    worker.stop()
+    thread.join(timeout=2)
+
+    assert not thread.is_alive()
+    assert handled == []
+
+
+def test_run_processes_an_already_available_job_before_its_deadline(redis_client, sample_job):
+    """A job already queued when the deadline is still in the future is
+    still claimed and handled -- the deadline bounds process lifetime, it
+    doesn't block work already within its window."""
+    JobProducer(redis_client).enqueue(sample_job)
+    worker = Worker(redis_client, consumer_name="w1", block_ms=BLOCK_MS)
+    handled = []
+
+    worker.run(handled.append, deadline=time.monotonic() + 0.3)
+
+    assert len(handled) == 1
+    assert handled[0] == sample_job

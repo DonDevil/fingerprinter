@@ -67,6 +67,7 @@ def test_config_defaults_when_env_is_empty():
     assert config.target_cache_path == "./target_cache"
     assert config.shared_artifact_store_path is None
     assert config.media_max_bytes == 100 * 1024 * 1024
+    assert config.runtime_minutes == -1
     assert config.log_level == "INFO"
     assert config.log_format == "auto"
 
@@ -84,6 +85,7 @@ def test_config_overrides_from_env():
         "TARGET_CACHE_PATH": "/var/lib/fingerprinter/targets",
         "SHARED_ARTIFACT_STORE_PATH": "/mnt/shared/fingerprinter-targets",
         "MEDIA_MAX_BYTES": "1048576",
+        "WORKER_RUNTIME_MINUTES": "30",
         "WORKER_LOG_LEVEL": "debug",
         "WORKER_LOG_FORMAT": "Human",
     }
@@ -101,6 +103,7 @@ def test_config_overrides_from_env():
     assert config.target_cache_path == "/var/lib/fingerprinter/targets"
     assert config.shared_artifact_store_path == "/mnt/shared/fingerprinter-targets"
     assert config.media_max_bytes == 1048576
+    assert config.runtime_minutes == 30
     assert config.log_level == "DEBUG"  # normalized to uppercase
     assert config.log_format == "human"  # normalized to lowercase
 
@@ -122,6 +125,7 @@ def test_config_overrides_from_env():
         {"TORCH_NUM_THREADS": "0"},
         {"TORCH_NUM_THREADS": "-3"},
         {"MEDIA_MAX_BYTES": "0"},
+        {"WORKER_RUNTIME_MINUTES": "-2"},
         {"REDIS_URL": "not-a-url"},
         {"REDIS_URL": "http://localhost:6379"},
         {"WORKER_LOG_LEVEL": "TRACE"},
@@ -466,6 +470,34 @@ def test_worker_process_starts_against_real_redis_and_shuts_down_on_sigterm(redi
         assert returncode == 0, output
         assert "startup success" in output
         assert "requesting graceful shutdown" in output
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+
+
+def test_worker_process_exits_on_its_own_when_runtime_elapses(redis_client, tmp_path):
+    """WORKER_RUNTIME_MINUTES=0 -- runtime=0 is a valid, immediate-shutdown
+    deadline (see WorkerConfig.runtime_minutes docstring): the process must
+    exit cleanly on its own, without needing SIGTERM, and its shutdown
+    summary must identify runtime expiry distinctly from a signal-driven
+    shutdown."""
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "worker.main"],
+        cwd=str(REPO_ROOT),
+        env=_subprocess_env(tmp_path, WORKER_RUNTIME_MINUTES="0"),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    try:
+        returncode = proc.wait(timeout=15)
+        output = proc.stdout.read()
+
+        assert returncode == 0, output
+        assert "startup success" in output
+        assert "runtime_expired" in output
+        assert "requesting graceful shutdown" not in output  # no signal was sent
     finally:
         if proc.poll() is None:
             proc.kill()

@@ -572,13 +572,26 @@ class Worker:
                 continue
             self.process_claim(entry, handler)
 
-    def run(self, handler: Callable[[Job], None]) -> None:
-        """Claim, hand valid jobs to handler, ack/retry/fail, until stop().
+    def run(self, handler: Callable[[Job], None], deadline: Optional[float] = None) -> None:
+        """Claim, hand valid jobs to handler, ack/retry/fail, until stop()
+        or (if given) `deadline` elapses.
 
         Per the architecture proposal (§3), a worker runs XAUTOCLAIM for
         stale entries and promotes due retries before blocking on new work.
+
+        `deadline` is a `time.monotonic()` timestamp (worker/main.py's
+        `--runtime`/`WORKER_RUNTIME_MINUTES`, converted from minutes to a
+        deadline before this call) -- a process-lifetime bound, checked
+        once per loop iteration exactly like `_stop_event`, NEVER a per-job
+        timeout: a job already claimed by `claim_one()` still runs to
+        completion via `process_claim()` before the next deadline check.
+        Reaching it calls `stop()` (the same cooperative shutdown Ctrl+C/
+        SIGTERM already use) rather than a second, different shutdown path.
         """
         while not self._stop_event.is_set():
+            if deadline is not None and time.monotonic() >= deadline:
+                self.stop()
+                break
             self._observer.on_loop_tick()
             self._maybe_reclaim_stale(handler)
             if self._stop_event.is_set():

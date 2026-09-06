@@ -31,6 +31,7 @@ import os
 import signal
 import socket
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Optional
@@ -65,6 +66,10 @@ DEFAULT_REDIS_URL = "redis://localhost:6379/0"
 DEFAULT_LEASE_MS = 30_000
 DEFAULT_BLOCK_MS = 5_000
 DEFAULT_TARGET_CACHE_PATH = "./target_cache"
+# -1 disables the limit -- mirrors this repo's existing "-1 disables"
+# sentinel convention (see old/matcher/duration_gate.py's
+# should_reject_for_short_duration) rather than inventing a new one.
+DEFAULT_RUNTIME_MINUTES = -1
 
 # Safe deterministic default: pin this process to a single torch compute
 # thread. Phase 11 measured (docs/architecture/phase-11-performance-
@@ -163,6 +168,15 @@ class WorkerConfig:
     # dependency, not implied by either.
     shared_artifact_store_path: Optional[str] = None
     media_max_bytes: int = DEFAULT_MAX_BYTES
+    # Wall-clock process-lifetime limit in minutes, for repeatable benchmark
+    # runs -- NOT a per-job timeout (a single job's existing claim/lease/
+    # retry timeout behavior, driven by lease_ms, is unrelated and
+    # unaffected). -1 (default) disables the limit -- see
+    # DEFAULT_RUNTIME_MINUTES. No argparse flag: this entrypoint's whole
+    # configuration surface is env-var driven (WorkerConfig.from_env), so
+    # runtime follows that existing, already-clean convention rather than
+    # introducing a parallel argparse-based configuration path.
+    runtime_minutes: int = DEFAULT_RUNTIME_MINUTES
     # Phase 13C
     observability_interval_ms: int = DEFAULT_OBSERVABILITY_INTERVAL_MS
     run_output: Optional[str] = None
@@ -196,6 +210,7 @@ class WorkerConfig:
             target_cache_path=env.get("TARGET_CACHE_PATH") or DEFAULT_TARGET_CACHE_PATH,
             shared_artifact_store_path=env.get("SHARED_ARTIFACT_STORE_PATH") or None,
             media_max_bytes=_getenv_int("MEDIA_MAX_BYTES", DEFAULT_MAX_BYTES, env),
+            runtime_minutes=_getenv_int("WORKER_RUNTIME_MINUTES", DEFAULT_RUNTIME_MINUTES, env),
             observability_interval_ms=_getenv_int(
                 "WORKER_OBSERVABILITY_INTERVAL_MS", DEFAULT_OBSERVABILITY_INTERVAL_MS, env
             ),
@@ -229,6 +244,8 @@ class WorkerConfig:
             errors.append(f"TORCH_NUM_THREADS must be >= 1, got {self.torch_num_threads}")
         if self.media_max_bytes <= 0:
             errors.append(f"MEDIA_MAX_BYTES must be > 0, got {self.media_max_bytes}")
+        if self.runtime_minutes < -1:
+            errors.append(f"WORKER_RUNTIME_MINUTES must be -1 (disabled) or >= 0, got {self.runtime_minutes}")
         if self.observability_interval_ms <= 0:
             errors.append(
                 f"WORKER_OBSERVABILITY_INTERVAL_MS must be > 0, got {self.observability_interval_ms}"
@@ -306,6 +323,7 @@ def config_snapshot(config: WorkerConfig, consumer_name: str) -> dict:
         "target_cache_path": config.target_cache_path,
         "shared_artifact_store_path": config.shared_artifact_store_path,
         "media_max_bytes": config.media_max_bytes,
+        "runtime_minutes": config.runtime_minutes,
         "observability_interval_ms": config.observability_interval_ms,
         "run_output": config.run_output,
         "log_level": config.log_level,
@@ -515,10 +533,18 @@ def main() -> int:
         ),
     )
 
+    # Runtime budget starts here -- immediately before the worker's own run
+    # loop begins -- not during the (possibly slow: model loading, target
+    # registry/cache setup) component construction above, which is startup
+    # work, not the worker's run lifetime.
+    deadline = time.monotonic() + config.runtime_minutes * 60 if config.runtime_minutes != -1 else None
+
     shutdown_reason = "graceful_shutdown"
     try:
-        worker.run(handler)
+        worker.run(handler, deadline=deadline)
     finally:
+        if deadline is not None and time.monotonic() >= deadline:
+            shutdown_reason = "runtime_expired"
         observer.emit_shutdown_summary(shutdown_reason=shutdown_reason, clean=True)
         if config.run_output:
             with contextlib.suppress(Exception):
