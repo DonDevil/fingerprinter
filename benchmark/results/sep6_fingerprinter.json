@@ -1,0 +1,146 @@
+{
+  "configuration": {
+    "block_ms": 5000,
+    "consumer_group": "fingerprinter-workers",
+    "embedding_device": "cuda",
+    "lease_ms": 30000,
+    "log_format": "human",
+    "log_level": "DEBUG",
+    "media_max_bytes": 104857600,
+    "namespace": "fingerprint",
+    "observability_interval_ms": 60000,
+    "reclaim_interval_ms": null,
+    "redis_db": "0",
+    "redis_endpoint": "redis://localhost:6379/0",
+    "run_output": "benchmark/results/sep6_fingerprinter.json",
+    "shared_artifact_store_path": null,
+    "stream": "fingerprint:jobs:stream:default",
+    "target_cache_path": "./target_cache",
+    "torch_num_threads": 1,
+    "worker_id": "worker-Ubuntu-24-04-30505-133387457224832"
+  },
+  "counters": {
+    "active_jobs": 0,
+    "jobs_claimed": 2399,
+    "jobs_completed": 31,
+    "jobs_failed": 1053,
+    "jobs_permanently_failed": 438,
+    "jobs_reclaimed": 0,
+    "jobs_rejected": 0,
+    "jobs_retried": 877,
+    "total_job_attempts": 2399
+  },
+  "error_categories": {
+    "media_validation_failure": 4,
+    "permanent_acquisition_failure": 1049,
+    "transient_acquisition_failure": 1315
+  },
+  "latency": {
+    "claim_to_completion_ms": {
+      "avg": 4294.841,
+      "count": 31,
+      "max": 51473.49259799739,
+      "min": 1441.7348290007794,
+      "p50": 2857.498035999015,
+      "p95": 4177.338008001243,
+      "p99": 51473.49259799739,
+      "sample_window": 31
+    },
+    "claim_to_failure_ms": {
+      "avg": 701.716,
+      "count": 2368,
+      "max": 16442.65207599983,
+      "min": 4.355727000074694,
+      "p50": 235.7763440013514,
+      "p95": 1576.6893629988772,
+      "p99": 5658.918258002814,
+      "sample_window": 2000
+    }
+  },
+  "metadata": {
+    "consumer_group": "fingerprinter-workers",
+    "consumer_name": "worker-Ubuntu-24-04-30505-133387457224832",
+    "hostname": "Ubuntu-24-04",
+    "namespace": "fingerprint",
+    "pid": 30505,
+    "schema_version": 1,
+    "stream": "fingerprint:jobs:stream:default",
+    "worker_id": "worker-Ubuntu-24-04-30505-133387457224832"
+  },
+  "pipeline_stage_metrics": {
+    "aggregation": {
+      "avg": 0.073,
+      "count": 29,
+      "max": 0.15632899885531515,
+      "min": 0.049909998779185116,
+      "p50": 0.07186199945863336,
+      "p95": 0.11262499901931733,
+      "p99": 0.15632899885531515,
+      "sample_window": 29
+    },
+    "candidate_embedding": {
+      "avg": 1684.872,
+      "count": 31,
+      "max": 47527.92833300191,
+      "min": 88.8288679998368,
+      "p50": 119.36302699905355,
+      "p95": 407.3832840003888,
+      "p99": 47527.92833300191,
+      "sample_window": 31
+    },
+    "matching": {
+      "avg": 0.585,
+      "count": 29,
+      "max": 1.3332269991224166,
+      "min": 0.4124229999433737,
+      "p50": 0.5411339989223052,
+      "p95": 0.8297849999507889,
+      "p99": 1.3332269991224166,
+      "sample_window": 29
+    },
+    "media_acquisition": {
+      "avg": 711.667,
+      "count": 2399,
+      "max": 16442.17143900005,
+      "min": 3.554704000634956,
+      "p50": 275.89963599893963,
+      "p95": 1738.6924939964956,
+      "p99": 5658.03366199907,
+      "sample_window": 2000
+    },
+    "target_resolution": {
+      "avg": 1070.591,
+      "count": 29,
+      "max": 2786.936237000191,
+      "min": 850.6560179994267,
+      "p50": 955.7087439970928,
+      "p95": 2419.783427998482,
+      "p99": 2786.936237000191,
+      "sample_window": 29
+    }
+  },
+  "redis": {
+    "consumer_pending": 0,
+    "group_lag": 0,
+    "group_pending": 0,
+    "oldest_pending_idle_ms": null,
+    "stream_length": 2399
+  },
+  "resources": {
+    "cpu_percent": 61.0,
+    "cpu_time_s": 88.22,
+    "open_fds": 50,
+    "rss_current_bytes": 843706368,
+    "rss_peak_bytes": 1187516416,
+    "thread_count": 2
+  },
+  "shutdown": {
+    "clean": true,
+    "reason": "graceful_shutdown"
+  },
+  "timing": {
+    "ended_at": 1788661299.9014282,
+    "started_at": 1788638085.0340621,
+    "uptime_s": 23214.867
+  }
+}
