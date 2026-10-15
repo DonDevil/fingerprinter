@@ -103,6 +103,22 @@ CUDA hardware in this project's own benchmarking). See the
 [production status table](#production-status) below for the
 component-by-component breakdown.
 
+## V2 encoder package (crawler2 P9)
+
+The package `fingerprinter/` is the V2 media-centric encoder,
+representation registry and target manager built in crawler2's phase P9.
+It runs beside V1 and does not change it: the sections of this README
+outside this one describe V1 only.
+
+- **Scope:** P9 is complete for its approved scope.
+- **Deployment:** P9 is not production-deployed.
+- **Precision:** FP32 is the default. FP16 stays gated because its precision
+  gate failed.
+- **Setup and operation:** for setup, the CLI, tests, benchmarks and
+  limitations, see [`docs/v2-encoder.md`](docs/v2-encoder.md).
+- **Design and evidence:** the design, decisions and gate evidence live in
+  the crawler2 repository.
+
 ## Quick start
 
 ```bash
@@ -241,6 +257,7 @@ called production-validated merely because its unit tests pass.
 - [`docs/usage.md`](docs/usage.md)
 - [`docs/development.md`](docs/development.md)
 - [`docs/benchmarks.md`](docs/benchmarks.md)
+- [`docs/v2-encoder.md`](docs/v2-encoder.md) — V2 encoder package (P9)
 
 ## License
 
