@@ -119,6 +119,14 @@ outside this one describe V1 only.
 - **Design and evidence:** the design, decisions and gate evidence live in
   the crawler2 repository.
 
+## V2 vector index and matcher (crawler2 P10)
+
+- **Status:** in design review (2026-10-15). Audit and proposed design are
+  written; no P10 decision is approved and nothing is implemented. M3 is not
+  passed.
+- **Documents:** [`docs/phases/p10-vector-index-matcher/`](docs/phases/p10-vector-index-matcher/README.md)
+  (audit, design, decisions, validation plan, proposed ADR-028).
+
 ## Quick start
 
 ```bash

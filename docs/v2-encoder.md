@@ -282,6 +282,7 @@ to run into locally:
 - **Not implemented or not wired:**
   - NVDEC (decoding runs on the CPU);
   - metrics scraping and alerts;
-  - matching (P10).
+  - matching (P10; in design review, see
+    [`phases/p10-vector-index-matcher/`](phases/p10-vector-index-matcher/README.md)).
 - **Initial parameter values.** Timeouts, leases and batch parameters are
   approved starting values that have not been tuned with production data.
