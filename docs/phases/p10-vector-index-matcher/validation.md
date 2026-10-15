@@ -11,6 +11,12 @@ prerequisite (§2.1), nested film-grouped tuning/calibration (§3), lowinfo
 oracle comparison (§3.4), crash/reader/lowinfo/identity test groups
 (§9a–§9d), E-R1 (§10), issue→test matrix (§11a).
 
+Second correction 2026-10-15 (design §19.1, C-8…C-11): targets-scan
+pagination cases H-6/H-9; low-information freshness L-1…L-16 with expected
+fail-closed behaviour; R-1…R-21 with initial state, fault, state before
+repair, repair and pass condition; capacity guard CAP-1…CAP-8; E-R1 aligned
+with the resident-point accounting (§10). All are **planned**; none has run.
+
 Rules carried from P9: a result counts for a gate only on the gate's approved
 input set; every report records environment, corpus manifest SHA-256, spec
 digest, index generation params and the verifier parameter set; measured and
@@ -67,7 +73,8 @@ vectors, no coarse screen) is a component measurement, not the V1 baseline.
   (2) V1 matcher on V2 vectors (P 1.000 / R 0.247 on all L-PAIRS; worker path
   with coarse screen: R 0.220 — audit §6.2).
 - P10 decision = `confirmed` verdicts of `temporal/v2` through the real
-  candidate path (ANN, adaptive k, caps, lowinfo at a current revision).
+  candidate path (ANN, adaptive k, caps, only *usable* lowinfo flags —
+  design §7.3).
 - **M3:** precision ≥ V1 and recall ≥ V1 on the outer-fold held-out pairs
   against the **stronger** baseline. With V1 precision 1.000 this means
   **zero false positives**. Reported with counts, Wilson intervals,
@@ -254,34 +261,47 @@ in P8 (P8-D6) and are out of scope.
 | G-13 overload / timeout | tiny verification timeout; many candidates | per-candidate retries, INCOMPLETE `verification_failed`, bounded queue, nothing silently dropped |
 | G-14 simulated two-host | two matcher processes, one Qdrant | no duplicates, lease takeover works (real machines: P14) |
 
-### 9a. Index mutation and rebuild crash tests (design §12; corrected C-3)
+### 9a. Index mutation and rebuild crash tests (design §12, §12.9; corrected C-3, C-11)
 
-Each test runs on the real stack with a fault-injection hook at the named
-boundary (`kill -9` of the worker or builder, or a Qdrant/Scylla stop) and
-ends with `matcher reconcile run --once` plus `index check`. Common
-verification: generation manifest digest equals the digest computed from the
+Each test runs on the real stack (test keyspace, dev Qdrant) with a
+fault-injection hook at the named boundary (`kill -9` of the worker,
+builder or reconciler; a held/paused worker; a proxy that drops or delays
+Qdrant responses; a Qdrant/Scylla stop) and ends with `matcher reconcile run
+--once` plus `index check`. **Common pass condition** (in addition to each
+row): generation manifest digest equals the digest computed from the
 artifacts; Qdrant verification reports 0 stale, 0 orphans, 0 missing;
-`index_entries` all APPLIED for routed generations; no task lost.
+`index_entries` all APPLIED with `applied[g] = seq` for every generation in
+`CREATED…DRAINING`; no task lost; no match committed whose subject was not
+authoritatively live at decision time. **Evidence recorded:** the
+`index_entries` rows and generation rows before and after repair, Qdrant
+point ids + payload `seq` of the affected subjects (scroll), reconciler
+metrics, the injected-fault log, matches written during the test.
 
-| # | Crash / fault point | Expected recovery |
-|---|---|---|
-| R-1 | before the intent LWT | nothing changed; the backstop scan writes the intent; converges |
-| R-2 | after intent, before Qdrant | row PENDING; reconciler applies |
-| R-3 | after Qdrant upsert, before bookkeeping | row PENDING; re-apply is idempotent; points identical |
-| R-4 | after bookkeeping, before completion of all generations | missing `applied[g]` found; applied |
-| R-5 | during DELETE (partial: some points deleted) | row PENDING; delete by filter repeated; 0 points left |
-| R-6 | during bulk load of a rebuild | new builder (after lease expiry) resumes from the bucket cursor; same manifest |
-| R-7 | during catch-up | resumes; completes a full pass; same manifest |
-| R-8 | during validation | generation stays non-active; re-validated |
-| R-9 | immediately before the promotion LWT | READY generation keeps receiving writes; re-validated if stale; promoted once |
-| R-10 | immediately after promotion | old generation DRAINING → RETIRED after grace; readers never see an empty pointer |
-| R-11 | during old-generation retirement (collection delete) | RETIRED state reached; stale writers' "collection not found" treated as no-op only because Scylla says RETIRED |
-| R-12 | live writes (≥ 1 subject/s, mixed UPSERT/DELETE) throughout a rebuild | every subject present with the newest `seq` in the new generation at promotion |
-| R-13 | two simultaneous `index rebuild` | one acquires the build lease; the other refuses; a stale holder's transitions fail on epoch |
-| R-14 | stale worker: hold an old UPSERT, let a newer DELETE complete, then release the old write and kill the worker before its LWT | Qdrant verification finds the stale point (`seq` lower / row DELETE) within one cycle and removes it; queries meanwhile drop it as stale |
-| R-15 | uncertain Qdrant outcome (proxy drops the response after the server applied it) | retry applies again; no duplicate points |
+| # | Initial state | Injected fault / race | Expected state before repair | Expected repair | Pass condition |
+|---|---|---|---|---|---|
+| R-1 | subject S READY in P9, no row | crash before the intent LWT (also: LWT returns unknown) | no row; Qdrant unchanged (unknown ⇒ SERIAL read before any Qdrant call) | backstop scan writes the intent; apply | Qdrant never written before the row existed (hook asserts); converges |
+| R-2 | as R-1 | crash after intent, before Qdrant | row PENDING, no points | intents pass applies | points = artifact; row APPLIED |
+| R-3 | as R-1; also a DELETE variant | crash after Qdrant applied, before bookkeeping | Qdrant done, row PENDING | re-apply (idempotent), record | identical point set (ids, vectors); no duplicates |
+| R-4 | two routed generations (ACTIVE + BUILDING) | crash after applying to one generation | `applied` has one generation only | intents/catch-up pass applies to the other | both generations hold S at `seq` |
+| R-5 | S indexed, then desired DELETE | Qdrant stopped mid delete-by-filter | some points left; row PENDING | delete by filter repeated | 0 points of S; no candidate from S accepted meanwhile |
+| R-6 | rebuild in BUILDING, half the buckets done | kill -9 builder; new builder after lease expiry | generation BUILDING, cursor at bucket b | new holder adopts g, resumes from the cursor | same manifest digest as an uninterrupted build |
+| R-7 | g in CATCHING_UP | (a) kill -9 the pass; (b) while the pass holds S at `seq = s`, a mutator writes s+1 (DELETE) and applies; then the pass resumes and lands its stale UPSERT and is killed before its LWT | (a) partial pass; (b) g contains a stale point of S | (a) pass restarts, completes a full pass; (b) the pass's LWT fails or VALIDATING's no-extras check finds S ⇒ back to CATCHING_UP; or verification removes it | g promoted only with S absent; no match from S |
+| R-8 | g in VALIDATING | kill -9 during validation | g non-active | re-validated | never promoted on a partial validation |
+| R-9 | g READY | crash immediately before the promotion LWT; live writes continue | g READY, still routed | revalidation if older than `revalidate_after_s`; promote once | exactly one ACTIVE; `active_epoch` +1 once |
+| R-10 | promotion done | crash immediately after the LWT; a reader caches the old pointer | old generation DRAINING | reconciler RETIRED after grace | readers never see an empty pointer; old pointer searches succeed during grace |
+| R-11 | old generation DRAINING → RETIRED | a worker holding a pre-retirement routing set writes to it after deletion | collection gone | none needed | write fails "not found", treated as no-op only because Scylla says RETIRED; no collection re-created; generation numbers not reused |
+| R-12 | g just CREATED | live writes ≥ 1 subject/s mixed UPSERT/DELETE through the whole rebuild, plus a mutator held between its intent LWT and its routing read across CREATED, and one whose routing read follows CREATED | in-flight rows missing from g | catch-up (E1) / own mutator (E2) | every subject present in g at its newest `seq` at promotion; no extras |
+| R-13 | build lease held by builder 1 | second `index rebuild`; then builder 1 pauses past its lease, builder 2 takes over, builder 1 resumes | — | builder 2 adopts or FAILs g | builder 1's transitions fail on `build_epoch`; one ACTIVE; its stale Qdrant writes found by no-extras/verification |
+| R-14 | S indexed at seq s (UPSERT) | worker W holds an old UPSERT; a newer DELETE (s+1) completes; W lands its write and is killed before its LWT | row DELETE APPLIED; stale points of S in Qdrant | verification finds `seq` < row / present for DELETE; delete | while stale: queries that hit S drop it (authoritative check), `index_verify_stale_candidates_total` > 0, no match with S; after one cycle 0 points |
+| R-15 | S PENDING | proxy drops the response after the server applied (also: times out before applying) | outcome unknown | retry applies the current desired state | no duplicate points; `attempts` incremented; permanent 4xx ⇒ BLOCKED with error, not retried |
+| R-16 | g ACTIVE | insert a point with a valid-looking payload for a subject without a row (and one for a retired subject) | orphan point | verification: READY ⇒ intent + apply; else delete by id | orphan removed or adopted; never accepted as a candidate for a retired subject |
+| R-17 | S row APPLIED | delete S's points directly in Qdrant | row APPLIED, points missing | verification count ≠ `segment_count` ⇒ re-apply; S's own task re-enqueued | points restored; `index_miss_total` +1; S's pairs re-covered (task rerun recorded) |
+| R-18 | S at seq s | (a) newer UPSERT s+1 (payload change) supersedes s while the s worker is paused; (b) the s worker's Redis lease expires and a second worker applies s+1, then the s worker resumes and writes | Qdrant may hold `seq = s` payload | the s worker's LWT fails ⇒ it re-applies s+1; if killed instead, verification re-applies | final payload `seq = s+1`; Redis lease shown not to fence (the write lands), convergence via LWT/verification |
+| R-19 | S UPSERT APPLIED | DELETE s+1 written while an UPSERT retry of s is in flight | either | as R-14 | 0 points of S; DELETE row kept with `applied[g] = s+1` for all routed generations |
+| R-20 | ACTIVE generations of both roles, matches recorded | delete the Qdrant volume | tasks `WAITING_INDEX` | `index rebuild` (target role first), validation, promotion | §5 acceptance: equal manifest digests, identical decisions; no fact lost |
+| R-21 | a verification pass has repaired part of a corrupted generation (R-16/R-17 injections) | kill -9 the reconciler mid-pass; restart | partially repaired | pass resumes from its persisted cursor | every injected divergence repaired exactly once in effect; repeating the pass changes nothing |
 
-### 9b. Hint reader and backstop scans (design §6.1; corrected C-4)
+### 9b. Hint reader and backstop scans (design §6.1; corrected C-4, C-8)
 
 | # | Test | Expected |
 |---|---|---|
@@ -289,25 +309,61 @@ artifacts; Qdrant verification reports 0 stale, 0 orphans, 0 missing;
 | H-2 | crash after recording work, before cursor LWT | batch re-read; duplicates are no-ops |
 | H-3 | duplicate and out-of-order entries | one task per subject; desired state from authoritative rows |
 | H-4 | two readers (simulated two hosts) | one owner; the other cannot advance the cursor (epoch); takeover after lease expiry |
-| H-5 | entries trimmed before reading (group acked, `XTRIM MINID`) | gap metric; backstop creates the work within one cycle |
-| H-6 | backstop pagination across > 1 page per bucket, crash mid-bucket | resumes at the persisted `(bucket, last content_id)`; every row visited once per cycle (row-visit log in the test) |
+| H-5 | entries trimmed before reading (group acked, `XTRIM MINID`) | gap metric; backstop creates the work by the end of the next cycle that starts after the trim |
+| H-6 | `reps` pagination across > 1 page per bucket, crash mid-bucket | resumes at the persisted `(bucket, last content_id)`; every row visited at least once per cycle (row-visit log in the test) |
 | H-7 | targets registered/retired with no stream event (held) | targets scan discovers them; target-set revision bumps once per change |
-| H-8 | eventual catch-up | after stopping the hint reader entirely, every READY representation of a 200-item corpus gets an index entry and tasks within one backstop cycle |
+| H-8 | eventual catch-up | after stopping the hint reader entirely, every READY representation of a 200-item corpus gets an index entry and tasks by the end of the first backstop cycle that starts after ingestion |
+| H-9 | targets scan pagination (below) | sub-cases H-9a…H-9h all pass |
 
-### 9c. Low-information lifecycle (design §7.3; corrected C-2)
+H-9 setup: Scylla 6.2.3 test keyspace (tablets off, as `db.py` creates it);
+≥ 300 target partitions, of which ≥ 20 hold ≥ 4 clustering rows (several
+versions × 2 specs in a test spec registry); keys-page `LIMIT` lowered to 3
+and the driver `fetch_size` inside a partition lowered to 1 so that pages and
+fetches end between clustering rows; the scanner's row-visit log and every
+desired-state write recorded. **Failure** in any sub-case = an authoritative
+row present at a cycle's start that the cycle did not visit, a cursor
+pointing into a partially processed partition, or duplicate *work* (a second
+task/intent rather than an idempotent no-op).
 
-| # | Test | Expected |
+| # | Injected condition | Pass condition |
 |---|---|---|
-| L-1 | register a target sharing frames with existing targets | revision bumps; every target owning a segment ≥ 0.95 to the new target is reclassified (checked against an exhaustive offline computation) |
-| L-2 | retire a target | revision bumps; every affected target reclassified (same check) |
-| L-3 | crash after the revision bump, before recomputation | `done_rev < requested_rev`; refresh resumes; converges |
-| L-4 | stale flag present (refresh paused) | the flagged segment still votes/queries/counts; matches identical to the unfiltered path for that segment |
-| L-5 | duplicate registration/retirement observation | revision bumps once (members digest unchanged) |
-| L-6 | stale worker writes classification for an older revision | LWT `IF rev <` rejects it |
-| L-7 | backstop weekly recomputation | finds and fixes an injected wrong flag |
-| L-8 | registration during a running refresh | refresh loops to the latest revision |
-| L-9 | refresh failing repeatedly | BLOCKED, visible; flags treated as stale ⇒ eligible; no lost match |
-| L-10 | offline comparison filtered vs unfiltered (§3.4) | `lost_tp = 0` before adoption |
+| H-9a | fetch inside a partition ends between two clustering rows of one `target_id`; the scanner continues | all rows of the partition visited before the cursor moves past it |
+| H-9b | kill -9 after processing a partition, before the cursor LWT | restart re-processes that partition from `>= last_token`; no row missing; duplicates are no-ops |
+| H-9c | kill -9 right after the cursor LWT | restart continues at the next partition; nothing re-done except the `>=` partition |
+| H-9d | kill -9 in the middle of a partition (half its rows done) | cursor still names the previous complete partition; the partition is processed again in full |
+| H-9e | duplicate and out-of-order discovery (scan + task start observe the same binding; replay a page) | one `index_entries` row and one task per binding; `target_set_rev` bumped once |
+| H-9f | insert a new version (PENDING→READY) of a target behind the cursor during a cycle | discovered by the next cycle (visit log) — within two cycles of the write |
+| H-9g | retire a target version (`targets.state`) behind and ahead of the cursor during a cycle | DELETE intent written, membership updated, by the end of the next cycle; tasks of that version stop |
+| H-9h | full cycle, then restart from the persisted cursor only (fresh process, empty caches) | the union of visit logs covers every row present at cycle start; the cycle-completion record (`cycle += 1`) only after a short keys page; a stub token source with two keys sharing one token yields both keys (no skip) and no stall |
+
+### 9c. Low-information lifecycle (design §7.3; corrected C-2, C-9)
+
+Reference for every case: an **exhaustive offline classification** (numpy,
+float32, all target segments of the test corpus at the authoritative target
+set of that moment). "Fail-closed" = the segment stays **eligible** (votes,
+queries, counts); "filter OK" = exclusion of the segment is permitted
+because the flag is usable. Every case records: the authoritative target
+set, `target_set_rev`, the `lowinfo_class` rows, witness-check log, payloads,
+and the segments excluded by each task.
+
+| # | Initial state | Injection / race | Expected | Class |
+|---|---|---|---|---|
+| L-1 | complete classification at rev r | register (and scan observes) a target X sharing frames with existing targets | rev r+1; X COMPLETE; other targets gain flags with X as witness; flags = exhaustive reference (after `done_rev = r+1`) | filter OK after verification |
+| L-2 | T flagged only by witness X | retire X (observed) | records listing X found from witness lists; T's segment cleared (no other witness) or keeps another live witness; `target_vs_media` of T re-enqueued when a flag clears | fail-closed until cleared, then filter OK |
+| L-3 | as L-1 | crash after the revision bump, before all records written | `done_rev < requested_rev`; resumed; converges to the reference | records not yet written ⇒ fail-closed (missing flags) |
+| L-4 | T flagged by witness X | retire X in P9, refresh paused | witness check finds X dead ⇒ T's segment eligible; matches identical to the unfiltered path for it | fail-closed |
+| L-5 | — | duplicate registration/retirement observation | revision bumps once (members digest unchanged) | — |
+| L-6 | record at rev r+1 | a stale worker writes T's record for rev r | LWT `IF rev <` / `IF rev = :read` rejects it | — |
+| L-7 | complete classification | corrupt one record (a flag with a live but non-similar witness), delete another record | full recomputation reports `extra_flag` and `missing_record` and repairs both; detection within one recomputation | the missing record is fail-closed; the corrupted flag is outside the safety model (records are written only after an exact cosine check) and is an **alarm case** — the test measures that it is detected and repaired, and reports the window |
+| L-8 | refresh running for r+1 | register Y (r+2) during it | worker loops to r+2; `done_rev = r+2` only after both steps complete | filter OK per usable flag throughout |
+| L-9 | — | refresh fails repeatedly (Qdrant stopped for the refresh worker) | BLOCKED, visible, `last_error`; exclusions still only through usable flags | fail-closed where witnesses died |
+| L-10 | — | offline comparison filtered vs unfiltered (§3.4) | `lost_tp = 0` before adoption | acceptance gate (separate) |
+| L-11 | complete classification | register X in P9; the scan has **not** observed it; run media tasks | no new exclusions; no flag references X; results equal to the run before X except the X candidates themselves | fail-closed (missing flags) |
+| L-12 | T flagged only by X | retire X in P9; scan not yet observed; `target_set_rev` unchanged; run media tasks hitting T | witness check: X dead ⇒ T's segment eligible; decisions equal the unfiltered path for T | fail-closed |
+| L-13 | T's record `PARTIAL` (refresh killed mid-T) | run tasks hitting T while the refresh is incomplete | no segment of T excluded | fail-closed |
+| L-14 | a test segment duplicated in > `L` targets (synthetic copies within the test spec) | affected-target search returns exactly `L` | step `enumeration = TRUNCATED`; `done_rev` not advanced; `full_requested` set; full recomputation completes the set; also: on Qdrant 1.15.1, `exact = true` + `quantization.ignore = true` scores equal the numpy float32 cosine to 1e-5 and `score_threshold` excludes 0.9499 | partial ⇒ never complete; the X flag itself (≥ 1 witness) is filter OK |
+| L-15 | T payload `lowinfo = true` but record cleared; U payload `false` but record flagged | run tasks | T eligible (record decides); U eligible (payload false ⇒ no check) | fail-closed |
+| L-16 | T flagged, witness live | Scylla unavailable for the witness read | task retries (`WAITING`), no exclusion and no DONE on an unknown | fail-closed |
 
 ### 9d. Match identity and persistence (design §9.3a; corrected C-6)
 
@@ -322,13 +378,44 @@ artifacts; Qdrant verification reports 0 stale, 0 orphans, 0 missing;
 | K-7 | retry after a crash between `matches` and `matches_by_target` | no duplicates; both rows present after reconcile |
 | K-8 | publication | one held envelope per MatchId; `event_id` stable across retries; uncalibrated technique ⇒ no envelope |
 
+### 9e. Capacity guard (design §13.3; corrected C-10)
+
+Run on a small dev-scale instance with `index.max_points` set to a small test
+value (e.g. 20,000) in a test keyspace — a test configuration of the same
+code path, never the dev instance's value. Evidence: ledger rows,
+`reserved_points` per generation, Qdrant exact counts per collection at every
+step, blocked rows, metrics.
+
+| # | Test | Pass condition |
+|---|---|---|
+| CAP-1 | UPSERT of a subject that would exceed `max_points − capacity_margin_points` | refused before any Qdrant call (proxy log empty); row `BLOCKED: capacity`; task `WAITING_INDEX(capacity)` |
+| CAP-2 | counted states | points of CREATED…DRAINING and FAILED-with-collection generations are counted; RETIRED (deleted) are not; ledger ≥ Σ exact counts at every step |
+| CAP-3 | rebuild admission with active + projected > limit | `CAPACITY_BLOCKED`; no collection or generation row created; active generation untouched |
+| CAP-4 | second generation's bulk load and live writes | all draw on its reservation / the ledger; a write beyond them is refused (no bypass path) |
+| CAP-5 | rebuild fails mid-build (kill + mark FAILED) | active generation serves; FAILED collection deleted ⇒ reservation released; ledger returns to the pre-rebuild value ± live growth |
+| CAP-6 | promotion and retirement | ledger unchanged at promotion; decreases only after the old collection's deletion is confirmed; crash between reservation and write leaves the ledger high, the capacity audit never lowers it below the bound |
+| CAP-7 | blocked subject recovery | after a release (retire a target), the reconciler applies the blocked row; task resumes; nothing lost |
+| CAP-8 | configured value provenance | startup refuses a `max_points` above the last value recorded from an E-R1 report (report id in the ledger audit), except the provisional 250,000 |
+
 ## 10. Resource and performance (H)
 
-**Before I-2: E-R1** (design §13.4) — the capacity-boundary experiment
-(626,658 vectors, 1.5 GiB cap, two generations resident, live writes),
-with its pass criterion and the decision each outcome supports. Until it
-passes, `index.max_points` stays 250,000 and the base target scenario is not
-claimed for the dev host.
+**Before I-2: E-R1** (design §13.4) — the capacity-boundary experiment,
+run by a harness on a dedicated `qdrant-e-r1` container (same image,
+1.5 GiB, same collection configuration), never on the dev instance and
+without any P10 guard override (the guard does not exist before I-2).
+Resident points are counted exactly as the guard counts them — all
+collections in the instance, both generations during the rebuild: 626,658
+in phases 1–2, **1,253,316 + 2 × live writes (≈ 1.29 M)** in phase 3,
+626,658 + live after deletion of g1; test ceiling `P_test` = 1,300,000.
+Required assertions per phase: resident count = Σ exact Qdrant counts;
+generation count; `oom_kill` = 0; `anon` peak ≤ 1.35 GiB; query p95 ≤ 10 ms
+after warm-up (phases 2, 3, 5); `du` recorded; live-write latency recorded.
+Outcome rules (design §13.4): `max_points` is set only from a measured full
+pass (phase-3 resident total minus margin); a phase-3-only failure means one
+generation fits but in-place rebuild does not, and the limit is set from a
+smaller full pass; no failure can raise the limit. Until then
+`index.max_points` stays **250,000 resident points** and the base target
+scenario is not claimed for the dev host. Not run.
 
 
 Measured and reported (each run alone on the host): index build time and
@@ -355,9 +442,9 @@ together (host `MemAvailable` floor, encoder throughput change).
 | P10-T8 | calibration status and reliability (§3.3) — prerequisite of publication | not run |
 | P10-T9 | lowinfo vs unfiltered oracle, `lost_tp = 0` (§3.4) — prerequisite of enabling lowinfo | not run |
 | P10-T10 | E-R1 capacity (design §13.4) — prerequisite of I-2 | not run |
-| P10-T11 | mutation/rebuild crashes R-1…R-15, reader/scan H-1…H-8, lowinfo L-1…L-10, identity K-1…K-8 (§9a–§9d) | not run |
+| P10-T11 | mutation/rebuild crashes R-1…R-21, reader/scan H-1…H-9, lowinfo L-1…L-16, identity K-1…K-8, capacity CAP-1…CAP-8 (§9a–§9e) | not run |
 
-### 11a. Issue → test matrix (corrections C-1…C-7, design §19)
+### 11a. Issue → test matrix (corrections C-1…C-11, design §19)
 
 | Issue | Tests / measurements | Pass criterion | Blocks |
 |---|---|---|---|
@@ -368,6 +455,10 @@ together (host `MemAvailable` floor, encoder throughput change).
 | C-5 confidence | §3.3 | reliability acceptance or explicit UNAVAILABLE | publication of `match.found` |
 | C-6 match key | K-1…K-8 | all pass | I-3 exit |
 | C-7 V1 baseline | §2.1 | reproducible report exists | threshold selection, M3-1 |
+| C-8 targets scan pagination | H-6, H-9a…h | no row present at cycle start left unvisited; cursor never inside a partition | D20 / I-2 exit |
+| C-9 lowinfo freshness | L-1…L-16 (L-11…L-16 new); §3.4 unchanged | every fail-closed case eligible; partial never complete; `lost_tp = 0` | enabling lowinfo |
+| C-10 capacity / E-R1 | E-R1 (§10); CAP-1…CAP-8 | E-R1 pass rules; guard never bypassed; limit only from a measured pass | I-2 |
+| C-11 mutation guarantees | R-1…R-21 | common pass condition of §9a; no stale point accepted | D19 / I-2 exit |
 
 ## 12. Evidence that exists today (audit inputs, not P10 tests)
 

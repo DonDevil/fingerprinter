@@ -1,7 +1,8 @@
 # ADR-028 — The vector index is a derived, network-reachable Qdrant service with generations per spec and role; Scylla and MinIO stay authoritative
 
 Status: **Proposed** (2026-10-15, P10 design review; decisions P10-D1, D2,
-D3, D4, D14, D19, D20; corrected the same day — design §19 C-1, C-3, C-4).
+D3, D4, D14, D19, D20; corrected the same day — design §19 C-1, C-3, C-4,
+and §19.1 C-10, C-11).
 Not accepted. Number taken as the next free number after
 crawler2's ADR-027; this file lives in the fingerprinter repository until the
 operator decides where P10 records belong (P10-D16) — crawler2's
@@ -52,7 +53,8 @@ ordering argument needs (design §6.4).
    is a new generation under a build lease: CREATED → BUILDING →
    CATCHING_UP → VALIDATING → READY → ACTIVE (one LWT) → DRAINING →
    RETIRED, promoted only after a full catch-up pass and manifest-digest
-   validation against the artifacts (design §12).
+   validation against the artifacts (design §12). Guarantees and routing
+   races: design §12.9.
 6. FAISS exact search is used **only** as the offline oracle for recall
    tests; there is no production fallback to brute force.
 
@@ -63,8 +65,9 @@ ordering argument needs (design §6.4).
 - Build-time memory peaks exceed the quantized steady state (OOM at 256 MiB,
   peak = 512 MiB cap for 104 k vectors; steady ≈ 1.3 KB/vector). The dev
   limit is a hard 1.5 GiB; dev capacity is **unresolved** (capacity guard
-  `max_points` 250,000 provisional) until experiment E-R1 measures a
-  626 k-vector build with a second generation resident; the base target
+  `max_points` = 250,000 resident points per instance, all generations,
+  provisional) until experiment E-R1 measures a 626 k-point generation and
+  its rebuild (≈ 1.25 M resident) on a dedicated test container; the base target
   scenario (600 k vectors, 1.717 GiB raw FP32) is not claimed for the dev
   host; production volumes need a dedicated index host (P14).
 - REST ingest measured at ≈ 310–500 points/s (lower bound): a full rebuild at
@@ -72,8 +75,9 @@ ordering argument needs (design §6.4).
 - Qdrant upgrades are handled like runtime changes: a new generation built
   and checked before promotion.
 - Qdrant writes cannot be made conditional: stale points from a slow writer
-  are repaired within one verification cycle and filtered at query time,
-  not prevented.
+  are not prevented; they cannot be accepted as match evidence (candidates
+  are checked against live P9 rows and verified on artifact vectors) and are
+  removed within one verification cycle after they land (design §12.9).
 - Moving to another index technology later means a new adapter behind the
   `VectorIndex` protocol and a rebuild; no authoritative data migrates.
 

@@ -4,9 +4,11 @@ Status (2026-10-15): **IN DESIGN REVIEW.** Audit complete; design proposed;
 no decision approved; nothing implemented; M3 not passed. P9 is complete for
 its approved scope and unchanged.
 Design corrected after the first review (design §19, C-1…C-7); ready for a
-second review. Open before implementation: E-R1 (capacity), approval of
-P10-D19/D20 (mutation/rebuild protocol, P10-owned reconciler); I-1 starts
-with the V1 end-to-end baseline.
+second review; second correction pass (design §19.1, C-8…C-11: targets
+scan pagination, low-information freshness, capacity accounting and E-R1,
+mutation/rebuild guarantees) done the same day. Open before implementation:
+E-R1 (capacity), approval of P10-D19/D20 (mutation/rebuild protocol, P10-owned
+reconciler); I-1 starts with the V1 end-to-end baseline.
 
 | Document | Content |
 |---|---|
