@@ -4,6 +4,14 @@ Status: **AUDIT COMPLETE — P10 in design review.** Nothing in this document
 is implemented. P9 is complete for its approved scope (accepted 2026-10-15);
 P10 has not been approved.
 Date: 2026-10-15. Plan section: crawler2 `docs/v2-phase-plan.md` §P10.
+
+> **Correction note (2026-10-15).** After the first design review, design
+> §19 (C-1…C-7) corrected the resource budget, low-information freshness,
+> the Qdrant/Scylla mutation and rebuild protocol, reconciliation ownership,
+> confidence semantics, the `matches` key and the V1 baseline's role. This
+> audit is unchanged except for the rows marked as superseded; its
+> measurements stand.
+
 Companion documents: [design.md](design.md), [decisions.md](decisions.md),
 [validation.md](validation.md), [ADR-028 (proposed)](ADR-028-vector-index.md).
 
@@ -433,7 +441,7 @@ near-duplicates; within-item deduplication is not a useful memory lever.
 | CLI framework, audit log, metrics registry | **reuse** |
 | V1 `match_segments` | **keep frozen** as the baseline oracle `temporal_v1`; **not** the P10 verifier |
 | V1 thresholds | **replace** by values fitted on a training split (decision P10-D7) |
-| P9 commit follow-ups | **modify additively** (one follow-up flag) only if P10-D5 option (a) is approved |
+| P9 commit follow-ups, P9 reconciler | **unchanged** — P10 discovers work with its own hint reader and backstop scans and runs its own reconciler (design §6.1, §12.6; correction C-4). A P9 follow-up flag (P10-D5 option (a)) would need separate approval |
 | V1 `aggregation.py`, `worker/` | not used |
 | Vector index, match tasks, match records, equivalence relation, index generations, verifier `temporal/v2`, `match.found` publication | **new** |
 
@@ -444,8 +452,8 @@ near-duplicates; within-item deduplication is not a useful memory lever.
 | R-1 | V1 thresholds give recall 0.25 on real re-encodes (F-1, M-1…M-3) | high — M3 can be met only by beating 0.247 *with zero false positives* |
 | R-2 | Identical low-information frames across unrelated media (F-2) | high for precision and for candidate fan-out |
 | R-3 | Fixed top-k saturation and silent truncation in direction B (F-6, F-7) | high for recall of "new target vs history" |
-| R-4 | Media index cannot live on the 15 GB host beyond ≈ 1–3 M vectors (design §13); at the base scenario that is weeks of ingestion | high for production; none for M3 |
-| R-5 | Rebuild throughput measured only as lower bounds (§11); at base 1-year volume a rebuild at the measured rates takes > 20 h (design §12.6) | medium |
+| R-4 | The index cannot hold production volumes on the 15 GB host; even the base target scenario (600 k vectors, 1.717 GiB raw FP32) is unproven under the 1.5 GiB limit (design §13, E-R1; this row originally said "≈ 1–3 M vectors", superseded by correction C-1) | high for production; dev capacity unresolved |
+| R-5 | Rebuild throughput measured only as lower bounds (§11); at base 1-year volume a rebuild at the measured rates takes > 20 h (design §12.8) | medium |
 | R-6 | P8's different-encoding set is 6 s long (2 segments) — no temporal verifier with a ≥ 3-segment run can link it; HLS items have no `ContentId` (P8-D6) and are never encoded | medium: the level-5 test needs a longer set (validation §8) |
 | R-7 | Corpus homogeneity: one reel of animated films; hard negatives for live action, cam captures, mirrored or speed-changed copies are absent | medium: thresholds may not transfer |
 | R-8 | Statistical power: 330 negatives — "precision ≥ 1.0" is a zero-false-positive requirement on a small set | medium (validation §2) |
@@ -461,7 +469,7 @@ near-duplicates; within-item deduplication is not a useful memory lever.
 | Existing, verified | P9 identity, spec digests, artifact format and integrity, by-spec index, target binding, retire guard, leases/intents/held publication; V1 matcher behaviour; `match.found` contract; L-PAIRS labels; V1-oracle baseline (reproduced) |
 | Existing with limitations | V1 matcher (M-1…M-8); P9 corpora (R-7); P8 equivalence set (R-6); dev-host resources (§11) |
 | Missing | any vector index; candidate generation; match task lifecycle; match persistence; `match.found` publication; equivalence relation; index rebuild/check tooling; P10 metrics; V1 end-to-end baseline measurement |
-| Proposed (design.md) | Qdrant-backed derived index with generations and aliases; two collections per spec; adaptive-k candidate generation with recorded saturation; verifier `temporal/v2`; durable match tasks; equivalence links; additive contract fields as a later decision |
+| Proposed (design.md) | Qdrant-backed derived index with generations (active generation recorded in Scylla, correction C-3); two collections per spec; adaptive-k candidate generation with recorded saturation; verifier `temporal/v2`; durable match tasks; equivalence links; additive contract fields as a later decision |
 | Unknown, needs measurement or decision | real ingestion rate and durations; target-library size; thresholds on a held-out split; low-information-segment rule; Qdrant gRPC ingest rate and snapshot behaviour; live-action transfer; P14 multi-host behaviour |
 
 ## 15. Questions resolved by measurement
