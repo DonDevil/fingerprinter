@@ -1,0 +1,115 @@
+{
+ "benchmark": "B-PREC",
+ "environment": {
+  "host": "Ubuntu-24-04",
+  "machine": "x86_64",
+  "cores": 12,
+  "python": "3.12.3",
+  "torch": "2.13.0+cu130",
+  "transformers": "5.15.1",
+  "numpy": "2.5.2",
+  "pillow": "12.3.0",
+  "cuda_available": true,
+  "cuda_runtime": "13.0",
+  "spec": "sha256:a4df3d19252891dc0d8d266d5056a226159ffc276898fdfd680472e54497d3d5",
+  "spec_fp16": "sha256:a765d7d2979264328bb60fa2757e6f587878a78e91cc8be2fc9a62bbebbb833c",
+  "runtime_profile": "rt-1",
+  "measured_at": "2026-10-11T16:34:38.753161+00:00",
+  "cpu_model": "11th Gen Intel(R) Core(TM) i5-11400H @ 2.70GHz",
+  "ram_gib": 15.4,
+  "gpu": "NVIDIA GeForce RTX 2050",
+  "vram_total_mib": 3822,
+  "vram_free_mib_at_start": 2904,
+  "driver": "615.71.09",
+  "ffmpeg": "ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers"
+ },
+ "corpus": {
+  "name": "L-PAIRS",
+  "items": 187,
+  "synthetic": false,
+  "manifest_sha256": "ab3d7711ce9bfa199b10dc7330ac89adcb2e71ce733cdafcf56bf2e1319af9c4",
+  "gate_eligible": true
+ },
+ "threshold_cosine": 0.999,
+ "batch": 16,
+ "modes": [
+  "cpu_fp32",
+  "cuda_fp32",
+  "cuda_fp16"
+ ],
+ "tp1_alignment": {
+  "identical": true,
+  "basis": "every mode embedded the same decoded tensors; per-item vector counts asserted equal to the decoded segment count",
+  "items": 187,
+  "segments": 6220
+ },
+ "tp2": {
+  "segments": 6220,
+  "cuda_fp16_vs_cpu_fp32": {
+   "min": 0.9992752075195312,
+   "n": 6220,
+   "median": 0.9999949932098389,
+   "p95": 0.999997615814209,
+   "max": 0.9999989867210388,
+   "small_sample": false,
+   "below_threshold": 0
+  },
+  "cuda_fp32_vs_cpu_fp32": {
+   "min": 0.9999997615814209,
+   "n": 6220,
+   "median": 1.0,
+   "p95": 1.0000001192092896,
+   "max": 1.000000238418579,
+   "small_sample": false,
+   "below_threshold": 0
+  },
+  "pass_on_these_inputs": true
+ },
+ "pairs_csv_sha256": "ff43168cb5d6f36f57ea5438826d28a493d2faed67f25afafc2c6d9554f7b4c7",
+ "tp3": {
+  "pairs": 480,
+  "positives": 150,
+  "negatives": 330,
+  "matched_cpu_fp32": 37,
+  "matched_cuda_fp16": 37,
+  "decision_or_alignment_differences": [
+   {
+    "pair": {
+     "target": "Tears_of_Steel_in_4k_-_Official_Blender_Foundation_release.webm",
+     "clip": "lp-107-tears-of-steel-re-encode.webm",
+     "label": "1",
+     "transform": "re-encode",
+     "basis": "provenance: cut from tears-of-steel"
+    },
+    "fp32": [
+     false,
+     400.003,
+     415.003,
+     0.042,
+     15.042,
+     2
+    ],
+    "fp16": [
+     false,
+     400.003,
+     405.003,
+     0.042,
+     5.042,
+     1
+    ]
+   }
+  ],
+  "pass_on_these_inputs": false,
+  "informative_cpu_fp32_vs_labels": {
+   "tp": 37,
+   "fn": 113,
+   "fp": 0,
+   "tn": 330,
+   "note": "V1 oracle with today's MatcherConfig; no P9 threshold (thresholds are P10)"
+  }
+ },
+ "gate_status": {
+  "G-2 TP-1/TP-2 on L-PAIRS": "PASS",
+  "G-3 TP-3 on L-PAIRS": "FAIL"
+ }
+}

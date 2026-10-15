@@ -1,0 +1,268 @@
+{
+ "benchmark": "B-GPU-a",
+ "gate": "G-5: GPU inference \u2265 5\u00d7 CPU inference, same tensors, FP32",
+ "environment": {
+  "host": "Ubuntu-24-04",
+  "machine": "x86_64",
+  "cores": 12,
+  "python": "3.12.3",
+  "torch": "2.13.0+cu130",
+  "transformers": "5.15.1",
+  "numpy": "2.5.2",
+  "pillow": "12.3.0",
+  "cuda_available": true,
+  "cuda_runtime": "13.0",
+  "spec": "sha256:a4df3d19252891dc0d8d266d5056a226159ffc276898fdfd680472e54497d3d5",
+  "spec_fp16": "sha256:a765d7d2979264328bb60fa2757e6f587878a78e91cc8be2fc9a62bbebbb833c",
+  "runtime_profile": "rt-1",
+  "measured_at": "2026-10-11T02:51:02.581606+00:00",
+  "cpu_model": "11th Gen Intel(R) Core(TM) i5-11400H @ 2.70GHz",
+  "ram_gib": 15.4,
+  "gpu": "NVIDIA GeForce RTX 2050",
+  "vram_total_mib": 3822,
+  "vram_free_mib_at_start": 3730,
+  "driver": "615.71.09",
+  "ffmpeg": "ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers"
+ },
+ "corpus": {
+  "name": "synthetic-60-seed7",
+  "items": 66,
+  "synthetic": true,
+  "manifest_sha256": "0dd52624e79240fcaf125d7ee2add40d4d247bab100047c0c59fdd523d3cd413",
+  "gate_eligible": false
+ },
+ "inputs": {
+  "frames": 256,
+  "sources": 27
+ },
+ "cpu_fp32": {
+  "batch": 8,
+  "frames": 256,
+  "reps": 3,
+  "frames_per_s": {
+   "n": 3,
+   "median": 6.7738459471849,
+   "p95": 6.996195516949381,
+   "min": 6.758842027922566,
+   "max": 6.996195516949381,
+   "small_sample": true
+  },
+  "s_per_frame_in_batch": {
+   "n": 96,
+   "median": 0.1402757062499802,
+   "p95": 0.17926123862503118,
+   "min": 0.13119919612501008,
+   "max": 0.20232243449999032,
+   "small_sample": false
+  },
+  "threads": 12,
+  "device": "cpu",
+  "batch_source": "encoder.cpu_batch"
+ },
+ "gpu_calibration": {
+  "method": "throughput/v1",
+  "selected_batch": 2,
+  "selected_frames_per_s": 44.058,
+  "selection_reason": "highest median throughput",
+  "b_max_fitting": 128,
+  "first_round_median": {
+   "1": 35.576,
+   "2": 44.071,
+   "4": 40.751,
+   "8": 40.913,
+   "16": 27.303,
+   "32": 27.627,
+   "64": 26.404,
+   "128": 17.173
+  },
+  "candidates": [
+   {
+    "batch": 1,
+    "eligible": true,
+    "frames_per_s": [
+     35.577,
+     35.576,
+     35.559
+    ],
+    "median": 35.576,
+    "min": 35.559,
+    "max": 35.577,
+    "spread": 0.0005,
+    "peak_vram_bytes": 406847488
+   },
+   {
+    "batch": 2,
+    "eligible": true,
+    "frames_per_s": [
+     44.168,
+     44.036,
+     44.071,
+     44.117,
+     44.045,
+     43.951
+    ],
+    "median": 44.058,
+    "min": 43.951,
+    "max": 44.168,
+    "spread": 0.0049,
+    "peak_vram_bytes": 423624704
+   },
+   {
+    "batch": 4,
+    "eligible": true,
+    "frames_per_s": [
+     40.813,
+     40.751,
+     40.676
+    ],
+    "median": 40.751,
+    "min": 40.676,
+    "max": 40.813,
+    "spread": 0.0034,
+    "peak_vram_bytes": 467664896
+   },
+   {
+    "batch": 8,
+    "eligible": true,
+    "frames_per_s": [
+     41.064,
+     40.913,
+     39.622,
+     41.633,
+     40.94,
+     40.815
+    ],
+    "median": 40.927,
+    "min": 39.622,
+    "max": 41.633,
+    "spread": 0.0491,
+    "peak_vram_bytes": 520093696
+   },
+   {
+    "batch": 16,
+    "eligible": true,
+    "frames_per_s": [
+     27.389,
+     27.303,
+     27.211
+    ],
+    "median": 27.303,
+    "min": 27.211,
+    "max": 27.389,
+    "spread": 0.0065,
+    "peak_vram_bytes": 681574400
+   },
+   {
+    "batch": 32,
+    "eligible": true,
+    "frames_per_s": [
+     27.56,
+     27.663,
+     27.627
+    ],
+    "median": 27.627,
+    "min": 27.56,
+    "max": 27.663,
+    "spread": 0.0037,
+    "peak_vram_bytes": 920649728
+   },
+   {
+    "batch": 64,
+    "eligible": true,
+    "frames_per_s": [
+     26.463,
+     26.345,
+     26.404
+    ],
+    "median": 26.404,
+    "min": 26.345,
+    "max": 26.463,
+    "spread": 0.0045,
+    "peak_vram_bytes": 1417674752
+   },
+   {
+    "batch": 128,
+    "eligible": true,
+    "frames_per_s": [
+     17.173,
+     17.16,
+     17.178
+    ],
+    "median": 17.173,
+    "min": 17.16,
+    "max": 17.178,
+    "spread": 0.0011,
+    "peak_vram_bytes": 2411724800
+   },
+   {
+    "batch": 256,
+    "eligible": false,
+    "reason": "out_of_memory"
+   }
+  ],
+  "parameters": {
+   "max_batch": 256,
+   "frames_per_rep": 64,
+   "reps": 3,
+   "confirmation_reps": 3,
+   "tolerance": 0.05
+  }
+ },
+ "cuda_fp32": {
+  "batch": 2,
+  "frames": 256,
+  "reps": 3,
+  "frames_per_s": {
+   "n": 3,
+   "median": 43.824005275663026,
+   "p95": 43.8356626984891,
+   "min": 43.80149513364696,
+   "max": 43.8356626984891,
+   "small_sample": true
+  },
+  "s_per_frame_in_batch": {
+   "n": 384,
+   "median": 0.022817016749741015,
+   "p95": 0.022969508499954827,
+   "min": 0.022604058000069926,
+   "max": 0.023050786499879905,
+   "small_sample": false
+  },
+  "device": "cuda",
+  "batch_source": "encoder calibration throughput/v1",
+  "max_memory_allocated": 383454208,
+  "max_memory_reserved": 423624704
+ },
+ "cuda_fp16_gated_spec": {
+  "batch": 2,
+  "frames": 256,
+  "reps": 3,
+  "frames_per_s": {
+   "n": 3,
+   "median": 118.43864848374898,
+   "p95": 118.70502978477748,
+   "min": 115.98681576056218,
+   "max": 118.70502978477748,
+   "small_sample": true
+  },
+  "s_per_frame_in_batch": {
+   "n": 384,
+   "median": 0.008220450499948129,
+   "p95": 0.009976627500236646,
+   "min": 0.008135828499689524,
+   "max": 0.010133732499980397,
+   "small_sample": false
+  },
+  "device": "cuda",
+  "note": "distinct gated spec; not usable for the gate unless enabled (D3)",
+  "max_memory_allocated": 201586176
+ },
+ "summary": {
+  "gpu_fp32_over_cpu_fp32": 6.47,
+  "threshold": 5.0,
+  "cpu_batch": 8,
+  "gpu_batch": 2,
+  "meets_threshold_on_these_inputs": true
+ },
+ "gate_status": "NOT MEASURED (input set is not C-PREC)"
+}

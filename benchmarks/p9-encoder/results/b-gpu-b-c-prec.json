@@ -1,0 +1,59 @@
+{
+ "environment": {
+  "host": "Ubuntu-24-04",
+  "machine": "x86_64",
+  "cores": 12,
+  "python": "3.12.3",
+  "torch": "2.13.0+cu130",
+  "transformers": "5.15.1",
+  "numpy": "2.5.2",
+  "pillow": "12.3.0",
+  "cuda_available": true,
+  "cuda_runtime": "13.0",
+  "spec": "sha256:a4df3d19252891dc0d8d266d5056a226159ffc276898fdfd680472e54497d3d5",
+  "spec_fp16": "sha256:a765d7d2979264328bb60fa2757e6f587878a78e91cc8be2fc9a62bbebbb833c",
+  "runtime_profile": "rt-1",
+  "measured_at": "2026-10-11T20:03:47.692259+00:00",
+  "cpu_model": "11th Gen Intel(R) Core(TM) i5-11400H @ 2.70GHz",
+  "ram_gib": 15.4,
+  "gpu": "NVIDIA GeForce RTX 2050",
+  "vram_total_mib": 3822,
+  "vram_free_mib_at_start": 3730,
+  "driver": "615.71.09",
+  "ffmpeg": "ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers"
+ },
+ "corpus": {
+  "name": "C-PREC",
+  "items": 63,
+  "synthetic": false,
+  "manifest_sha256": "af5826bcc165284cd91e02aaeec8cdb1c3ed9af8fcb4c2b7580fd2a98d4c974f",
+  "gate_eligible": true
+ },
+ "benchmark": "B-GPU-b",
+ "device": "cuda",
+ "exit_code": 0,
+ "batch": 2,
+ "items": 63,
+ "ready": 63,
+ "video_minutes": 855.62,
+ "wall_s_including_model_load": 955.9,
+ "summary": {
+  "s_per_minute_of_video": 1.117,
+  "segments_per_s": 10.741
+ },
+ "stage_seconds_sum": {
+  "acquire": 231.19,
+  "infer": 296.28,
+  "decode": 2210.44,
+  "commit": 35.39
+ },
+ "peak_rss_mib": 1526,
+ "vram": {
+  "allocated": 347,
+  "reserved": 408,
+  "max_allocated": 3187,
+  "max_reserved": 3452
+ },
+ "note": "wall time includes model load and golden check (cold start); no end-to-end threshold (P9-D17)",
+ "gate_status": "measured (G-6 baseline)"
+}

@@ -1,0 +1,72 @@
+{
+ "benchmark": "B-PREC",
+ "environment": {
+  "host": "Ubuntu-24-04",
+  "machine": "x86_64",
+  "cores": 12,
+  "python": "3.12.3",
+  "torch": "2.13.0+cu130",
+  "transformers": "5.15.1",
+  "numpy": "2.5.2",
+  "pillow": "12.3.0",
+  "cuda_available": true,
+  "cuda_runtime": "13.0",
+  "spec": "sha256:a4df3d19252891dc0d8d266d5056a226159ffc276898fdfd680472e54497d3d5",
+  "spec_fp16": "sha256:a765d7d2979264328bb60fa2757e6f587878a78e91cc8be2fc9a62bbebbb833c",
+  "runtime_profile": "rt-1",
+  "measured_at": "2026-10-11T16:15:29.383466+00:00",
+  "cpu_model": "11th Gen Intel(R) Core(TM) i5-11400H @ 2.70GHz",
+  "ram_gib": 15.4,
+  "gpu": "NVIDIA GeForce RTX 2050",
+  "vram_total_mib": 3822,
+  "vram_free_mib_at_start": 2002,
+  "driver": "615.71.09",
+  "ffmpeg": "ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers"
+ },
+ "corpus": {
+  "name": "C-PREC",
+  "items": 63,
+  "synthetic": false,
+  "manifest_sha256": "af5826bcc165284cd91e02aaeec8cdb1c3ed9af8fcb4c2b7580fd2a98d4c974f",
+  "gate_eligible": true
+ },
+ "threshold_cosine": 0.999,
+ "batch": 16,
+ "modes": [
+  "cpu_fp32",
+  "cuda_fp32",
+  "cuda_fp16"
+ ],
+ "tp1_alignment": {
+  "identical": true,
+  "basis": "every mode embedded the same decoded tensors; per-item vector counts asserted equal to the decoded segment count",
+  "items": 63,
+  "segments": 10267
+ },
+ "tp2": {
+  "segments": 10267,
+  "cuda_fp16_vs_cpu_fp32": {
+   "min": 0.9906226396560669,
+   "n": 10267,
+   "median": 0.9999948740005493,
+   "p95": 0.999997615814209,
+   "max": 0.9999991655349731,
+   "small_sample": false,
+   "below_threshold": 7
+  },
+  "cuda_fp32_vs_cpu_fp32": {
+   "min": 0.9999997615814209,
+   "n": 10267,
+   "median": 1.0,
+   "p95": 1.0000001192092896,
+   "max": 1.000000238418579,
+   "small_sample": false,
+   "below_threshold": 0
+  },
+  "pass_on_these_inputs": false
+ },
+ "gate_status": {
+  "G-2 TP-1/TP-2 on C-PREC": "FAIL",
+  "G-3": "NOT MEASURED (labelled-decision gate needs L-PAIRS with its pairs)"
+ }
+}

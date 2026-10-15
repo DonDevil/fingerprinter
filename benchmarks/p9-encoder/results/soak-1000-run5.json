@@ -1,0 +1,240 @@
+{
+ "benchmark": "B-SOAK",
+ "gate": "G-8 soak (design \u00a713.3)",
+ "gate_eligible": true,
+ "gate_status": "PASS",
+ "harness_result": "PASS",
+ "criteria": {
+  "1_zero_uncontrolled_terminations": true,
+  "2_zero_lost_requests": true,
+  "3_controlled_exits_reported_and_recovered": true,
+  "4_single_item_oom_items_retryable": true,
+  "5_leases_released_or_expired": true,
+  "6_rss_vram_bounded": true,
+  "7_zero_orphans_zero_open_intents": true,
+  "8_expected_failures_no_crash": true
+ },
+ "started_at": "2026-10-14T15:54:31.395806+00:00",
+ "duration_s": 13022.7,
+ "drain_s": 9076.8,
+ "corpus": {
+  "name": "SOAK-1000",
+  "items": 1030,
+  "synthetic": false,
+  "manifest_sha256": "ed3bfd8d02f46030684deff8f8a26cf949b0d59f209c094f77bd014ac72b8213"
+ },
+ "config": {
+  "devices": [
+   "cuda",
+   "cpu"
+  ],
+  "orphan_grace_s": 3900.0,
+  "attempt_timeout_s": 3600.0,
+  "attempt_lease_s": 600.0,
+  "max_rss_bytes": 4294967296,
+  "note": "orphan_grace_s and attempt_timeout_s shortened for observability (design \u00a713.3 #7)"
+ },
+ "environment": {
+  "host": "Ubuntu-24-04",
+  "cpu": "x86_64",
+  "cores": 12,
+  "torch": "2.13.0+cu130",
+  "cuda": "13.0",
+  "gpu": "NVIDIA GeForce RTX 2050",
+  "spec": "sha256:a4df3d19252891dc0d8d266d5056a226159ffc276898fdfd680472e54497d3d5",
+  "runtime_profile": "rt-1"
+ },
+ "requests": {
+  "READY": 1000,
+  "FAILED": 30
+ },
+ "unexpected_outcomes": [],
+ "exits": [
+  {
+   "host": "soak-cuda-0",
+   "pid": 260286,
+   "code": 0,
+   "kind": "normal",
+   "reason": "normal",
+   "reported": true,
+   "uptime_s": 9076.8
+  },
+  {
+   "host": "soak-cpu-1",
+   "pid": 260287,
+   "code": 0,
+   "kind": "normal",
+   "reason": "normal",
+   "reported": true,
+   "uptime_s": 9040.0
+  }
+ ],
+ "restarts": {
+  "soak-cuda-0": 0,
+  "soak-cpu-1": 0
+ },
+ "oom_single": [],
+ "leases_left": [],
+ "rss": {
+  "soak-cuda-0": {
+   "samples": 4128,
+   "peak": 1491509248,
+   "median_q2": 1376679936.0,
+   "median_q4": 1389088768.0,
+   "upward_trend": false
+  },
+  "soak-cpu-1": {
+   "samples": 4110,
+   "peak": 1492791296,
+   "median_q2": 1403146240,
+   "median_q4": 1417146368,
+   "upward_trend": false
+  }
+ },
+ "vram": {
+  "soak-cuda-0": {
+   "samples": 4122,
+   "peak": 3716153344,
+   "median_q2": 534773760.0,
+   "median_q4": 534773760.0,
+   "upward_trend": false
+  }
+ },
+ "sweep": {
+  "kept": 1000,
+  "deleted": 3,
+  "skipped_intent": 0,
+  "skipped_active": 0,
+  "aborted_uploads": 0
+ },
+ "open_intents": 0,
+ "unreferenced_objects": [],
+ "events_acked": 1031,
+ "reconcile_runs": [
+  {
+   "t": 8476,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 8506,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 8536,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 8568,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 8599,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 8630,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 8660,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 8691,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 8721,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 8752,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 8782,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 8812,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 8843,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 8873,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 8903,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 8933,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 8965,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 8997,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 9028,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 9058,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  }
+ ],
+ "reconcile_storage_errors": 2,
+ "stats": {
+  "representations": 1000,
+  "objects": 1000
+ }
+}

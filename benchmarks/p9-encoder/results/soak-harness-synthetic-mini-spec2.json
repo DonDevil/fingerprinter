@@ -1,0 +1,161 @@
+{
+ "benchmark": "B-SOAK",
+ "gate": "G-8 soak (design \u00a713.3)",
+ "gate_eligible": false,
+ "gate_status": "NOT MEASURED (corpus is not SOAK-1000)",
+ "harness_result": "PASS",
+ "criteria": {
+  "1_zero_uncontrolled_terminations": true,
+  "2_zero_lost_requests": true,
+  "3_controlled_exits_reported_and_recovered": true,
+  "4_single_item_oom_items_retryable": true,
+  "5_leases_released_or_expired": true,
+  "6_rss_vram_bounded": true,
+  "7_zero_orphans_zero_open_intents": true,
+  "8_expected_failures_no_crash": true
+ },
+ "started_at": "2026-10-11T03:39:52.359382+00:00",
+ "duration_s": 430.9,
+ "drain_s": 189.1,
+ "corpus": {
+  "name": "synthetic-60-seed7",
+  "items": 66,
+  "synthetic": true,
+  "manifest_sha256": "0dd52624e79240fcaf125d7ee2add40d4d247bab100047c0c59fdd523d3cd413"
+ },
+ "config": {
+  "devices": [
+   "cuda",
+   "cpu"
+  ],
+  "orphan_grace_s": 240.0,
+  "attempt_timeout_s": 180.0,
+  "attempt_lease_s": 60.0,
+  "max_rss_bytes": 4294967296,
+  "note": "orphan_grace_s and attempt_timeout_s shortened for observability (design \u00a713.3 #7)"
+ },
+ "environment": {
+  "host": "Ubuntu-24-04",
+  "cpu": "x86_64",
+  "cores": 12,
+  "torch": "2.13.0+cu130",
+  "cuda": "13.0",
+  "gpu": "NVIDIA GeForce RTX 2050",
+  "spec": "sha256:a4df3d19252891dc0d8d266d5056a226159ffc276898fdfd680472e54497d3d5",
+  "runtime_profile": "rt-1"
+ },
+ "requests": {
+  "READY": 60,
+  "FAILED": 6
+ },
+ "unexpected_outcomes": [],
+ "exits": [
+  {
+   "host": "soak-cuda-0",
+   "pid": 146983,
+   "code": 0,
+   "kind": "normal",
+   "reason": "normal",
+   "reported": true,
+   "uptime_s": 189.1
+  },
+  {
+   "host": "soak-cpu-1",
+   "pid": 146984,
+   "code": 0,
+   "kind": "normal",
+   "reason": "normal",
+   "reported": true,
+   "uptime_s": 174.9
+  }
+ ],
+ "restarts": {
+  "soak-cuda-0": 0,
+  "soak-cpu-1": 0
+ },
+ "oom_single": [],
+ "leases_left": [],
+ "rss": {
+  "soak-cuda-0": {
+   "samples": 91,
+   "peak": 1494597632,
+   "median_q2": 1375154176.0,
+   "median_q4": 1343033344,
+   "upward_trend": false
+  },
+  "soak-cpu-1": {
+   "samples": 84,
+   "peak": 1367867392,
+   "median_q2": 1350156288,
+   "median_q4": 1292754944,
+   "upward_trend": false
+  }
+ },
+ "vram": {
+  "soak-cuda-0": {
+   "samples": 90,
+   "peak": 3716153344,
+   "median_q2": 2529165312.0,
+   "median_q4": 534773760.0,
+   "upward_trend": false
+  }
+ },
+ "sweep": {
+  "kept": 60,
+  "deleted": 0,
+  "skipped_intent": 0,
+  "skipped_active": 0,
+  "aborted_uploads": 0
+ },
+ "open_intents": 0,
+ "unreferenced_objects": [],
+ "events_acked": 66,
+ "reconcile_runs": [
+  {
+   "t": 2,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 33,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 64,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 95,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 126,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 157,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 187,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  }
+ ],
+ "stats": {
+  "representations": 60,
+  "objects": 60
+ }
+}
