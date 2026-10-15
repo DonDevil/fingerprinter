@@ -1,0 +1,284 @@
+{
+ "boundaries": {
+  "pts": [
+   0,
+   5000,
+   10000
+  ],
+  "rgb_sha256": [
+   "c60d5bd36870db798a684fa7bf6817d24617b4bdee7583e53695ae647d77bec9",
+   "fd35b83b1d0f4ef8d2f53efe2e100656011ea0f36b22efabaf66f78bffaace16",
+   "57d2d569670fda664a5f307f229f851a946c5e1f32dae9e4406aa5d6ccfcc81c"
+  ],
+  "segment_index": [
+   0,
+   1,
+   2
+  ],
+  "shape": [
+   48,
+   64,
+   3
+  ],
+  "time_base": [
+   1,
+   1000
+  ]
+ },
+ "bt2020_sdr": {
+  "pts": [
+   0,
+   5000
+  ],
+  "rgb_sha256": [
+   "5a1711642c7fdc350f54886bf8c0d909aaa6757b3490a78c4af43b0d63152558",
+   "bd8e8c40d57f695e79b5ce8c8547776feb1bfef069efac6da40f95f4b77386fb"
+  ],
+  "segment_index": [
+   0,
+   1
+  ],
+  "shape": [
+   480,
+   640,
+   3
+  ],
+  "time_base": [
+   1,
+   1000
+  ]
+ },
+ "bt601_limited": {
+  "pts": [
+   0,
+   5000
+  ],
+  "rgb_sha256": [
+   "60833f371b2da2e56e41f87c4c91f2e8f8f4ec84b2b5e5cdcabb6d8a1fbe409c",
+   "f38790d3e21db28fde0812d060351774793396979dfc7b43c3a39803c3a1eed3"
+  ],
+  "segment_index": [
+   0,
+   1
+  ],
+  "shape": [
+   480,
+   640,
+   3
+  ],
+  "time_base": [
+   1,
+   1000
+  ]
+ },
+ "bt709_limited": {
+  "pts": [
+   0,
+   5000
+  ],
+  "rgb_sha256": [
+   "515288b217188a6863c77d0605a87a444f20f3a59d80ae4820d27e3070b79aad",
+   "e2bd52b045a1a2e3af3468456fc9ff8d58f54038baa858efe585c480675017d5"
+  ],
+  "segment_index": [
+   0,
+   1
+  ],
+  "shape": [
+   720,
+   1280,
+   3
+  ],
+  "time_base": [
+   1,
+   1000
+  ]
+ },
+ "full_range": {
+  "pts": [
+   0,
+   5000
+  ],
+  "rgb_sha256": [
+   "804eb031ce7c5f6442e234bdde3cf10363a7fa287ea4c140c1f6ec0e45ebf689",
+   "b4cd19a3be0eb3c53ec6296b148c90794c0f8405b77f8b70e5c44990c893299d"
+  ],
+  "segment_index": [
+   0,
+   1
+  ],
+  "shape": [
+   480,
+   640,
+   3
+  ],
+  "time_base": [
+   1,
+   1000
+  ]
+ },
+ "hdr_pq": {
+  "pts": [
+   0,
+   5000
+  ],
+  "rgb_sha256": [
+   "5a1711642c7fdc350f54886bf8c0d909aaa6757b3490a78c4af43b0d63152558",
+   "bd8e8c40d57f695e79b5ce8c8547776feb1bfef069efac6da40f95f4b77386fb"
+  ],
+  "segment_index": [
+   0,
+   1
+  ],
+  "shape": [
+   480,
+   640,
+   3
+  ],
+  "time_base": [
+   1,
+   1000
+  ]
+ },
+ "late_start": {
+  "pts": [
+   1000,
+   6000
+  ],
+  "rgb_sha256": [
+   "c60d5bd36870db798a684fa7bf6817d24617b4bdee7583e53695ae647d77bec9",
+   "fd35b83b1d0f4ef8d2f53efe2e100656011ea0f36b22efabaf66f78bffaace16"
+  ],
+  "segment_index": [
+   0,
+   1
+  ],
+  "shape": [
+   48,
+   64,
+   3
+  ],
+  "time_base": [
+   1,
+   1000
+  ]
+ },
+ "rotated_90": {
+  "pts": [
+   0,
+   81920
+  ],
+  "rgb_sha256": [
+   "623c18270587421e95dc3357837778fcb90c63937e8da55fbd61a3236cae2cc6",
+   "c8a56d192088da89d498cec494e10b7c83c5b82af69b5a3bdda4cca86afb94f6"
+  ],
+  "segment_index": [
+   0,
+   1
+  ],
+  "shape": [
+   64,
+   48,
+   3
+  ],
+  "time_base": [
+   1,
+   16384
+  ]
+ },
+ "ten_bit": {
+  "pts": [
+   0,
+   5000
+  ],
+  "rgb_sha256": [
+   "60833f371b2da2e56e41f87c4c91f2e8f8f4ec84b2b5e5cdcabb6d8a1fbe409c",
+   "f38790d3e21db28fde0812d060351774793396979dfc7b43c3a39803c3a1eed3"
+  ],
+  "segment_index": [
+   0,
+   1
+  ],
+  "shape": [
+   480,
+   640,
+   3
+  ],
+  "time_base": [
+   1,
+   1000
+  ]
+ },
+ "untagged_hd": {
+  "pts": [
+   0,
+   5000
+  ],
+  "rgb_sha256": [
+   "9f54d1e721e2b79ff78671a4edd5696ccc78bc38e944580da150b5b3e2b1ecf0",
+   "85340eaddb96db9670cfc0a8ca29979e9ebc79f73fed8e1d4dc7e17cbe7148dd"
+  ],
+  "segment_index": [
+   0,
+   1
+  ],
+  "shape": [
+   720,
+   1280,
+   3
+  ],
+  "time_base": [
+   1,
+   1000
+  ]
+ },
+ "untagged_sd": {
+  "pts": [
+   0,
+   5000
+  ],
+  "rgb_sha256": [
+   "60833f371b2da2e56e41f87c4c91f2e8f8f4ec84b2b5e5cdcabb6d8a1fbe409c",
+   "f38790d3e21db28fde0812d060351774793396979dfc7b43c3a39803c3a1eed3"
+  ],
+  "segment_index": [
+   0,
+   1
+  ],
+  "shape": [
+   480,
+   640,
+   3
+  ],
+  "time_base": [
+   1,
+   1000
+  ]
+ },
+ "vfr_holes": {
+  "pts": [
+   0,
+   12500,
+   30000
+  ],
+  "rgb_sha256": [
+   "c60d5bd36870db798a684fa7bf6817d24617b4bdee7583e53695ae647d77bec9",
+   "3ccc89d502f1ce5d9c3567691ac01a23b87984ebcaa40c308a2ae42a8b7a0278",
+   "57d2d569670fda664a5f307f229f851a946c5e1f32dae9e4406aa5d6ccfcc81c"
+  ],
+  "segment_index": [
+   0,
+   2,
+   6
+  ],
+  "shape": [
+   48,
+   64,
+   3
+  ],
+  "time_base": [
+   1,
+   1000
+  ]
+ }
+}
