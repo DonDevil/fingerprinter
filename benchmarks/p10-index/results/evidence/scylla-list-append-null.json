@@ -1,0 +1,13 @@
+{
+ "append": [
+  true,
+  true,
+  false
+ ],
+ "audit": [
+  "first",
+  "second"
+ ],
+ "null_first": true,
+ "null_second": false
+}

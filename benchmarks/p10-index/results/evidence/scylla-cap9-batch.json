@@ -1,0 +1,11 @@
+{
+ "batch_applied": true,
+ "holders_after": {
+  "gen:x:media:2": 300
+ },
+ "stale_batch_applied": false,
+ "static_insert_if_not_exists": [
+  true,
+  false
+ ]
+}
