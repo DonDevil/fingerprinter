@@ -81,9 +81,9 @@ P10_TABLES: Sequence[str] = (
         run int, run_started_at timestamp, done_run int, done_state text, done_ok_run int,
         recovery_runs map<timeuuid, int>, rerun_reason text, attempt int, failures int,
         next_attempt_at timestamp, due_at timestamp, waiting_reason text, failure text,
-        searched_generation int, target_set_rev bigint, ann_stats text, candidate_count int,
-        verify_cursor int, incomplete_reason text, subject text, created_at timestamp,
-        updated_at timestamp,
+        searched_generation int, searched_run int, target_set_rev bigint, ann_stats text,
+        candidate_count int, verify_cursor int, incomplete_reason text, cap_override int, subject text,
+        created_at timestamp, updated_at timestamp,
         PRIMARY KEY (subject_id, spec_digest, kind))""",
     """CREATE TABLE IF NOT EXISTS {ks}.match_due (
         due_day text, shard int, due_at timestamp, subject_id text, spec_digest text, kind text,
@@ -133,7 +133,18 @@ P10_TABLES: Sequence[str] = (
 )
 
 
+P10_COLUMNS: Sequence[tuple[str, str, str]] = (
+    # added after the first P10 schema (tables created by an earlier build of this module)
+    ("match_tasks", "searched_run", "int"),
+    ("match_tasks", "cap_override", "int"),
+)
+
+
 def migrate_p10(db: Db) -> None:
-    """Create the P10 tables; idempotent. The keyspace must exist (P9 ``migrate``)."""
+    """Create the P10 tables and additive columns; idempotent. The keyspace must exist (P9 ``migrate``)."""
     for cql in P10_TABLES:
         db.ddl(cql)
+    for table, column, kind in P10_COLUMNS:
+        if db.one("SELECT column_name FROM system_schema.columns WHERE keyspace_name = ? AND table_name = ? "
+                  "AND column_name = ?", db.keyspace, table, column) is None:
+            db.ddl(f"ALTER TABLE {{ks}}.{table} ADD {column} {kind}")

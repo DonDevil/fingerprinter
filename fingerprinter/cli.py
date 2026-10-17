@@ -161,6 +161,9 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("--max-items", type=int)
     for name in ("pause", "resume", "cancel", "status"):
         bf.add_parser(name).add_argument("job_id")
+    from fingerprinter import p10cli
+
+    p10cli.add_parsers(tools)
     return p
 
 
@@ -193,6 +196,10 @@ def main(argv: list[str] | None = None) -> int:  # noqa: PLR0911, PLR0912, PLR09
 def _dispatch(args: argparse.Namespace, svc: Services, actor: str) -> int:  # noqa: PLR0911, PLR0912, PLR0915
     j = args.json
     store = svc.store
+    from fingerprinter import p10cli
+
+    if args.tool in p10cli.TOOLS:
+        return p10cli.dispatch(args, svc, actor)
     if args.tool == "migrate":
         svc.objects.ensure_buckets()
         svc.pub.seed()
