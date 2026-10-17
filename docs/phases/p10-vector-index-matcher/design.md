@@ -45,6 +45,15 @@ capacity released only by the audit (§13.3); lost ACTIVE/DRAINING
 collections (§12.4); `equiv/v1` coverage (§10). Still a proposal; nothing
 approved.
 
+**Sixth correction 2026-10-17** (C-15, §19.3): C-14 reset one
+`index_repairs` row per (subject, generation) when a new occurrence opened,
+so an occurrence closed `RERUN_INCOMPLETE`/`TASK_FAILED` survived only as
+history text and stopped counting as unresolved. Now one row per occurrence
+(`occurrence` in the clustering key), never reset; resolution is
+per-occurrence with durable evidence; `recovery_unresolved` counts every
+occurrence row; a retired subject resolves its unresolved occurrences
+(§12.10). Still a proposal; nothing approved.
+
 Plan: crawler2 `docs/v2-phase-plan.md` §P10 (binding), invariants B.5 #3/#4.
 P9 is complete and is not reopened: no P9 identity, spec, table, artifact or
 event changes here (P10-D5 keeps P9 code unchanged).
@@ -257,7 +266,7 @@ them.
 | Table | Key | Content |
 |---|---|---|
 | `index_generations` | PK `(spec_digest, role)`, CK `generation`; **static** `active_generation`, `active_epoch`, `routing_epoch`, `next_generation` | per generation: state (§12.4), collection, params JSON + digest, `boundary_at`, per-bucket build cursor, expected/actual counts, `reserved_points` (§13.3), manifest digest, build owner epoch, `detect_count` (LWT-incremented per detected loss), `validated_detect_count`, `suspect_since` / `suspect_reason` (operator-visible flag; **never gates task completion**, §12.10), `audit_state` / `audit_cursor` (per-subject audit, §12.10), `promoted_at`, `drain_horizon_at`, `last_clean_verify_at`, timestamps, audit. Generation numbers come from `next_generation` and are never reused |
-| `index_repairs` | PK `(spec_digest, role, bucket)`, CK `(subject_id, generation)` | **the index-integrity recovery ledger** (§12.10; corrected C-14): one row per (subject, generation). Row-level: `occurrence` int and `occurrence_id` timeuuid (identity of the current occurrence; both changed together only by the open LWT; an id is never reused), `history list<text>` (ended occurrences). Occurrence-scoped, written explicitly at every open: `state` OPEN/REPAIRED/RERUN_PENDING/CLOSED, `detections` int, `gen_marked` bool, `detected_at`, `detected_by`, `row_seq`, `expected_count`, `observed_count`, `repaired_at`, `required_run map<text, int>` (task kind → run), `close_reason`, `closed_at`, `resolved_run`, `resolved_at`, `attempts`, `next_attempt_at`, `last_error`. Never deleted while the spec is indexed |
+| `index_repairs` | PK `(spec_digest, role, bucket)`, CK `(subject_id, generation, occurrence)`, clustering `occurrence DESC` | **the index-integrity recovery ledger, one row per occurrence** (§12.10; corrected C-14, C-15): `occurrence_id` timeuuid (never reused), `state` OPEN/REPAIRED/RERUN_PENDING/CLOSED, `detections` int, `gen_marked` bool, `detected_at`, `detected_by`, `row_seq`, `expected_count`, `observed_count`, `repaired_at`, `required_run map<text, int>` (task kind → run), `close_reason`, `closed_at`, `resolution` PENDING/RESOLVED, `resolution_reason`, `resolved_by map<text, int>` (kind → qualifying DONE run), `resolved_at`, `attempts`, `next_attempt_at`, `last_error`. A row is created once by `INSERT … IF NOT EXISTS`, never reset, never deleted while the spec is indexed; there is no head row (the latest occurrence of (S, g) is read) |
 | `index_capacity` | PK `instance` (one Qdrant instance), CK `holder` | the capacity ledger (§13.3; corrected C-14): **static** `max_points` (copied from config, audited), `reserved` bigint, `updated_at` — `reserved` changed only by LWT `IF reserved = :r`; one clustering row per rebuild admission (`holder = gen:<spec12>:<role>:<g>`, `points`), written in the same conditional batch as the reservation |
 | `index_build_lease` | PK `(spec_digest, role)` | `owner`, `epoch`, `lease_until` — one builder per (spec, role) (P9 intake lease pattern) |
 | `index_entries` | PK `(spec_digest, role, bucket)`, CK `subject_id` | **the durable mutation intent and its bookkeeping** (§12.2): `desired_op` UPSERT/DELETE, `desired_ver` (artifact SHA-256, plus `lowinfo_rev` for targets), `seq` bigint, `applied map<int, bigint>` (generation → applied seq), `segment_count`, `state` PENDING/APPLIED/BLOCKED, `attempts`, `last_error`, `updated_at` |
@@ -266,7 +275,7 @@ them.
 | `target_set_rev` | PK `spec_digest` | `rev` bigint, `members_digest`, `updated_at` — target-set revision for low-information classification (§7.3) |
 | `lowinfo_class` | PK `spec_digest`, CK `target_representation_id` | `rev`, `rule` (`lowinfo/v1`), `status` (`COMPLETE`/`PARTIAL`), per-segment flag bitmap, `witnesses map<int, frozen<list<text>>>` (segment → ≤ 4 witness target representation ids of other works), `computed_at` (§7.3) |
 | `lowinfo_refresh` | PK `spec_digest` | `requested_rev`, `done_rev`, `full_requested` bool, owner/epoch/lease, `last_error` (§7.3) |
-| `match_tasks` | PK `subject_id`, CK `(spec_digest, kind)` | `kind ∈ {media_vs_targets, target_vs_media, media_vs_media}`; state machine §11.1; lease fields (`epoch`), **`run` int** (current run number), `run_started_at` (set by the claim LWT of the run), `done_run` int and `done_state` (DONE/INCOMPLETE) of the last run that finished, `recovery_runs map<timeuuid, int>` (recovery **occurrence id** → the run it requires, §12.10; corrected C-14), `rerun_reason`; attempt, failures, `next_attempt_at`; `searched_generation` (pinned by the run's search step, §11.1); target-set rev used; ANN statistics JSON; candidate counts; `incomplete_reason`; timestamps |
+| `match_tasks` | PK `subject_id`, CK `(spec_digest, kind)` | `kind ∈ {media_vs_targets, target_vs_media, media_vs_media}`; state machine §11.1; lease fields (`epoch`), **`run` int** (current run number), `run_started_at` (set by the claim LWT of the run), `done_run` int and `done_state` (DONE/INCOMPLETE) of the last run that finished, `done_ok_run` int (last run that finished DONE; C-15), `recovery_runs map<timeuuid, int>` (recovery **occurrence id** → the run it requires, §12.10; corrected C-14), `rerun_reason`; attempt, failures, `next_attempt_at`; `searched_generation` (pinned by the run's search step, §11.1); target-set rev used; ANN statistics JSON; candidate counts; `incomplete_reason`; timestamps |
 | `match_due` | PK `(due_day, shard)`, CK `(due_at, subject_id, spec_digest, kind)` | discoverability index of non-terminal tasks (P9 `encode_due` pattern) |
 | `match_candidates` | PK `(subject_id, spec_digest, kind, generation, run)`, CK `rank` | durable candidate list of **one run** of a task (bounded by its cap), per-candidate state; a new run never reuses an older run's list (§12.10) |
 | `matches` | PK `content_id`, CK `(target_id, target_version, media_spec_digest, target_spec_digest, technique_name, technique_version)` | `match_id` (checked equal to `MatchId.of(...)` of the key components on write), `representation_id`, `target_representation_id`, verdict, confidence, `calibration_id`, alignment JSON, verifier param digest, provenance JSON (§9.2), `decided_at`, stored envelope, `event_id`, `published_at` — *corrected C-6, §9.3a* |
@@ -1029,8 +1038,8 @@ single-row LWT.
 **Run fencing.** Every transition of a run is an LWT `IF epoch = :e AND run =
 :r` on the task row. The first claim of run *r* sets `run_started_at` (`IF run
 = :r AND run_started_at = null`). The completion LWT is `SET state = 'DONE' |
-'INCOMPLETE', done_run = :r, done_state = <the same> IF epoch = :e AND run =
-:r`. A **run bump**
+'INCOMPLETE', done_run = :r, done_state = <the same> [, done_ok_run = :r
+when DONE] IF epoch = :e AND run = :r`. A **run bump**
 (`SET run = :r+1, state = 'PENDING', run_started_at = null,
 recovery_runs[:occurrence_id] = :r+1, rerun_reason = :why, next_attempt_at =
 :now IF run = :r AND state IN (<every non-FAILED state>)`; an audited `match
@@ -1353,7 +1362,7 @@ P9's `reconcile run`, with its own leases. Passes:
 | scans | §6.1 B (missed hints, retirements) | write desired state, tasks |
 | Qdrant verification (per generation, scroll in id order, cursor persisted, rate-limited; full cycle ≤ `verify_cycle_s`, sampled vector digests) | point without UPSERT row (orphan); point `seq` < row `seq` (stale); row APPLIED but points missing or count ≠ `segment_count`; point present for DELETE row | re-apply the row's desired state; delete orphans by id |
 | generations | stuck non-terminal generations, expired build leases, DRAINING past grace and past a clean post-horizon pass | resume, FAILED, RETIRED |
-| repairs (C-13) | every `index_repairs` row not CLOSED (64 buckets per spec/role, cursor persisted); generations with `audit_state = REQUESTED/RUNNING` | drive each current occurrence OPEN → REPAIRED → RERUN_PENDING → CLOSED, re-check unresolved closes for `resolve` (§12.10, C-14); run the per-subject audit |
+| repairs (C-13, C-15) | every `index_repairs` occurrence row not CLOSED with `resolution = RESOLVED` — older occurrences of a subject included (64 buckets per spec/role, cursor persisted); generations with `audit_state = REQUESTED/RUNNING` | drive OPEN → REPAIRED → RERUN_PENDING → CLOSED, re-check unresolved closes for `resolve` (§12.10); run the per-subject audit |
 | lowinfo | `done_rev < requested_rev`, `full_requested` | resume refresh / full recomputation |
 | capacity audit | ledger vs holder rows, pending UPSERT rows and Qdrant exact counts (§13.3 order a–d) | set `reserved` to the bound by CAS — the **only** path that lowers it (C-14) |
 
@@ -1690,85 +1699,113 @@ assumption that acknowledged writes stay durable and visible, §12.9; a known
 limitation, §17), and a searched generation destroyed without its final pass
 (handled by the fallback below).
 
-**Obligation, occurrence and their identities (corrected C-14).**
+**Obligation occurrences and their identities (corrected C-14, C-15).**
 
-- The **obligation row** is `index_repairs(spec_digest, role, bucket =
-  shard_of(subject, 64); subject_id, generation)`: at most one per (S, g),
-  never deleted while the spec is indexed.
-- An **occurrence** is one detected loss episode of S in g that must be
-  repaired and then re-searched by S's own tasks. Its identity is the pair
-  (`occurrence` int = 1, 2, …, `occurrence_id` timeuuid). The
+- **One row per occurrence; no head row.** The ledger table is
+  `index_repairs` with PK `(spec_digest, role, bucket = shard_of(subject,
+  64))`, CK `(subject_id, generation, occurrence)`, clustering order
+  `occurrence DESC`. An **occurrence** is one detected loss episode of S in
+  g that must be repaired and then re-searched by S's own tasks. Its row is
+  created once (`INSERT … IF NOT EXISTS`), **never reset, never overwritten
+  by a later occurrence and never deleted while the spec is indexed**. The
+  "current occurrence" of (S, g) is simply the row with the highest
+  `occurrence`; it is read, not stored.
+- **Identity.** (`occurrence` int = 1, 2, …; `occurrence_id` timeuuid). The
   `occurrence_id` is generated fresh by the detector that opens the
-  occurrence (time-based, node-unique; never derived from the row, never
-  reused), and both columns change together, only in the *open* LWT below.
-- A task row records the run an occurrence requires in **`recovery_runs
-  map<timeuuid, int>` keyed by `occurrence_id`** (§5, §11.1). An entry
-  written for occurrence *k* can therefore never be read as the bump of
-  occurrence *j ≠ k*; entries are never needed after their occurrence closes
-  and correctness depends neither on deleting nor on keeping them.
-- *Corrected C-14:* C-13 kept one `obligation_id` per row for all
-  occurrences and keyed the task map by it. After a close and a re-open, the
-  bump step found the first occurrence's map entry "already present", took
-  it as the bump, and recorded an already finished run as the new
-  requirement: the second loss closed without any new rerun. C-13 called the
-  removal of that entry cosmetic; correctness depended on it.
+  occurrence (time-based, node-unique, never reused) and written only by the
+  creating INSERT. A task row records the run an occurrence requires in
+  **`recovery_runs map<timeuuid, int>` keyed by `occurrence_id`** (§5,
+  §11.1): an entry of one occurrence can never be read as the bump of
+  another, and correctness depends neither on deleting nor on keeping
+  entries.
+- *Corrected C-14:* C-13 kept one `obligation_id` for every occurrence of a
+  row and keyed the task map by it, so after a re-open the bump step took
+  the first occurrence's finished run as the new requirement.
+- *Corrected C-15:* C-14 kept one row per (S, g) and **reset** it when a new
+  occurrence opened, keeping the ended occurrence only as a text entry in
+  `history`. An occurrence closed `RERUN_INCOMPLETE` or `TASK_FAILED` and
+  then superseded by a successful second occurrence disappeared from
+  `recovery_unresolved` (computed from the current row only), so negatives
+  could be reported `settled` while the first loss's pairs might still be
+  hidden; after a restart nothing machine-readable said which runs the old
+  occurrence still needed. Now every occurrence keeps its own row, state and
+  requirements until it is resolved, and occurrences never supersede each
+  other.
+- *Why not a head row plus an occurrence table:* the two would be in
+  different tables, therefore different partitions and different Paxos
+  instances; opening an occurrence would need two LWTs that can be split by
+  a crash (occurrence without head, or head without occurrence). A
+  same-partition conditional batch over two tables does not exist (one
+  batch with conditions must target one partition of one table), and a
+  multi-row conditional batch within `index_repairs` would add a datastore
+  feature to verify. With one row per occurrence every transition is a
+  **single-row LWT**, and the only multi-row operation — finding the latest
+  occurrence of (S, g) — is a read.
 
-Row columns. *Row-level* (never reset): the key, `occurrence`,
-`occurrence_id`, `history list<text>` (one JSON entry appended per ended
-occurrence: number, id, `close_reason` or `SUPERSEDED`, times). *Occurrence-
-scoped* (all written explicitly by the open LWT — none is inherited from an
-earlier occurrence and none relies on null-as-default, so every condition
-compares written values): `state`, `detections` int (0), `gen_marked` bool
-(false), `detected_at`, `detected_by`, `row_seq`, `expected_count`,
-`observed_count`, `repaired_at` (null), `required_run map<text, int>` ({}),
-`close_reason` (null), `closed_at` (null), `resolved_run` (null),
-`resolved_at` (null), `attempts` (0), `next_attempt_at`, `last_error` (null).
-Every cell used in a condition is written only by LWT.
+Columns of an occurrence row, all written by LWT and all initialised
+explicitly by the creating INSERT (no null-as-default in any condition):
+`occurrence_id`, `state` OPEN/REPAIRED/RERUN_PENDING/CLOSED (initial OPEN),
+`detections` int (0), `gen_marked` bool (false), `detected_at`,
+`detected_by`, `row_seq`, `expected_count`, `observed_count`, `repaired_at`
+(null), `required_run map<text, int>` (task kind → run; {} until
+RERUN_PENDING), `close_reason` (null), `closed_at` (null), `resolution`
+(`PENDING` until resolved, then `RESOLVED`), `resolution_reason`
+(`RERUN_DONE`, `LATER_RUN`, `SUBJECT_RETIRED`; null), `resolved_by map<text, int>`
+(task kind → qualifying DONE run; {}), `resolved_at` (null), `attempts`
+(0), `next_attempt_at`, `last_error` (null).
 
-**Transitions — each one single-row LWT on `index_repairs`** (conditions
-`O` = `occurrence = :o AND occurrence_id = :oid`, the values the actor read):
+**Reading the latest occurrence of (S, g).** `SELECT … WHERE spec_digest = ?
+AND role = ? AND bucket = ? AND subject_id = ? AND generation = ? LIMIT 1`
+at LOCAL_SERIAL (clustering order puts the highest `occurrence` first). The
+protocol does not depend on that read being a serial slice read: the
+equivalent walk — `INSERT` occurrence 1 `IF NOT EXISTS`; a failed insert
+returns the existing row; continue with *o* + 1 until an insert succeeds or
+an existing row is the highest — uses only single-row LWTs. Whether Scylla
+6.2.3 executes the serial slice read is checked by R-26 (else the walk is
+used).
 
-| Transition | Actor | Statement | What the condition protects |
+**Transitions — each one single-row LWT on the occurrence row** (`O` =
+`occurrence_id = :oid`; the key fixes `occurrence`):
+
+| Transition | Actor | Statement | What it protects |
 |---|---|---|---|
-| open (first) | detector | `INSERT … (occurrence = 1, occurrence_id = :new, state = 'OPEN', detections = 0, gen_marked = false, required_run = {}, …) IF NOT EXISTS` | one row per (S, g) |
-| open (again) | detector | `UPDATE SET occurrence = :o + 1, occurrence_id = :new, state = 'OPEN',` every occurrence-scoped column to its initial value `IF O AND state = 'CLOSED'`; or, from REPAIRED/RERUN_PENDING, the same plus `history = history + [:superseded] IF O AND state IN ('REPAIRED', 'RERUN_PENDING')` (a CLOSED occurrence was appended by its close, so each ended occurrence appears once) | a loss seen after the occurrence's repair was confirmed gets a new identity; the old occurrence ends `SUPERSEDED` (a run that satisfies the new one starts after the new repair, so it also satisfies the old one) |
-| merge | detector | `UPDATE SET detections = :d + 1, observed_count = … IF O AND state = 'OPEN' AND detections = :d` | a loss seen while the repair is still unconfirmed invalidates any confirmation read before it |
-| mark | reconciler | `index_generations`: `SET detect_count = :c + 1, suspect_since, suspect_reason IF detect_count = :c`; then `SET gen_marked = true IF O AND state = 'OPEN'` | promotion fence and operator flag (§12.4); a crash between the two statements raises `detect_count` twice — harmless, the fence only needs it to increase |
-| repaired | reconciler | `SET state = 'REPAIRED', repaired_at = :t IF O AND state = 'OPEN' AND gen_marked = true AND detections = :d` | `:d` is read (SERIAL) **after** the repair write and **before** the confirming count; a merge that landed after that read fails the transition |
-| rerun pending | reconciler | `SET required_run = :m, state = 'RERUN_PENDING' IF O AND state = 'REPAIRED'` | `:m` is built only from `recovery_runs[:oid]` of S's task rows |
-| close | reconciler | `SET state = 'CLOSED', close_reason = :r, closed_at = :t, history = history + [:ended] IF O AND state = 'RERUN_PENDING'` (for `SUBJECT_RETIRED`: `… IF O AND state IN ('OPEN', 'REPAIRED', 'RERUN_PENDING')`) | only the current occurrence can close |
-| resolve | reconciler | `SET resolved_run = :n, resolved_at = :t IF O AND state = 'CLOSED' AND resolved_run = null` | an unresolved close (`RERUN_INCOMPLETE`, `TASK_FAILED`) becomes resolved only by a later qualifying DONE run |
+| open | detector | `INSERT (…, occurrence = :n, occurrence_id = :new, state = 'OPEN', detections = 0, gen_marked = false, required_run = {}, resolution = 'PENDING', resolved_by = {}, …) IF NOT EXISTS`, with `:n` = 1 if (S, g) has no row, else latest + 1 **and only if the latest is past OPEN** (an OPEN latest is merged instead) | one row per occurrence number; a new loss after a confirmed repair gets its own row; the older occurrence keeps its row, state and requirements and proceeds independently (nothing is superseded) |
+| merge | detector | `UPDATE SET detections = :d + 1, observed_count = … IF O AND state = 'OPEN' AND detections = :d` on the latest occurrence | a loss seen while the repair is unconfirmed invalidates a confirmation read before it |
+| mark | reconciler | `index_generations`: `SET detect_count = :c + 1, suspect_since, suspect_reason IF detect_count = :c`; then `SET gen_marked = true IF O AND state = 'OPEN'` | promotion fence and operator flag (§12.4); a crash between the two raises `detect_count` twice — harmless, the fence only needs an increase |
+| repaired | reconciler | `SET state = 'REPAIRED', repaired_at = :t IF O AND state = 'OPEN' AND gen_marked = true AND detections = :d` | `:d` read (SERIAL) after the repair write and before the confirming count |
+| rerun pending | reconciler | `SET required_run = :m, state = 'RERUN_PENDING' IF O AND state = 'REPAIRED'` | `:m` built only from `recovery_runs[:oid]` of S's task rows |
+| close | reconciler | `SET state = 'CLOSED', close_reason = :r, closed_at = :t [, resolution = 'RESOLVED', resolution_reason = :r, resolved_by = :b, resolved_at = :t when :r ∈ {RERUN_DONE, SUBJECT_RETIRED}] IF O AND state = 'RERUN_PENDING'` (for `SUBJECT_RETIRED`: `IF O AND state IN ('OPEN', 'REPAIRED', 'RERUN_PENDING')`) | close and, when already satisfied, resolution in one LWT |
+| resolve | reconciler | `SET resolution = 'RESOLVED', resolution_reason = :why, resolved_by = :b, resolved_at = :t IF O AND state = 'CLOSED' AND resolution = 'PENDING'` | an unresolved close becomes resolved exactly once, with its evidence (`LATER_RUN` + qualifying runs, or `SUBJECT_RETIRED`) |
 
 **Unknown LWT outcome** (`LwtUnknownError`): the actor makes no further
 write for S (no repair, no cursor advance, no bump) until a SERIAL read of
-the row has decided it:
+the occurrence row has decided it:
 
 | Transition | Applied iff the SERIAL read shows | If not applied |
 |---|---|---|
-| open (first/again) | `occurrence_id = :new` — the id is the actor's own, so this is decisive | act on what the row shows: OPEN ⇒ merge; REPAIRED/RERUN_PENDING/CLOSED ⇒ open again against the row's current `O` |
-| merge | indistinguishable from another detector's merge, so the detector does not decide it: if the row is still OPEN with the same `O`, `detections > :d` satisfies it, `detections = :d` ⇒ retry; if the row has moved past OPEN (or to another occurrence), the detector **opens again** | (a needless open costs one rerun, never a missed pair) |
-| mark, repaired, rerun pending, close, resolve | same `occurrence_id` and `state` at or past the target state (another reconciler's success is equivalent: the values are derived from durable rows) | re-read the inputs and repeat the step |
+| open | the row with key `:n` has `occurrence_id = :new` (the actor's own id — decisive) | another detector created `:n`: OPEN ⇒ merge into it; past OPEN ⇒ open `:n + 1` |
+| merge | not decidable (another detector may have merged): row still OPEN with `detections > :d` ⇒ satisfied; `= :d` ⇒ retry; row past OPEN ⇒ **open** the next occurrence | (a needless occurrence costs one rerun, never a missed pair) |
+| mark, repaired, rerun pending, close, resolve | `state` / `resolution` at or past the target value (another reconciler's success is equivalent: values derive from durable rows) | re-read the inputs and repeat |
 
-**Repair (OPEN → REPAIRED).** SERIAL read of the obligation (`O`). Re-read the
-`index_entries` row and the authoritative P9 row. Subject no longer live
+**Repair (OPEN → REPAIRED).** SERIAL read of the occurrence (`O`). Re-read
+the `index_entries` row and the authoritative P9 row. Subject no longer live
 (§4.2 liveness, desired DELETE) ⇒ close `SUBJECT_RETIRED` (its tasks stop,
 §12.3; pairs it lost while live are not recovered — §17). If g is RETIRED or
 FAILED (SERIAL read), the repair is confirmed without a write. Otherwise
 re-apply the row's **current** desired state to g through §12.2 — including
 its capacity reservation (the lost points were already removed from the
 audit's counts, so the repair reserves `segment_count` in g like any apply)
-— with this exception: the
-§12.2 pre-count of a repair write is satisfied by the OPEN occurrence the
-repairer holds and records no new detection. Then: SERIAL read of
-`detections` (`:d`), exact count `subject = S AND seq = row.seq` =
-`segment_count`, `repaired` LWT with `:d`. A failed condition ⇒ repeat the
-repair (idempotent ids). A target-role repair also enqueues the target's
-classification step (§7.3).
+— with this exception: the §12.2 pre-count of a repair write is satisfied by
+the OPEN occurrence the repairer holds and records no new detection. Then:
+SERIAL read of `detections` (`:d`), exact count `subject = S AND seq =
+row.seq` = `segment_count`, `repaired` LWT with `:d`. A failed condition ⇒
+repeat the repair (idempotent ids). A target-role repair also enqueues the
+target's classification step (§7.3).
 
 **Run bump (REPAIRED → RERUN_PENDING), per task kind k of S** (the kinds of
-the table above that exist or are required by the configuration at bump
-time). Write the `match_due` entry first (idempotent; a stray entry is a
-no-op), then SERIAL read `match_tasks(S, spec, k)`:
+the table above whose task rows exist or are required by the configuration
+at bump time; the set is fixed in `required_run`). Write the `match_due`
+entry first (idempotent), then SERIAL read `match_tasks(S, spec, k)`:
 - `recovery_runs[:oid]` present ⇒ this occurrence's bump already happened
   (crash or unknown outcome earlier); use that run number;
 - row absent ⇒ `INSERT … run = 1, state = 'PENDING', run_started_at = null,
@@ -1788,31 +1825,76 @@ only atomic step on the task and it lives on S's own row: Scylla linearizes
 it with the completion LWT of run *r* (§11.1), so a run that may have
 searched before the repair cannot satisfy `required_run` (S5).
 
-**Close.** For every kind k: SERIAL read of the task row; the kind is
-satisfied when `done_run ≥ required_run[k]` (any run numbered at or after the
-required one started after the repair). The outcome of that run is
-`done_state` (§11.1): DONE ⇒ `RERUN_DONE`; INCOMPLETE ⇒ `RERUN_INCOMPLETE`.
-A task in state FAILED with `done_run < required_run[k]` (no bump was
-possible, or the required run itself failed — FAILED never sets
-`done_run`) ⇒ `TASK_FAILED`; otherwise the kind is still pending. The close reason is the
-worst over the kinds (`TASK_FAILED` > `RERUN_INCOMPLETE` > `RERUN_DONE`).
-`RERUN_INCOMPLETE` and `TASK_FAILED` are **unresolved closes**: the
-reconciler keeps checking them and records `resolve` when a later run of
-each unresolved kind with number ≥ `required_run[k]` finishes DONE (e.g.
-after `match retry --raise-cap`). Nothing about the task row has to be
-cleaned up afterwards.
+**Close and resolution — precise rules.** Per kind k the task row gives
+`done_run` (last finished run), `done_state` and **`done_ok_run`** (last run
+that finished DONE; set by the DONE completion LWT, §11.1):
+- kind k is **finished** iff `done_run ≥ required_run[k]`, or the task is
+  FAILED with `done_run < required_run[k]`;
+- kind k is **satisfied** iff `done_ok_run ≥ required_run[k]` — a run
+  numbered at or after the required one started after this occurrence's
+  repair (S5) and searched to completion (DONE excludes caps, saturation and
+  verification failures, §7.5);
+- the occurrence **closes** when every kind is finished (or the subject is no
+  longer live); `close_reason` = `RERUN_DONE` if every kind is satisfied,
+  else `TASK_FAILED` if some unsatisfied kind's task is FAILED, else
+  `RERUN_INCOMPLETE`;
+- the occurrence is **resolved** iff it closed `RERUN_DONE` or
+  `SUBJECT_RETIRED` (resolution written by the close LWT), or — after an
+  unresolved close — every kind became satisfied later (resolve LWT,
+  `resolved_by` = the qualifying `done_ok_run` per kind);
+- one later DONE run can satisfy several occurrences at once (every
+  occurrence whose `required_run[k]` ≤ that run, of any generation of S):
+  each is resolved by its own LWT, exactly once (`IF resolution =
+  'PENDING'`), each recording the run as evidence; a run below an
+  occurrence's requirement never resolves it, whatever happened to newer
+  occurrences;
+- an occurrence whose kinds are only partly satisfied stays **unresolved**
+  (e.g. `media_vs_media` required while equivalence was enabled and never
+  re-run after it was disabled — resolved only by an audited `match rerun`
+  of that kind);
+- `TASK_FAILED` / `RERUN_INCOMPLETE` stay visible on their own rows (state
+  CLOSED, `resolution = PENDING`, alert/metric) until resolved. No terminal
+  condition is equated with "no match": a FAILED task that is never retried
+  leaves its occurrence unresolved for good, and every negative of the spec
+  provisional (Option B's residual uncertainty, stated in §17);
+- subject retired: `SUBJECT_RETIRED` is resolved (the subject is out of the
+  live matching scope; pairs it lost while live are a documented loss, §17).
+  This also applies **after** an unresolved close: once S is no longer live
+  its tasks stop and can never produce the qualifying run, so the resolve
+  LWT records `resolution_reason = SUBJECT_RETIRED` (corrected C-15b:
+  otherwise one retired target with an unresolved occurrence would keep
+  every negative of the spec provisional forever);
+- generation retired or lost: the repair is confirmed by RETIRED and the
+  rerun requirement is unchanged; a rebuild creates no occurrence and
+  removes none (occurrence rows of retired generations stay until
+  resolved).
+
+**Discovery and the two counters.** The reconciler's `repairs` pass scans
+all 64 buckets of `index_repairs` for (spec, role) with a persisted cursor
+and processes every row that is not (`CLOSED` and `RESOLVED`): it drives
+OPEN/REPAIRED/RERUN_PENDING rows forward and re-checks CLOSED-PENDING rows
+for `resolve`. No row is ever found through another row, so an unresolved
+occurrence cannot be hidden by a later occurrence of the same (S, g), and a
+restart needs nothing but the table. From the same rows:
+- `recovery_open(spec)` = rows in OPEN, REPAIRED or RERUN_PENDING (both
+  roles) + generation audits REQUESTED/RUNNING;
+- `recovery_unresolved(spec)` = rows CLOSED with `resolution = PENDING`
+  (both roles).
+Neither counter can decrease because a newer occurrence opened or closed:
+a row leaves the first set only by its own close and the second only by its
+own resolve. The scan cost is proportional to the occurrences ever opened
+for the spec (losses, plus the unauditable fallback), not to the corpus.
 
 **Concurrent and delayed actors.**
 
 | Situation | Outcome |
 |---|---|
-| two detectors, no row | one INSERT wins; the other reads OPEN and merges |
-| two detectors, row REPAIRED/RERUN_PENDING/CLOSED | one open-again wins (`occurrence` + 1); the other fails on `O`, reads the new OPEN occurrence and merges |
-| detector vs repair confirmation | merge before the repairer's `:d` read ⇒ the confirming count (taken later) is valid; merge after it ⇒ `repaired` fails, the repair is repeated; `repaired` first ⇒ the merge fails and the detector opens again |
-| repair worker of occurrence *o* delayed past an open-again to *o* + 1 | its `repaired` / `rerun pending` / `close` LWTs fail on `O`; it re-reads and abandons; its Qdrant writes were §12.2 re-applies of the current desired state (they cannot remove current points, S2) |
-| bump of occurrence *o* landing after *o* + 1 recorded `required_run = r` | it can only move run *r* → *r* + 1 (`IF run = r`); *o* + 1 is then satisfied by `done_run ≥ r` through run *r* + 1, which started later; at worst one extra run |
-| duplicate reconcilers | pass lease; every step conditioned on `O` and `state`; equal results |
-| loss of S in two generations (ACTIVE and DRAINING) | two rows, two occurrences, two requirements; the bumps may coalesce into one run |
+| two detectors, (S, g) without rows | one INSERT of occurrence 1 wins; the other reads it OPEN and merges |
+| two detectors, latest occurrence past OPEN | one INSERT of the next number wins; the other fails, reads it OPEN and merges |
+| detector vs repair confirmation | merge before the repairer's `:d` read ⇒ the confirming count (taken later) is valid; merge after it ⇒ `repaired` fails, repair repeated; `repaired` first ⇒ the merge fails and the detector opens the next occurrence |
+| worker of occurrence *o* delayed after occurrence *o* + 1 opened | it acts on row *o* only (key and `occurrence_id`); its steps are still valid for *o* — *o* is not superseded and must still close and resolve on its own requirement; it can never write row *o* + 1; its task-row writes use `recovery_runs[oid_o]` and can only move a run forward (one extra run at worst) |
+| duplicate reconcilers | pass lease; every step conditioned on `O`, `state` or `resolution`; equal results |
+| loss of S in two generations (ACTIVE and DRAINING) | separate rows, separate requirements; the bumps may coalesce into one run, which may then satisfy both |
 | reconciler or process restart | all state in Scylla; the `repairs` pass resumes from its bucket cursor; Redis due ZSET rebuilt from `match_due` |
 
 **Crash, retry and failure handling.**
@@ -1824,31 +1906,35 @@ cleaned up afterwards.
 | crash after OPEN, before the mark | `gen_marked = false` | reconciler marks, then continues (`repaired` requires the mark) |
 | repair worker crashes mid-repair / before REPAIRED | OPEN | re-apply (idempotent ids), new `:d` read, re-confirm |
 | crash after a bump, before `required_run` recorded | task row holds `recovery_runs[:oid]` | the next pass reads it; never bumps twice for one `occurrence_id` |
-| rerun worker crash, lease expiry, duplicate delivery | run *r* + 1 in progress | P9 lease pattern; the same run resumes (it was numbered after the repair); duplicates fail on `epoch`/`run` |
+| crash after an unresolved close, before any resolve | CLOSED, `resolution = PENDING` | the next pass re-checks it; resolves only when every kind is satisfied |
+| rerun worker crash, lease expiry, duplicate delivery | run in progress | P9 lease pattern; the same run resumes; duplicates fail on `epoch`/`run` |
 | step keeps failing (Scylla/Qdrant down) | row unchanged | `attempts`, `next_attempt_at` (30 s → 15 min), `last_error`; after `max_attempts` metric `index_repairs_blocked` and alert, still retried; never dropped |
 | g retired while an occurrence is open | — | repair confirmed by RETIRED; reruns follow |
-| a searched generation cannot be audited (collection lost or unreadable before its final pass, `index drop --force-unverified`) | extent unknown | **fallback:** an occurrence (open or open-again, `detected_by = unauditable`) for every UPSERT row with `applied[g]` set (exact enumeration from Scylla), all durable **before** g may become RETIRED (§12.4); then each repair is confirmed by RETIRED and its reruns follow, rate-limited (`reconcile.rerun_per_s`), audited, visible; a whole-index loss (R-20) uses the same rule |
+| a searched generation cannot be audited (collection lost or unreadable before its final pass, `index drop --force-unverified`) | extent unknown | **fallback:** an occurrence (`detected_by = unauditable`; merged into an OPEN latest, else a new one) for every UPSERT row with `applied[g]` set (exact enumeration from Scylla), all durable **before** g may become RETIRED (§12.4); each repair is then confirmed by RETIRED and its reruns follow, rate-limited (`reconcile.rerun_per_s`), audited, visible; a whole-index loss (R-20) uses the same rule |
 
 **Invariant R (the corrected guarantee).** For every non-protocol loss of the
 current points of a live subject S from a generation g while g is searched
 that a detector observes:
-- R1 an occurrence of `index_repairs(S, g)` is open (or merged into an open
-  one) durably before any write repairs S in g and before the detecting pass
-  moves past S;
-- R2 the row is never deleted; an occurrence becomes CLOSED only by a close
-  LWT issued after, for every task kind of S, a run numbered by a task-row LWT
-  that followed the occurrence's REPAIRED transition has finished (DONE or
-  INCOMPLETE), or with the visible terminal reason `TASK_FAILED` /
-  `SUBJECT_RETIRED`; or it ends `SUPERSEDED` by a later occurrence of the same
-  row, whose requirement is strictly later;
+- R1 an occurrence row of `index_repairs` for (S, g) is open (or the loss is
+  merged into the open latest one) durably before any write repairs S in g
+  and before the detecting pass moves past S;
+- R2 occurrence rows are never reset or deleted; an occurrence becomes CLOSED
+  only by a close LWT issued after, for every task kind of S, a run numbered
+  by a task-row LWT that followed **its own** REPAIRED transition has
+  finished (DONE or INCOMPLETE), or with the visible terminal reason
+  `TASK_FAILED` / `SUBJECT_RETIRED`; it is **resolved** only when every kind
+  has a DONE run at or after its requirement (or `SUBJECT_RETIRED`), and no
+  other occurrence's progress resolves, closes or replaces it (C-15);
 - R3 a run of S that may have searched before the occurrence's repair cannot
   satisfy R2 (S5);
 - R4 a task of any other subject finishes DONE on what it observed; that DONE
   is never re-opened by the obligation and asserts nothing about index
   integrity;
-- R5 occurrence identities are unique: a run recorded for one occurrence can
-  never satisfy another, and no step of an older occurrence can change a
-  newer one (every transition is conditioned on `O`);
+- R5 occurrence identities are unique: a task-map entry recorded for one
+  occurrence can never be taken as another's bump, and no step of one
+  occurrence can change another's row (each transition is a single-row LWT
+  on its own row, conditioned on `O`); a single later DONE run may satisfy
+  several occurrences only through each one's own requirement;
 - R6 REPAIRED means: a confirming count taken after the repair write found
   S's current points complete, and no loss observation of this occurrence was
   recorded after the repairer's `:d` read. A loss after the confirming count
@@ -1873,23 +1959,31 @@ negative of the spec provisional, below).
   unchanged.
 - P10 stores and publishes no negative result. "No match" is a *reported
   status*, never an event or a row.
-- **When a "no match" is `settled` (corrected C-14).** For subject X under
+- **When a "no match" is `settled` (corrected C-14, C-15).** For subject X under
   spec s, `match status` reports `settled` only if, read in this order:
   (1) for every task kind of X, `run = done_run` (no newer run pending) and
   `done_state = DONE` — which by §7.5 means no candidate cap, no saturated
   segment, no verification failure, every query segment answered by the
   run's pinned generation within its search deadline (§11.1), and only
   usable low-information flags excluded; (2) afterwards, for spec s (both
-  roles), `recovery_open = 0` (no row in OPEN/REPAIRED/RERUN_PENDING, no
-  pending or running generation audit) **and** `recovery_unresolved = 0` (no
-  `RERUN_INCOMPLETE`/`TASK_FAILED` close without `resolved_run`). Otherwise
+  roles), `recovery_open = 0` (no occurrence row in
+  OPEN/REPAIRED/RERUN_PENDING, no pending or running generation audit)
+  **and** `recovery_unresolved = 0` (no occurrence row CLOSED with
+  `resolution = PENDING`, **including every older occurrence of a subject
+  whose latest occurrence is resolved** — C-15), both counted by a full scan
+  of the occurrence rows, never from a gauge or from the latest occurrence
+  only. Otherwise
   it is `provisional` with the failing conditions listed (`incomplete:
   <reason>`, `rerun pending`, `recovery open`, `recovery unresolved`).
   `settled` means "no *known* uncertainty"; it is not proof of absence — an
   undetected loss can exist (invariant R, not guaranteed). *(Corrected: C-13
   settled on `recovery_open = 0` alone, so an obligation closed
   `TASK_FAILED` or `RERUN_INCOMPLETE` — pairs possibly still hidden — let
-  other subjects' negatives be reported settled.)*
+  other subjects' negatives be reported settled; C-14 still counted only the
+  current row of each (S, g), so a newer resolved occurrence hid an older
+  unresolved one — C-15.)* The scan is a snapshot: an occurrence opened in a
+  bucket after the scan passed it is a change after the decision, exactly
+  like a loss detected later.
 - Publication is still held only for calibration (§9.1). Matches found by a
   rerun are new decisions, published like any other (idempotent `match_id`).
 - Validation gates (M3, drop/rebuild equivalence, growth, direction B)
@@ -1915,9 +2009,10 @@ completion stay on the task's own row; detection marks one generation row;
 no path of normal task completion touches a shared partition.
 
 **Schema implications (P10 tables only; none exists yet, so no migration).**
-New `index_repairs` (with `occurrence_id`, `detections`, `history`,
-`resolved_run` — C-14); `match_tasks` gains `run`, `run_started_at`,
-`done_run`, `done_state`, `recovery_runs` (keyed by `occurrence_id`, C-14),
+New `index_repairs`, one row per occurrence (`occurrence` in the
+clustering key, `occurrence_id`, `detections`, `resolution`, `resolved_by` —
+C-14, C-15); `match_tasks` gains `run`, `run_started_at`,
+`done_run`, `done_state`, `done_ok_run`, `recovery_runs` (keyed by `occurrence_id`, C-14),
 `rerun_reason`, `searched_generation`; `match_candidates` gains
 `run` in its partition key; `index_generations` gains `detect_count`,
 `validated_detect_count`, `audit_state`/`audit_cursor`, `promoted_at`,
@@ -2265,6 +2360,10 @@ between hosts and the index, and real machines are **P14**.
 - The first committed decision of a `match_id` is final for its technique
   version; a later run that would decide differently (only possible through
   a different low-information exclusion set) is recorded, not applied (§9.3).
+- An occurrence whose rerun is INCOMPLETE or FAILED stays unresolved until a
+  later DONE run of every required kind (or the subject's retirement); a
+  FAILED task that is never retried keeps the spec's negatives provisional
+  indefinitely — visible, not hidden (C-15).
 
 ## 18. Rollout and increments (after approval)
 
@@ -2283,8 +2382,8 @@ unaffected. I-2 does not start until the design is approved (D1–D4, D14, D19,
 D20) **and** E-R1 has passed; I-3 does not publish until a calibrated
 technique version exists.
 
-**Status vocabulary (2026-10-17).** *Design corrected*: C-1…C-14 written.
-*Design reviewed*: reviews 1–3 done; C-13 and C-14 not yet reviewed. *Decision
+**Status vocabulary (2026-10-17).** *Design corrected*: C-1…C-15 written.
+*Design reviewed*: reviews 1–3 done; C-13…C-15 not yet reviewed. *Decision
 approved*: none. *Implementation completed*: none. *Validation passed*: none
 (no P10 test, E-R1 or I-1 measurement has run). *Permitted next*: design
 review of C-13 and the approval decisions of decisions.md §2; after the
@@ -2301,6 +2400,7 @@ only after both D-approvals and an E-R1 pass.
 | 1.5 GiB holds two generations at ≥ `R_req` | E-R1 | I-2 (and the `max_points` value) |
 | Qdrant 1.15.1 integer `range`/`match` filter, boundary and subject scoping semantics | R-24 (first I-2 test) | the §12.2 cleanup/DELETE protocol; if it fails, the protocol is revised before any other I-2 work |
 | Scylla 6.2.3 execution semantics of the run-fence and obligation LWTs (`IN`, `= null`, map-entry set, list append in an LWT) and of the capacity admission batch (static condition + clustering insert) | R-26 (I-3) for the task/obligation forms; CAP-9 (I-2) for the batch | I-3 exit; I-2 exit |
+| Scylla 6.2.3 executes a LOCAL_SERIAL read of a clustering slice with `LIMIT 1` (latest occurrence of (S, g)) | R-26 | nothing: the single-row `IF NOT EXISTS` walk is the fallback (§12.10) |
 | `Dot` collections return stored float32 vectors bit-identically | R-24 (vii) | the manifest/content digest of §12.5 (else the digest is computed from artifacts only and compared by tolerance — a protocol revision) |
 | saturation rate at the tuned `k_max` | I-1 tuning, validation §6 | practicality of direction B (INCOMPLETE rate), not correctness |
 | targets-scan completeness on populated data | H-9 | D20 / I-2 exit |
@@ -2360,3 +2460,20 @@ H-9 (populated-data scan), L-14, R-26 execution semantics, I-1 baseline,
 calibration adequacy — design §18 "facts still unknown". No decision was
 approved; D6, D7, D8, D9, D11, D13, D14, D19, D20 texts are clarified or
 changed (decisions.md §5).
+
+### 19.3 Sixth correction (2026-10-17, C-15: unresolved occurrence history)
+
+| # | Failure scenario | Invariant violated | Why C-14 failed | Correction | Test |
+|---|---|---|---|---|---|
+| C-15a | occurrence 1 of (S, g) repaired; its rerun ends FAILED (or INCOMPLETE) ⇒ CLOSED unresolved; a second loss opens occurrence 2, which **reset the same row** (C-14 open-again) and moved occurrence 1 into a `history` text entry; occurrence 2 closes `RERUN_DONE`; `recovery_unresolved`, computed from current rows, is 0 ⇒ negatives reported `settled` while occurrence 1's pairs may still be hidden; after a restart nothing machine-readable records which runs occurrence 1 still needs | no silent negatives; R2 (an occurrence is satisfied only by runs after **its** repair); `recovery_unresolved` monotone except by an occurrence's own resolution | one mutable row per (S, g); old occurrences reduced to text; the counter read only the current row | `index_repairs` CK `(subject_id, generation, occurrence)`: one row per occurrence, created once, never reset or deleted; no head row (the latest occurrence is read; single-row `IF NOT EXISTS` walk as fallback); occurrences never supersede each other; per-kind `required_run`, `done_ok_run` on the task, `resolution`/`resolution_reason`/`resolved_by` per occurrence; both counters from a full scan of occurrence rows | R-29 v1–v12 (§9a.3); R-27 revised |
+| C-15b | target T has an occurrence closed unresolved; T is then retired; T's tasks stop, so no qualifying DONE run can ever come; `recovery_unresolved` stays > 0 for the spec forever | every failure has a defined end state; settlement reachable for live scope | `SUBJECT_RETIRED` applied only to occurrences not yet closed | resolve with `resolution_reason = SUBJECT_RETIRED` when the subject is no longer live | R-29 v13 |
+
+Cross-check of C-15 against C-13/C-14: unique `occurrence_id` and
+`recovery_runs` keyed by it are unchanged; every `index_repairs` transition
+is still a single-row LWT, now on the occurrence's own row (no cross-row
+atomicity is assumed); a second loss while OPEN merges, while
+REPAIRED/RERUN_PENDING/CLOSED (resolved or not) opens a new row — the older
+occurrence continues on its own requirement instead of being superseded;
+run fencing (S5), the detection fence of promotion, the DRAINING horizon,
+the unauditable fallback, rebuild and `index drop` behave as before;
+publication and `match.found` are unaffected. No decision was approved.

@@ -2,7 +2,7 @@
 
 Status: **Proposed** (2026-10-15, P10 design review; decisions P10-D1, D2,
 D3, D4, D14, D19, D20; corrected the same day — design §19 C-1, C-3, C-4,
-and §19.1 C-10, C-11, C-12; 2026-10-17 C-13, and §19.2 C-14).
+and §19.1 C-10, C-11, C-12; 2026-10-17 C-13, §19.2 C-14 and §19.3 C-15).
 Not accepted. Number taken as the next free number after
 crawler2's ADR-027; this file lives in the fingerprinter repository until the
 operator decides where P10 records belong (P10-D16) — crawler2's
@@ -61,7 +61,8 @@ ordering argument needs (design §6.4).
    races: design §12.9. Points lost outside the protocol are handled by the
    index-integrity recovery protocol (design §12.10): a durable obligation
    per lost subject and generation whose every loss episode is a separately
-   identified occurrence (`occurrence_id`, C-14), repair, then a fenced rerun
+   identified occurrence with its own durable row (`occurrence_id`, C-14;
+   never reset or hidden by a later occurrence, C-15), repair, then a fenced rerun
    of the lost subject's own tasks numbered after that occurrence's repair.
 6. FAISS exact search is used **only** as the offline oracle for recall
    tests; there is no production fallback to brute force.

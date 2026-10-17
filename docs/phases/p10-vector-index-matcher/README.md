@@ -19,18 +19,34 @@ detection-vs-repair fence, unresolved closes and the `settled` rule,
 verifier independent of ANN, first decision per `match_id` final,
 saturation ⇒ INCOMPLETE, per-hit lowinfo exclusion, pinned search step,
 one liveness predicate, audit-only capacity release, lost ACTIVE/DRAINING
-collections, `equiv/v1` coverage).
+collections, `equiv/v1` coverage); sixth pass 2026-10-17 (C-15, design
+§19.3: one `index_repairs` row per occurrence, so an unresolved occurrence
+can no longer be hidden by a later one; retired subjects resolve theirs).
 
 | Status | P10 today |
 |---|---|
-| design corrected | C-1…C-14 ([design.md §19](design.md#19-correction-record-2026-10-15-after-the-first-design-review), [§19.2](design.md#192-fifth-correction-pass-2026-10-17-c-14-consistency-and-edge-case-audit)) |
-| design reviewed | C-1…C-12 answered earlier reviews; **C-13 and C-14 await review** |
+| design corrected | C-1…C-15 ([design.md §19](design.md#19-correction-record-2026-10-15-after-the-first-design-review), [§19.2](design.md#192-fifth-correction-pass-2026-10-17-c-14-consistency-and-edge-case-audit)) |
+| design reviewed | C-1…C-12 answered earlier reviews; **C-13…C-15 await review** |
 | decisions approved | **none** (P10-D1…D20 PROPOSED; [decisions.md §2](decisions.md#2-decisions-requiring-operator-approval-before-implementation)) |
 | implemented | nothing |
-| validated | nothing — every test in [validation.md](validation.md) (incl. R-22…R-28, E-R1, I-1 baseline) is planned and unrun; M3 not passed |
-| permitted next | review of C-13/C-14; operator approval decisions; then I-1 (V1 end-to-end baseline first, no Qdrant) and E-R1 (harness on a dedicated container) |
+| validated | nothing — every test in [validation.md](validation.md) (incl. R-22…R-29, E-R1, I-1 baseline) is planned and unrun; M3 not passed |
+| permitted next | review of C-13…C-15; operator approval decisions; then I-1 (V1 end-to-end baseline first, no Qdrant) and E-R1 (harness on a dedicated container) |
 | blocks I-2 | approval of D1–D4, D14, D19, D20; a passed E-R1. R-24 is the first I-2 test and can force a protocol revision |
 | blocks M3 | I-1 baseline and held-out P/R, calibration, I-2…I-5 exits, all of validation §11 |
+
+**Implementation readiness (2026-10-17; from design §18 and decisions.md §1–§2; no increment is authorized yet).**
+
+| Step | Needs approved | Evidence gates | Deliverables | Acceptance | Out of scope |
+|---|---|---|---|---|---|
+| I-1 (a) V1 end-to-end baseline | D17 | none | `benchmarks/p10-index/v1_e2e_baseline.py`, result JSON (validation §2.1) | reproducible report on L-PAIRS and N-SOAK, per outer fold | any P10 code path, Qdrant, threshold choice |
+| I-1 (b–d) verifier, lowinfo (offline), tuning, calibration | D7, D8 (offline evaluation only), D9, D10 | I-1 (a) report | `fingerprinter/verify.py` (`temporal/v2`, pure), offline harnesses, `verifier_params` 2.1 or "data insufficient" | V-1 unit part; validation §2.2, §3, §3.4 | publication, Qdrant, tasks |
+| E-R1 capacity experiment | authorization to run §13.4 (a harness on a dedicated container; D14's value stays unresolved until it passes) | none | `benchmarks/p10-index/capacity_e_r1.py`, result JSON | §13.4 pass rules | the dev Qdrant instance, any guard code |
+| I-2 index, generations, mutation protocol, reconciler, capacity guard | D1–D4, D14, D19, D20 (and review of C-13…C-15) | a passed E-R1; R-24 first | design §18 I-2 | R-1…R-24, CAP-*, H-*, validation §5, §9, §10 | matching tasks, publication |
+| I-3 tasks, both directions, persistence, held publication, recovery reruns | D5, D6, D11, D19 | I-1 calibration status (publication only when CALIBRATED) | design §18 I-3 | R-25…R-29, K-*, L-*, validation §4, §6, §7 | equivalence |
+| I-4 / I-5 | D13, D18 / all | prior exits | design §18 | validation §8 / §11 | real multi-host (P14) |
+
+The earliest step that can legitimately start is **I-1 (a)**, once D17 is
+approved; E-R1 can run in parallel once its run is authorized.
 
 | Document | Content |
 |---|---|

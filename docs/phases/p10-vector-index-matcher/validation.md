@@ -42,6 +42,11 @@ revised, CAP-9 (ledger only lowered by the audit); gates require
 `recovery_open = 0` **and** `recovery_unresolved = 0`. All **planned and
 unrun**.
 
+Sixth correction 2026-10-17 (design §19.3, C-15): one `index_repairs` row
+per occurrence; **R-29 new** (§9a.3: unresolved occurrences survive later
+occurrences, v1–v13 incl. retired subject); R-27 revised to the
+per-occurrence rows. Planned and unrun.
+
 **Test classes and run status.** Nothing below has been executed.
 
 | Group | Class | Environment | Run |
@@ -50,7 +55,7 @@ unrun**.
 | §2, §3 (I-1 baseline, tuning, calibration, lowinfo oracle) | offline evaluation | vector cache, V1 handler | no |
 | §4 ANN recall | benchmark | dev Qdrant | no |
 | §5–§8 | live-stack integration | test keyspace, dev Qdrant, MinIO, Redis | no |
-| G-*, R-1…R-28, H-1…H-9, L-1…L-17, K-1…K-11, CAP-1…CAP-9 | live-stack fault injection / integration (hooks are test-build only) | as above; H-9 on populated Scylla 6.2.3 | no |
+| G-*, R-1…R-29, H-1…H-9, L-1…L-17, K-1…K-11, CAP-1…CAP-9 | live-stack fault injection / integration (hooks are test-build only) | as above; H-9 on populated Scylla 6.2.3 | no |
 | R-24 | version-specific behaviour test | Qdrant 1.15.1 pinned image, test collection | no |
 | E-R1 | capacity benchmark | dedicated `qdrant-e-r1` container | no |
 | G-14 | simulated two-host (two processes, one host) | dev host | no |
@@ -374,7 +379,8 @@ metrics, the injected-fault log, matches written during the test.
 | R-25 | g ACTIVE (both roles), target T indexed at `seq = s`; media clip M of T (provenance true match) | (a) delete T's current points directly in Qdrant **before** M's search; M runs to DONE (no race — M finishes before verification starts); then a verification pass; (b) as (a), but before the verification pass T gets a new intent (re-UPSERT at `s+1`, e.g. `lowinfo_rev` change) whose apply would re-create T's points; (c) promote g′, then delete T's points from the now DRAINING g during its search horizon (a reader with a cached pointer searches g); (d) as (a), then delete g's collection before an audit/verification can count T | (a) M DONE, no (M, T) match; obligation OPEN (T, g); `suspect_since` set; (b) the apply's pre-count writes the obligation **before** its upsert (hook log order); (c) the post-horizon pass of g detects T; (d) fallback obligations for every `index_entries` row with `applied[g]` | obligation driven to CLOSED: repair (or g RETIRED), bump of T's `target_vs_media`, rerun | T's qualifying rerun confirms (M, T); no `no_match` row for (M, T); M's DONE untouched (run 1); obligation closed `RERUN_DONE` only after T's bumped run finished; `match_task_reruns_total{reason=index_repair}` = 1 per obligation; (c) g not RETIRED before the post-horizon pass completed; (d) obligations = applied subjects of g, all durable before g became RETIRED, reruns rate-limited and audited |
 | R-26 | see §9a.1 | the deterministic race between a task's completion and loss detection | §9a.1 | §9a.1 | §9a.1 |
 | R-27 | see §9a.2 | repeated loss of one subject in one generation; stale task-map entry retained; delayed worker of the first occurrence; unknown outcomes; restart | §9a.2 | §9a.2 | §9a.2 |
-| R-28 | occurrence OPEN for (T, g); repairer has written T's points, read `detections = d` and taken its confirming count (hook `P7 reconciler.after_confirm_before_repaired`) | delete T's points again at P7, then: (a) a verification pass merges (`detections = d + 1`) before the repairer's `repaired` LWT; (b) the pass counts T short but its merge is held until after `repaired` lands; (c) as (b) with the merge's response dropped | (a) OPEN, `detections = d + 1`; (b) REPAIRED, merge rejected; (c) unknown | (a) `repaired` fails on `detections`, repair repeated, REPAIRED with a new `:d`; (b) the detector opens again (occurrence + 1); (c) SERIAL read shows the row past OPEN ⇒ open again | no occurrence is REPAIRED while a loss recorded after its `:d` read is unrepaired; in every variant a run of T's `target_vs_media` numbered after the **final** REPAIRED finishes before the last occurrence closes; a media clip ingested and searched during the second loss is matched by that run (C-14b) |
+| R-29 | see §9a.3 | an occurrence closed unresolved, then later occurrences of the same (subject, generation); crashes, unknown outcomes, duplicate and delayed reconcilers, restart, settlement probes | §9a.3 | §9a.3 | §9a.3 |
+| R-28 | occurrence OPEN for (T, g); repairer has written T's points, read `detections = d` and taken its confirming count (hook `P7 reconciler.after_confirm_before_repaired`) | delete T's points again at P7, then: (a) a verification pass merges (`detections = d + 1`) before the repairer's `repaired` LWT; (b) the pass counts T short but its merge is held until after `repaired` lands; (c) as (b) with the merge's response dropped | (a) OPEN, `detections = d + 1`; (b) REPAIRED, merge rejected; (c) unknown | (a) `repaired` fails on `detections`, repair repeated, REPAIRED with a new `:d`; (b) the detector opens the next occurrence (a new row); (c) SERIAL read shows the row past OPEN ⇒ open the next occurrence | no occurrence is REPAIRED while a loss recorded after its `:d` read is unrepaired; in every variant a run of T's `target_vs_media` numbered after the **final** REPAIRED finishes before the last occurrence closes; a media clip ingested and searched during the second loss is matched by that run (C-14b) |
 
 R-22's DELETE-then-UPSERT sequence of a live subject is **injected** by the
 test: P9 liveness is monotone (design §4.2), so P9 paths do not produce it
@@ -481,7 +487,7 @@ every crash and duplicate variant ends in the same final state (one
 obligation CLOSED `RERUN_DONE`, one (M, T) row, T at run 2, M at run 1);
 `index_repairs_blocked` raised in step 6 and cleared after. Planned, unrun.
 
-### 9a.2 R-27 — repeated loss of one subject: occurrence identity (design §12.10, C-14a)
+### 9a.2 R-27 — repeated loss of one subject: occurrence identity (design §12.10, C-14a; revised C-15)
 
 **Purpose.** Prove that a second loss of the same (subject, generation)
 requires a genuinely new rerun even when the first occurrence's task-map
@@ -514,11 +520,12 @@ optional removal of `recovery_runs` entries (step C). Rows sampled every
 - **D.** Delete T's current points from g again. Ingest M₂ through the P9
   path; its `media_vs_targets` indexes M₂ in h, searches g (T absent) and
   finishes DONE with no (M₂, T) match.
-- **E.** A verification pass opens again: `occurrence = 2`, `occurrence_id =
-  oid₂ ≠ oid₁`; assert every occurrence-scoped column was re-initialised
+- **E.** A verification pass reads the latest occurrence of (T, g)
+  (occurrence 1, CLOSED) and inserts **a new row** `occurrence = 2`,
+  `occurrence_id = oid₂ ≠ oid₁`, with every column at its initial value
   (`state = OPEN`, `detections = 0`, `gen_marked = false`, `required_run =
-  {}`, `repaired_at`, `close_reason`, `closed_at`, `resolved_run` null,
-  `attempts = 0`) and `history` holds occurrence 1 (`RERUN_DONE`).
+  {}`, `resolution = PENDING`, `resolved_by = {}`, nulls, `attempts = 0`);
+  assert row 1 is byte-for-byte unchanged (CLOSED, `RERUN_DONE`, RESOLVED).
 - **F.** R₁ marks, repairs and sets REPAIRED for occurrence 2.
 - **G.** R₁'s bump step reads T's row: `recovery_runs` has `oid₁` but not
   `oid₂` ⇒ bump run 2 → 3 with `recovery_runs[oid₂] = 3`; `required_run =
@@ -527,48 +534,98 @@ optional removal of `recovery_runs` entries (step C). Rows sampled every
   3`).
 - **H.** Release W₁ (close of occurrence 1) and W₂ (bump for occurrence 1,
   `IF run = 1`).
-- **I.** Expected: W₁'s `close … IF occurrence = 1 AND occurrence_id = oid₁
-  …` is rejected; W₂'s bump is rejected (`run` is 3); both re-read and
+- **I.** Expected: W₁'s `close … IF occurrence_id = oid₁ AND state =
+  'RERUN_PENDING'` on row 1 is rejected (row 1 is already CLOSED); it can
+  address only row 1, never row 2; W₂'s bump is rejected (`run` is 3); both re-read and
   abandon (W₂'s re-read of T's row finds `recovery_runs[oid₁]` present, so
   it makes no bump; its `rerun pending` for occurrence 1 is rejected on the
   occurrence condition); no column of the row or of T's task changes
   because of them. (Even a bump by a stale worker could only move the run
   forward — one extra run, never an early close.)
-- **J.** Uncertainty and restart, each a separate run of A–K: j1 the open-
-  again LWT's response is dropped after Scylla applied it ⇒ the SERIAL read
-  shows `occurrence_id = oid₂` (the detector's own) ⇒ no second open,
-  `occurrence` stays 2; j2 the bump LWT for `oid₂` times out ⇒ SERIAL read
+- **J.** Uncertainty and restart, each a separate run of A–K: j1 the
+  occurrence-2 INSERT's response is dropped after Scylla applied it ⇒ the
+  SERIAL read of row 2 shows `occurrence_id = oid₂` (the detector's own) ⇒
+  no row 3; j2 the bump LWT for `oid₂` times out ⇒ SERIAL read
   shows `recovery_runs[oid₂] = 3` ⇒ recorded, `run` never 4; j3 kill R₁
   between REPAIRED and the bump and restart every P10 process ⇒ the
   `repairs` pass resumes from Scylla and bumps exactly once; j4 the `close`
-  LWT for occurrence 2 times out ⇒ SERIAL read decides; exactly one history
-  entry per occurrence.
+  LWT for occurrence 2 times out ⇒ SERIAL read of row 2 decides; rows 1
+  and 2 only.
 - **K.** Release run 3: it searches h, finds M₂ (and M₁, skipped as
   `already_decided`), commits (M₂, T), `done_run = 3`, `done_state = DONE`;
   the reconciler closes occurrence 2 `RERUN_DONE`.
 
 **Expected final state (every variant).**
-`index_repairs(T, g)`: `occurrence = 2`, `occurrence_id = oid₂`, CLOSED
-`RERUN_DONE`, `history` = [occurrence 1 `RERUN_DONE`, occurrence 2
-`RERUN_DONE`]; T's task: `run = 3`, `done_run = 3`, `recovery_runs = {oid₁:
-2, oid₂: 3}`; one `matches` row each for (M₁, T) and (M₂, T); M₁ and M₂ at
+`index_repairs` for (T, g): exactly two rows — occurrence 1 (`oid₁`,
+CLOSED `RERUN_DONE`, RESOLVED, `resolved_by = {target_vs_media: 2}`) and
+occurrence 2 (`oid₂`, CLOSED `RERUN_DONE`, RESOLVED, `resolved_by =
+{target_vs_media: 3}`); T's task: `run = 3`, `done_run = done_ok_run = 3`,
+`recovery_runs = {oid₁: 2, oid₂: 3}`; one `matches` row each for (M₁, T) and (M₂, T); M₁ and M₂ at
 run 1, untouched; `recovery_open = 0`, `recovery_unresolved = 0`.
 
 **Unresolved-close variants.** u1: force T's run 3 INCOMPLETE (`cap_B_total =
 1`) ⇒ CLOSED `RERUN_INCOMPLETE`, `recovery_unresolved = 1`; `match status`
 reports an unrelated media subject's "no match" `provisional (recovery
 unresolved)`; then `match retry --raise-cap` ⇒ run 4 DONE ⇒ `resolve`
-(`resolved_run = 4`) ⇒ `recovery_unresolved = 0` and the same status reads
+(`resolution_reason = LATER_RUN`, `resolved_by = {target_vs_media: 4}`) ⇒
+`recovery_unresolved = 0` and the same status reads
 `settled`. u2: corrupt T's own artifact before run 3 ⇒ T's task FAILED ⇒
 `TASK_FAILED`, unresolved, alert.
 
 **Pass condition.** Occurrence 2 never reaches CLOSED while `done_run < 3`;
 its `required_run` is never 2; no LWT conditioned on `oid₁` is applied after
-step E; every variant ends in the stated final state; with the C-13 protocol
+step E; row 1 is never modified after step B; every variant ends in the
+stated final state; with the C-13 protocol
 (`obligation_id` reused) the same script closes occurrence 2 at step G
 without run 3 — the test must be able to show that difference (run once
 against a protocol stub of C-13 as a negative control). Class: live-stack
 fault injection. Planned, unrun.
+
+### 9a.3 R-29 — unresolved occurrences survive later occurrences (design §12.10, C-15)
+
+**Purpose.** Prove that an occurrence closed unresolved stays counted, keeps
+its own requirements and is resolved only by runs that satisfy them,
+whatever happens to later occurrences of the same (subject, generation);
+and that `settled` is never reported while any occurrence row is
+unresolved. R-26 (another subject's completion vs detection), R-26b (own
+completion vs bump), R-27 (occurrence identity) and R-28 (detection vs
+repair confirmation) test different properties and stay separate.
+
+**Fixture.** As R-27, with a media subject S (kinds `media_vs_targets` and,
+where stated, `media_vs_media` with equivalence enabled) in generation h, and
+the target T of R-27 in g; an unrelated media subject X whose last run is
+DONE (its "no match" is the settlement probe). Hooks additionally:
+`P9 reconciler.after_close_before_resolve(oid)`, `P10
+reconciler.before_resolve(oid)`. Every LWT with its condition and result is
+logged; `index_repairs` rows, task rows and the two counters (recomputed by
+a full scan, not read from gauges) are sampled every 100 ms.
+
+**Common steps.** Loss 1 of the subject ⇒ occurrence 1 (`oid₁`) repaired,
+bumped (`required_run` recorded), its rerun forced to end as the variant
+says, occurrence 1 CLOSED. Loss 2 ⇒ occurrence 2 (`oid₂`, new row) repaired,
+bumped, rerun, closed.
+
+| # | Variant | Expected durable state | Pass / fail |
+|---|---|---|---|
+| v1 | T: occ 1 bumps run 1 → 2 (`required_run = 2`); run 2 fails non-retryably (T's own artifact made unreadable) ⇒ T's task FAILED ⇒ occ 1 CLOSED `TASK_FAILED`, `resolution = PENDING`. Loss 2 opens occ 2 (new row) while T is FAILED; its repair completes; the artifact is restored and an audited `match retry` creates run 3 **before** occ 2's bump, so occ 2 coalesces on run 3 (`required_run = 3`); run 3 DONE; the `P10` hook holds occ 1's resolve while occ 2 closes | occ 2 CLOSED `RERUN_DONE`, RESOLVED by run 3; occ 1 still CLOSED `TASK_FAILED`, PENDING while held; after release occ 1 RESOLVED (`LATER_RUN`, `resolved_by = {target_vs_media: 3}`, 3 ≥ 2) | `recovery_unresolved` = 1 from occ 1's close until occ 1's **own** resolve LWT — including the whole interval in which occ 2 is open and after it is resolved; X never `settled` in that interval |
+| v1′ | as v1 without the retry: occ 2's bump finds T FAILED (required 3) and closes `TASK_FAILED` | both rows CLOSED `TASK_FAILED`, PENDING | `recovery_unresolved` = 2 indefinitely; alert; X `provisional (recovery unresolved)` until a retry produces a DONE run ≥ 3 |
+| v2 | T: occ 1's run 2 INCOMPLETE (`cap_B_total = 1`); occ 2 bumps run 3 (cap restored) DONE | occ 1 CLOSED `RERUN_INCOMPLETE`, then resolved by run 3 (`LATER_RUN`); occ 2 CLOSED `RERUN_DONE` | occ 1's row is present and PENDING from its close until the resolve; never removed or rewritten by occ 2's open or close |
+| v3 | as v2: one later DONE run (3) satisfies both occurrences | each row resolved by its **own** resolve/close LWT, exactly once (`IF resolution = 'PENDING'`), both recording run 3 | exactly one applied resolve per row in the LWT log; duplicate attempts rejected |
+| v4 | S (media, equivalence enabled): occ 1 requires `media_vs_targets` and `media_vs_media`; its `media_vs_media` rerun INCOMPLETE ⇒ occ 1 `RERUN_INCOMPLETE`; equivalence then disabled; occ 2 requires only `media_vs_targets` and closes `RERUN_DONE` | occ 2 RESOLVED; occ 1 stays PENDING (its `media_vs_media` requirement unsatisfied) | `recovery_unresolved` = 1; resolved only after an audited `match rerun --kind media_vs_media` of S finishes DONE at a run ≥ the requirement |
+| v5 | crash of the detector right after occurrence 2's INSERT applied, before its cursor advance and before the mark | row 2 OPEN, `gen_marked = false` | restart: the detector re-counts, reads the latest occurrence (row 2, OPEN) and merges — no row 3; the reconciler marks and proceeds. (The head/record split of a two-row design does not exist here: the INSERT is the only write that creates an occurrence.) |
+| v6 | crash of the reconciler after occ 1's close LWT (unresolved) and before anything else; crash after a resolve LWT applied, before its metric/audit write | row 1 CLOSED PENDING; resp. RESOLVED | restart re-derives everything from rows: the pending row is re-checked, the resolved row is not touched again; counters recomputed from rows are unchanged by the restart |
+| v7 | the resolve LWT's response dropped after Scylla applied it; the open INSERT for occ 2 times out | SERIAL read shows RESOLVED (resp. row 2 with `oid₂`) ⇒ treated as applied; no second resolve, no row 3 | one applied LWT each |
+| v8 | two reconcilers resolve occ 1 concurrently (leases split by test control) | one resolve applied, the other rejected on `resolution = 'PENDING'`, re-reads, no-op | identical final rows |
+| v9 | a reconciler that read occ 1 as RERUN_PENDING before its close is held; occ 2 opens, closes; the held worker resumes and issues occ 1's close | its LWT acts on row 1 only: applied if row 1 is still RERUN_PENDING (valid — occ 1 is not superseded), rejected otherwise; row 2 unaffected | no write to row 2 by any actor holding `oid₁` |
+| v10 | three subjects, five occurrences, two of them CLOSED PENDING in different buckets; kill and restart every P10 process | after restart the `repairs` pass finds both pending rows from the table alone and continues | counters equal before and after restart; no row lost or duplicated |
+| v11 | settlement probe for X while one historical occurrence (occ 1 of T) is PENDING and T's latest occurrence is RESOLVED | — | X reported `provisional (recovery unresolved)`; never `settled` |
+| v12 | then occ 1 is resolved (v2's run 3); X's own last run DONE; no open occurrence | `recovery_open = 0`, `recovery_unresolved = 0` | X reported `settled` only from the first scan after the resolve LWT; and still `provisional` in a sub-variant where X has a newer run pending (`run > done_run`) |
+| v13 | T has occ 1 CLOSED `TASK_FAILED`; T is retired (all versions RETIRED) | resolve with `resolution_reason = SUBJECT_RETIRED` (C-15b) | `recovery_unresolved` returns to 0 only through that LWT; T's tasks stop; the retirement is visible in the row |
+
+**Negative control.** The same script against a stub of the C-14 protocol
+(one row per (S, g), reset on re-open, history text) must report
+`recovery_unresolved = 0` in v1/v2 after occurrence 2 closes — the test must
+show that difference. Class: live-stack fault injection. Planned, unrun.
 
 ### 9b. Hint reader and backstop scans (design §6.1; corrected C-4, C-8)
 
@@ -725,9 +782,9 @@ together (host `MemAvailable` floor, encoder throughput change).
 | P10-T8 | calibration status and reliability (§3.3) — prerequisite of publication | not run |
 | P10-T9 | lowinfo vs unfiltered oracle, `lost_tp = 0` (§3.4) — prerequisite of enabling lowinfo | not run |
 | P10-T10 | E-R1 capacity (design §13.4) — prerequisite of I-2 | not run |
-| P10-T11 | mutation/rebuild crashes R-1…R-28 (R-26 = task-completion/detection race, §9a.1; R-27 = repeated-loss occurrence identity, §9a.2; R-28 = detection vs repair confirmation), reader/scan H-1…H-9, lowinfo L-1…L-17, identity K-1…K-11, capacity CAP-1…CAP-9, V-1, G-15 (§5, §9–§9e) | not run |
+| P10-T11 | mutation/rebuild crashes R-1…R-29 (R-26 = task-completion/detection race, §9a.1; R-27 = repeated-loss occurrence identity, §9a.2; R-28 = detection vs repair confirmation; R-29 = unresolved occurrences survive later ones, §9a.3), reader/scan H-1…H-9, lowinfo L-1…L-17, identity K-1…K-11, capacity CAP-1…CAP-9, V-1, G-15 (§5, §9–§9e) | not run |
 
-### 11a. Issue → test matrix (corrections C-1…C-14, design §19)
+### 11a. Issue → test matrix (corrections C-1…C-15, design §19)
 
 | Issue | Tests / measurements | Pass criterion | Blocks |
 |---|---|---|---|
@@ -745,6 +802,7 @@ together (host `MemAvailable` floor, encoder throughput change).
 | C-12 stale DELETE after newer UPSERT | R-22…R-24 (R-14, R-18 keep the stale-UPSERT direction) | current-`seq` points never absent after apply (poller); R-24 filter semantics on 1.15.1 (all boundaries) | D4/D19 / I-2 exit (R-24 first) |
 | C-13 task completion versus loss detection; DRAINING horizon; witness cosine; E-R1 sizing | R-25, R-26 (§9a.1); L-1, L-7 (witness confirmed on artifacts); E-R1 phase 3 ≥ `R_req` | obligation durable before repair/cursor advance; never closed before a post-repair run of the lost subject; M's DONE allowed and the hidden pair found by the lost subject's rerun; all crash/duplicate variants converge; guard admits the measured rebuild | D19/D20 / I-3 exit (R-26); I-2 (E-R1) |
 | C-14 occurrence identity; detection vs repair; unresolved closes; verifier independence; decision immutability; saturation; per-hit exclusion; search pinning; liveness; capacity release; lost generations | R-27, R-28, R-26 (d1), R-4, R-10, R-20, R-25(d); V-1; G-1, G-10, G-15; L-17; K-9…K-11; CAP-5, CAP-6, CAP-9; R-24 (vii) | a second occurrence never closes on a run older than its repair; no stale-occurrence LWT applies; settled negatives only at `recovery_open = recovery_unresolved = 0`; identical decisions across directions/generations/exact vs ANN; ledger never below resident points | D19/D20 / I-3 exit (R-27, R-28); I-2 exit (CAP-9, R-24 vii); M3 (V-1) |
+| C-15 unresolved occurrence history; retired subject with an unresolved occurrence | R-29 v1–v13; R-27 (revised) | an unresolved occurrence is never removed, reset or resolved by another occurrence; `recovery_unresolved` falls only by an occurrence's own resolve; `settled` never while any occurrence row is PENDING | D19/D20 / I-3 exit |
 
 ## 12. Evidence that exists today (audit inputs, not P10 tests)
 
