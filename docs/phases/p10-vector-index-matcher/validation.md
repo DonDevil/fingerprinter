@@ -13,9 +13,17 @@ oracle comparison (§3.4), crash/reader/lowinfo/identity test groups
 
 Second correction 2026-10-15 (design §19.1, C-8…C-11): targets-scan
 pagination cases H-6/H-9; low-information freshness L-1…L-16 with expected
-fail-closed behaviour; R-1…R-21 with initial state, fault, state before
+fail-closed behaviour; R-1…R-21 (R-22…R-25 added by C-12) with initial state, fault, state before
 repair, repair and pass condition; capacity guard CAP-1…CAP-8; E-R1 aligned
 with the resident-point accounting (§10). All are **planned**; none has run.
+
+Third correction 2026-10-17 (design §19.1, C-12): stale DELETE after a newer
+UPSERT — R-22 (the race, in ACTIVE, VALIDATING, READY and right after
+promotion, with crash and uncertain-response variants), R-23 (stale UPSERT
+then stale DELETE after a newer UPSERT), R-24 (Qdrant 1.15.1 filter
+semantics), R-25 (non-protocol point loss during matching: suspect
+generation, no DONE, re-run); common pass condition extended; E-R1 adds a
+resident media collection and re-UPSERTs. All **planned and unrun**.
 
 Rules carried from P9: a result counts for a gate only on the gate's approved
 input set; every report records environment, corpus manifest SHA-256, spec
@@ -272,7 +280,11 @@ row): generation manifest digest equals the digest computed from the
 artifacts; Qdrant verification reports 0 stale, 0 orphans, 0 missing;
 `index_entries` all APPLIED with `applied[g] = seq` for every generation in
 `CREATED…DRAINING`; no task lost; no match committed whose subject was not
-authoritatively live at decision time. **Evidence recorded:** the
+authoritatively live at decision time; **the current-`seq` points of every
+live subject were present in every routed generation at every sample taken
+after their UPSERT was applied** (a 100 ms poller counts `subject = S AND seq
+= row.seq` during the test — S2); no task reached DONE while the generation it
+searched had `suspect_since` set. **Evidence recorded:** the
 `index_entries` rows and generation rows before and after repair, Qdrant
 point ids + payload `seq` of the affected subjects (scroll), reconciler
 metrics, the injected-fault log, matches written during the test.
@@ -296,10 +308,14 @@ metrics, the injected-fault log, matches written during the test.
 | R-15 | S PENDING | proxy drops the response after the server applied (also: times out before applying) | outcome unknown | retry applies the current desired state | no duplicate points; `attempts` incremented; permanent 4xx ⇒ BLOCKED with error, not retried |
 | R-16 | g ACTIVE | insert a point with a valid-looking payload for a subject without a row (and one for a retired subject) | orphan point | verification: READY ⇒ intent + apply; else delete by id | orphan removed or adopted; never accepted as a candidate for a retired subject |
 | R-17 | S row APPLIED | delete S's points directly in Qdrant | row APPLIED, points missing | verification count ≠ `segment_count` ⇒ re-apply; S's own task re-enqueued | points restored; `index_miss_total` +1; S's pairs re-covered (task rerun recorded) |
-| R-18 | S at seq s | (a) newer UPSERT s+1 (payload change) supersedes s while the s worker is paused; (b) the s worker's Redis lease expires and a second worker applies s+1, then the s worker resumes and writes | Qdrant may hold `seq = s` payload | the s worker's LWT fails ⇒ it re-applies s+1; if killed instead, verification re-applies | final payload `seq = s+1`; Redis lease shown not to fence (the write lands), convergence via LWT/verification |
+| R-18 | S at seq s | (a) newer UPSERT s+1 (payload change) supersedes s while the s worker is paused; (b) the s worker's Redis lease expires and a second worker applies s+1, then the s worker resumes and writes | Qdrant may hold `seq = s` payload | the s worker's LWT fails ⇒ it re-applies s+1; if killed instead, verification re-applies | the stale `seq = s` write lands as **separate** points (ids contain `seq`) and never overwrites `seq = s+1` points (poller: their count stays `segment_count`); after cleanup only `seq = s+1` points remain; Redis lease shown not to fence (the write lands) |
 | R-19 | S UPSERT APPLIED | DELETE s+1 written while an UPSERT retry of s is in flight | either | as R-14 | 0 points of S; DELETE row kept with `applied[g] = s+1` for all routed generations |
 | R-20 | ACTIVE generations of both roles, matches recorded | delete the Qdrant volume | tasks `WAITING_INDEX` | `index rebuild` (target role first), validation, promotion | §5 acceptance: equal manifest digests, identical decisions; no fact lost |
 | R-21 | a verification pass has repaired part of a corrupted generation (R-16/R-17 injections) | kill -9 the reconciler mid-pass; restart | partially repaired | pass resumes from its persisted cursor | every injected divergence repaired exactly once in effect; repeating the pass changes nothing |
+| R-22 | S live, row UPSERT `seq = 10`, Qdrant holds S's points with `seq = 10` (variants: g ACTIVE; g VALIDATING; g READY then promoted; promotion LWT executed while A is paused) | worker A reads DELETE 11 and is paused before its Qdrant call (hook); S becomes READY again ⇒ UPSERT 12 written; worker B applies 12 ((a) + cleanup) and records `applied[g] = 12`; A resumes and sends delete `subject = S AND seq ≤ 11`, its LWT fails. Sub-variants: (e) A is killed right after its Qdrant call; (f) the proxy drops A's response and A retries | Qdrant: all `segment_count` points of S with `seq = 12` present; no `seq ≤ 11` points; row UPSERT 12 APPLIED; A's LWT rejected (logged) | none needed; (f) A's retry re-reads the row and applies UPSERT 12 (idempotent) | scroll shows S's point ids = the 12-ids and payload `seq = 12` before and after A's DELETE; poller never saw fewer than `segment_count` `seq = 12` points; `index_miss_total` unchanged; validation of g in the VALIDATING/READY variants passes and promotion proceeds without re-validation being triggered by A; a Direction-A task for a clip of S run immediately after A's DELETE retrieves S as a candidate |
+| R-23 | as R-22, UPSERT 12 applied | worker C holds UPSERT 10, worker A holds DELETE 11; after 12 is applied, C lands its UPSERT 10, then A lands DELETE 11; both killed before their LWTs | `seq = 12` points present throughout; `seq = 10` points created by C then removed by A's `seq ≤ 11` filter | none needed for the 12 points; any remaining older-`seq` points removed by verification | poller: `seq = 12` count = `segment_count` at every sample; final scroll: only `seq = 12` points; contrasts with the pre-C-12 protocol, where this sequence deletes S |
+| R-24 | Qdrant 1.15.1 (pinned image), a test collection with the §4.2 parameters and the §4.3 payload indexes (`rep`/`trep` keyword, `seq` integer) | points of subject S with `seq = 12`, and of S with `seq = 10`, and of another subject with `seq = 5`; issue delete with filter `must: [rep = S, seq range lte 11]` (and the `trep` variant), `wait=true` | — | — | only S's `seq = 10` points are deleted; S's `seq = 12` points and the other subject remain (exact `count` per condition before and after); repeat without the integer index to show whether the result depends on it (recorded). **Planned, unrun — the semantics are an assumption until this runs** |
+| R-25 | g ACTIVE, target T indexed; a media task M is searching g | delete T's current points directly in Qdrant (non-protocol loss) before M searches; M finishes; then verification runs | M found no candidate T; g gets `suspect_since` when verification counts T short; tasks searching g after that go `WAITING_INDEX(suspect)` | T re-applied; T's `target_vs_media` re-run enqueued after the repair is confirmed; `suspect_since` cleared | the re-run of T confirms the (M, T) match; no `no_match` verdict row exists for (M, T) from the gap; no task reached DONE on g between `suspect_since` and its clearance; `match_task_reruns_total{reason=index_repair}` = 1 |
 
 ### 9b. Hint reader and backstop scans (design §6.1; corrected C-4, C-8)
 
@@ -404,9 +420,12 @@ run by a harness on a dedicated `qdrant-e-r1` container (same image,
 1.5 GiB, same collection configuration), never on the dev instance and
 without any P10 guard override (the guard does not exist before I-2).
 Resident points are counted exactly as the guard counts them — all
-collections in the instance, both generations during the rebuild: 626,658
-in phases 1–2, **1,253,316 + 2 × live writes (≈ 1.29 M)** in phase 3,
-626,658 + live after deletion of g1; test ceiling `P_test` = 1,300,000.
+collections in the instance, both target generations during the rebuild
+plus a resident 10,000-point media-role collection (C-12: per-collection
+overhead of the two-role dev instance): 636,658 in phases 1–2,
+**1,263,316 + 2 × live writes (≈ 1.30 M)** in phase 3, 636,658 + live after
+deletion of g1; every 10th live write a re-UPSERT at a new `seq` with
+cleanup; test ceiling `P_test` = 1,330,000.
 Required assertions per phase: resident count = Σ exact Qdrant counts;
 generation count; `oom_kill` = 0; `anon` peak ≤ 1.35 GiB; query p95 ≤ 10 ms
 after warm-up (phases 2, 3, 5); `du` recorded; live-write latency recorded.
@@ -442,9 +461,9 @@ together (host `MemAvailable` floor, encoder throughput change).
 | P10-T8 | calibration status and reliability (§3.3) — prerequisite of publication | not run |
 | P10-T9 | lowinfo vs unfiltered oracle, `lost_tp = 0` (§3.4) — prerequisite of enabling lowinfo | not run |
 | P10-T10 | E-R1 capacity (design §13.4) — prerequisite of I-2 | not run |
-| P10-T11 | mutation/rebuild crashes R-1…R-21, reader/scan H-1…H-9, lowinfo L-1…L-16, identity K-1…K-8, capacity CAP-1…CAP-8 (§9a–§9e) | not run |
+| P10-T11 | mutation/rebuild crashes R-1…R-25, reader/scan H-1…H-9, lowinfo L-1…L-16, identity K-1…K-8, capacity CAP-1…CAP-8 (§9a–§9e) | not run |
 
-### 11a. Issue → test matrix (corrections C-1…C-11, design §19)
+### 11a. Issue → test matrix (corrections C-1…C-12, design §19)
 
 | Issue | Tests / measurements | Pass criterion | Blocks |
 |---|---|---|---|
@@ -459,6 +478,7 @@ together (host `MemAvailable` floor, encoder throughput change).
 | C-9 lowinfo freshness | L-1…L-16 (L-11…L-16 new); §3.4 unchanged | every fail-closed case eligible; partial never complete; `lost_tp = 0` | enabling lowinfo |
 | C-10 capacity / E-R1 | E-R1 (§10); CAP-1…CAP-8 | E-R1 pass rules; guard never bypassed; limit only from a measured pass | I-2 |
 | C-11 mutation guarantees | R-1…R-21 | common pass condition of §9a; no stale point accepted | D19 / I-2 exit |
+| C-12 stale DELETE after newer UPSERT; task completion under index loss | R-22…R-25 (R-14, R-18 keep the stale-UPSERT direction) | current-`seq` points never absent after apply (poller); R-24 filter semantics on 1.15.1; no DONE on a suspect generation; repaired subject re-run finds the hidden match | D4/D19 / I-2 exit |
 
 ## 12. Evidence that exists today (audit inputs, not P10 tests)
 

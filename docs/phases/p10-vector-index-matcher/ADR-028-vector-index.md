@@ -2,7 +2,7 @@
 
 Status: **Proposed** (2026-10-15, P10 design review; decisions P10-D1, D2,
 D3, D4, D14, D19, D20; corrected the same day — design §19 C-1, C-3, C-4,
-and §19.1 C-10, C-11).
+and §19.1 C-10, C-11, C-12).
 Not accepted. Number taken as the next free number after
 crawler2's ADR-027; this file lives in the fingerprinter repository until the
 operator decides where P10 records belong (P10-D16) — crawler2's
@@ -45,10 +45,14 @@ ordering argument needs (design §6.4).
    Both roles store int8 vectors in RAM and float32 originals on disk with
    exact rescoring.
 4. Point ids are UUIDv5 of (representation or target-representation id,
-   segment index): upserts are idempotent across hosts, retries and rebuilds.
+   intent `seq`, segment index): upserts of one intent are idempotent across
+   hosts, retries and rebuilds, and an older intent's operations can neither
+   overwrite nor (deletes are bounded by `seq ≤ d`) remove a newer intent's
+   points (design §4.3, §12.2; corrected C-12).
 5. Every index mutation is preceded by a durable intent in Scylla
    (`index_entries`: desired op/version, `seq`), applied idempotently, and
-   recorded only `IF seq` is unchanged; writes Qdrant cannot fence are found
+   recorded only `IF seq` is unchanged; deletes are bounded by `seq ≤ d` and
+   point ids contain `seq`; writes Qdrant cannot fence are found
    by a Qdrant-side verification pass of the P10-owned reconciler. A rebuild
    is a new generation under a build lease: CREATED → BUILDING →
    CATCHING_UP → VALIDATING → READY → ACTIVE (one LWT) → DRAINING →
@@ -67,15 +71,22 @@ ordering argument needs (design §6.4).
   limit is a hard 1.5 GiB; dev capacity is **unresolved** (capacity guard
   `max_points` = 250,000 resident points per instance, all generations,
   provisional) until experiment E-R1 measures a 626 k-point generation and
-  its rebuild (≈ 1.25 M resident) on a dedicated test container; the base target
+  its rebuild (≈ 1.26–1.30 M resident, with a resident media collection) on a dedicated test container; the base target
   scenario (600 k vectors, 1.717 GiB raw FP32) is not claimed for the dev
   host; production volumes need a dedicated index host (P14).
+- Points lost by non-protocol causes are repaired eventually: the
+  generation is marked suspect (no task finishes DONE on it) and the
+  repaired subject's task is re-run (design §12.9 H).
 - REST ingest measured at ≈ 310–500 points/s (lower bound): a full rebuild at
   base 1-year volume is hours to a day until faster ingest is measured.
 - Qdrant upgrades are handled like runtime changes: a new generation built
   and checked before promotion.
-- Qdrant writes cannot be made conditional: stale points from a slow writer
-  are not prevented; they cannot be accepted as match evidence (candidates
+- Qdrant writes cannot be made conditional and a Scylla LWT cannot fence a
+  write already sent: stale operations are not prevented. A stale DELETE
+  cannot remove a newer intent's points (sequence-versioned ids,
+  `seq`-bounded deletes; relies on Qdrant's integer `range` filter, to be
+  verified on 1.15.1); a stale UPSERT adds older points that cannot be
+  accepted as match evidence (candidates
   are checked against live P9 rows and verified on artifact vectors) and are
   removed within one verification cycle after they land (design §12.9).
 - Moving to another index technology later means a new adapter behind the

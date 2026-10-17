@@ -18,6 +18,11 @@ pagination (§6.1), low-information freshness and affected-target enumeration
 (§7.3), capacity accounting and E-R1 (§13.3–§13.4), mutation/rebuild
 guarantees (§12.9). Still a proposal; nothing approved.
 
+**Third correction 2026-10-17** (C-12, §19.1): stale DELETE after a newer
+UPSERT — sequence-versioned point ids and sequence-bounded deletes (§4.3,
+§12.2), strict vs eventual guarantees and task completion under a suspect
+generation (§12.9 H, §11.1). Still a proposal; nothing approved.
+
 Plan: crawler2 `docs/v2-phase-plan.md` §P10 (binding), invariants B.5 #3/#4.
 P9 is complete and is not reopened: no P9 identity, spec, table, artifact or
 event changes here (P10-D5 keeps P9 code unchanged).
@@ -192,14 +197,20 @@ leaves headroom above the build peak for that reason.
 
 | Role | Point id (UUID v5, namespace `antipiracy/fingerprinter/index/v1`) | Payload |
 |---|---|---|
-| media | `uuid5(representation_id + ":" + segment_index)` | `rep`, `cid` (content id), `spec` (full digest), `k` (segment index), `t` (pts_s), `seq` (mutation sequence, §12.2) |
-| target | `uuid5(target_representation_id + ":" + segment_index)` | `trep`, `tid`, `tver`, `rep` (content representation), `cid`, `spec`, `k`, `t`, `seq`, `lowinfo` (bool), `lowinfo_rev` (§7.3) |
+| media | `uuid5(representation_id + ":" + seq + ":" + segment_index)` | `rep`, `cid` (content id), `spec` (full digest), `k` (segment index), `t` (pts_s), `seq` (mutation sequence, §12.2) |
+| target | `uuid5(target_representation_id + ":" + seq + ":" + segment_index)` | `trep`, `tid`, `tver`, `rep` (content representation), `cid`, `spec`, `k`, `t`, `seq`, `lowinfo` (bool), `lowinfo_rev` (§7.3) |
 
-Deterministic ids make every upsert idempotent across hosts and retries
-(duplicate events, concurrent indexers, rebuild + live writes all converge).
-Index ids never appear in Scylla facts or events; they are recomputed from
-domain ids. Payload indexes: `rep`, `cid`, `tid` (keyword). Media points carry
-**no** low-information flag (§7.3).
+`seq` is the subject's `index_entries` sequence of the intent being applied
+(§12.2). Deterministic ids make every upsert of one intent idempotent across
+hosts, retries and generations (duplicate events, concurrent indexers,
+rebuild + live writes all converge). **Including `seq` in the id (corrected
+C-12)** means an UPSERT of intent *u* writes only ids of *u*: it can never
+overwrite the points of a newer intent, and the points of different intents
+of one subject are distinct points. Index ids never appear in Scylla facts or
+events; they are recomputed from domain ids and `seq`. Payload indexes:
+`rep`, `trep`, `cid`, `tid` (keyword), `seq` (integer — required by the
+sequence-bounded deletes of §12.2). Media points carry **no**
+low-information flag (§7.3).
 
 ## 5. Data model (new tables, fingerprinter keyspace, no TTL)
 
@@ -208,7 +219,7 @@ them.
 
 | Table | Key | Content |
 |---|---|---|
-| `index_generations` | PK `(spec_digest, role)`, CK `generation`; **static** `active_generation`, `active_epoch`, `routing_epoch`, `next_generation` | per generation: state (§12.4), collection, params JSON + digest, `boundary_at`, per-bucket build cursor, expected/actual counts, `reserved_points` (§13.3), manifest digest, build owner epoch, timestamps, audit. Generation numbers come from `next_generation` and are never reused |
+| `index_generations` | PK `(spec_digest, role)`, CK `generation`; **static** `active_generation`, `active_epoch`, `routing_epoch`, `next_generation` | per generation: state (§12.4), collection, params JSON + digest, `boundary_at`, per-bucket build cursor, expected/actual counts, `reserved_points` (§13.3), manifest digest, build owner epoch, `suspect_since` / `suspect_reason` (set by verification when an APPLIED subject's current points are missing, cleared after repair, §12.9 H), `last_clean_verify_at`, timestamps, audit. Generation numbers come from `next_generation` and are never reused |
 | `index_capacity` | PK `instance` (one Qdrant instance) | `max_points` (copied from config, audited), `reserved` bigint, `updated_at` — the capacity ledger (§13.3); changed only by LWT `IF reserved = :r` |
 | `index_build_lease` | PK `(spec_digest, role)` | `owner`, `epoch`, `lease_until` — one builder per (spec, role) (P9 intake lease pattern) |
 | `index_entries` | PK `(spec_digest, role, bucket)`, CK `subject_id` | **the durable mutation intent and its bookkeeping** (§12.2): `desired_op` UPSERT/DELETE, `desired_ver` (artifact SHA-256, plus `lowinfo_rev` for targets), `seq` bigint, `applied map<int, bigint>` (generation → applied seq), `segment_count`, `state` PENDING/APPLIED/BLOCKED, `attempts`, `last_error`, `updated_at` |
@@ -414,7 +425,8 @@ LWT on `epoch` for state transitions, Redis clock).
    capped at `cap_A` (§7.5).
 4. **Verify** each candidate: load the target representation's artifact
    (verified SHA-256), run `temporal/v2` (§8).
-5. **Commit** matches (§9) and finish the task (DONE or INCOMPLETE).
+5. **Commit** matches (§9) and finish the task (DONE or INCOMPLETE; never
+   DONE while the searched generation is `suspect`, §12.9 H).
 
 ### 6.3 Direction B — new target against historical media
 
@@ -446,7 +458,12 @@ happened after M was indexed, so T's search sees M. Either way at least one
 of the two searches can retrieve the pair. The guarantee is about
 *visibility*; whether ANN retrieves the pair is measured (validation §4).
 Across index generations, live writes go to every non-dropped generation
-(§12.3), so a promotion cannot lose a subject indexed during a build.
+(§12.3), so a promotion cannot lose a subject indexed during a build. The
+argument also needs the subject's points to *stay*: no stale index operation
+can remove the points of a subject's current intent (§12.9 S2). Points lost
+by any other cause (storage fault, operator action, defect) are a detected
+and repaired condition with task re-runs (§12.9 H) — an eventual, not a
+strict, guarantee.
 
 ### 6.5 Spec coverage
 
@@ -644,7 +661,9 @@ lost (validation §3.4).
 
 ### 7.4 Deduplication
 
-Hits are deduplicated per (query segment, subject); candidates per subject
+Hits are deduplicated per (query segment, subject) — this also collapses
+the short-lived duplicate points of two `seq` values of one subject (§12.2) —
+candidates per subject
 (target version or content). Media with the same `ContentId` are one subject
 by construction (P8 level 3). Different `ContentId`s already linked as
 level-5 equivalent are **still verified separately** (equivalence is not used
@@ -873,7 +892,7 @@ explicitly (rate-limited, audited); old matches remain under their version.
 ### 11.1 Task state machine
 
 `PENDING → INDEXED → SEARCHED → VERIFYING(page) → DONE | INCOMPLETE`;
-`→ WAITING_INDEX` when the spec/role has no ACTIVE generation or Qdrant is unhealthy (re-tried
+`→ WAITING_INDEX` when the spec/role has no ACTIVE generation, Qdrant is unhealthy, the subject is capacity-blocked, or the generation the task searched is `suspect` (§12.9 H; the task may not finish DONE while it is) (re-tried
 with backoff, not failed); `→ FAILED` only for non-retryable causes
 (artifact SHA-256 mismatch, invalid vector, missing representation row),
 each with a typed reason. Every transition is an LWT on `epoch`; a lost lease
@@ -936,12 +955,22 @@ intent.
    desired state is no longer current, goes back to step 1. It reads the
    routing set = generations in states `CREATED … DRAINING` (§12.4) with
    `routing_epoch` — a fresh QUORUM read for every apply, never a cached
-   copy — then, for an UPSERT that adds a subject to a generation where it
-   has no `applied[g]`, reserves its points in the capacity ledger (§13.3;
-   refused ⇒ `BLOCKED: capacity`, no Qdrant write), then applies to each: UPSERT = upsert all points of the
-   subject (deterministic ids, payload incl. `seq = s`), `wait=true`;
-   DELETE = delete by filter `rep`/`trep` = subject, `wait=true`. Both are
-   idempotent, so an **uncertain outcome** (timeout, connection loss, HTTP
+   copy — then, for an UPSERT whose `seq` is not yet applied to a routed
+   generation, reserves its points there in the capacity ledger (§13.3;
+   refused ⇒ `BLOCKED: capacity`, no Qdrant write), then applies to each
+   (corrected C-12):
+   - **UPSERT at `u`**: (a) upsert all points of the subject with ids of
+     `u` and payload `seq = u`, `wait=true`; then (b) **cleanup**: delete by
+     filter `subject = S AND seq < u`, `wait=true`. Order (a) before (b), so
+     the subject is never without a complete point set while its intent is
+     UPSERT.
+   - **DELETE at `d`**: delete by filter `subject = S AND seq ≤ d`,
+     `wait=true`.
+   (`subject` = payload `rep` for media, `trep` for targets; `seq` is a
+   `range` condition on the integer payload index.) An operation derived
+   from intent *x* can therefore touch only points with `seq ≤ x` — never
+   points of a newer intent. All three steps are idempotent, so an
+   **uncertain outcome** (timeout, connection loss, HTTP
    5xx/503) is handled by repeating the operation; there is no need to know
    whether the first attempt landed. A **permanent** failure (HTTP 4xx other
    than 404/409/429: wrong dimension, invalid payload) is not retried: the row
@@ -957,13 +986,27 @@ intent.
 4. **Completion.** A mutation is complete when `applied[g] = seq` for every
    generation that was in the routing set at the time of its routing epoch.
 
-**What cannot be fenced, and how it is caught.** Qdrant has no conditional
-writes and a Redis lease does not fence a write already sent, so a *stale*
-worker (lease lost, paused) can still land an older UPSERT after a newer
-DELETE was applied and recorded, and then crash before its failing LWT.
-Scylla alone cannot see that. Such a point **cannot produce an accepted
+**What cannot be fenced, and how it is handled.** Qdrant has no conditional
+writes, a Redis lease does not fence a write already sent, and a failing
+Scylla LWT afterwards cannot undo a Qdrant operation that has landed. A
+*stale* worker (lease lost, paused) can therefore land an operation of an
+older intent at any time. Both directions, with the C-12 protocol:
+- **older UPSERT after a newer DELETE or UPSERT**: it adds points of the
+  older `seq` (distinct ids); it overwrites nothing of the newer intent.
+  Extra points, false-positive side — handled below.
+- **older DELETE after a newer UPSERT** (the C-12 race: DELETE 11 read,
+  worker paused, UPSERT 12 applied and recorded, DELETE 11 lands): its
+  filter `seq ≤ 11` does not match the `seq = 12` points, which survive.
+  Without the `seq` bound (first and second proposal: delete by subject
+  only) it would have removed them, leaving a live subject missing from the
+  index — a false-negative risk that verification could only repair later.
+- **older UPSERT 10 then older DELETE 11, both after UPSERT 12**: the
+  UPSERT adds `seq = 10` points, the DELETE removes `seq ≤ 11` — the
+  `seq = 12` points are untouched (with seq-independent ids the UPSERT 10
+  would first have overwritten them, and the DELETE then removed them).
+Extra older-`seq` points **cannot produce an accepted
 match** (Invariant C, §12.9: candidates are checked against authoritative P9
-rows and verified on artifact vectors), and it is **found and removed** by
+rows and verified on artifact vectors), and they are **found and removed** by
 the Qdrant-side verification of §12.6 (points carry `seq`; a point with
 `seq` < the row's `seq`, or present while the row says DELETE, is stale). No
 time bound on the stale write itself is claimed (a paused process can resume
@@ -976,7 +1019,8 @@ cycle (`verify_cycle_s`).
 | after intent, before Qdrant | row PENDING | reconciler applies |
 | after Qdrant, before bookkeeping | Qdrant done, row PENDING | reconciler re-applies (idempotent), records |
 | after bookkeeping | consistent | — |
-| during DELETE (partial) | some points left, row PENDING | re-apply delete by filter |
+| during DELETE (partial) | some points left, row PENDING | re-apply delete by filter `seq ≤ d` |
+| during UPSERT, after (a), before (b) | new and old `seq` points coexist (duplicates collapse in §7.4), row PENDING | re-apply (a) (idempotent) and (b) |
 
 ### 12.3 Incremental updates
 
@@ -1038,7 +1082,9 @@ Every mutator writes its intent row *before* it reads the routing set
 (§12.2), so a mutator that missed g has a row that existed before the
 catch-up pass began; every subject has a row (the bulk load writes them
 too); every row is either applied to g by its own mutator or by the pass.
-Hence no subject can be missing from g at promotion (the `boundary_at` wait
+Hence no subject can be missing from g at promotion through the mutation
+protocol — stale operations included, since they cannot remove current
+points (§12.9 S2); a non-protocol loss is handled by §12.9 H (the `boundary_at` wait
 is an extra margin, not required for this argument); tombstones are rows with `desired_op = DELETE`
 and are checked the same way.
 
@@ -1049,7 +1095,9 @@ see either the old or the new pointer. Crash before: g stays READY and
 continues to receive live writes; the lease holder (or the next one)
 re-validates if READY is older than `revalidate_after_s`, then promotes.
 Crash after: done; the reconciler moves DRAINING → RETIRED after the grace
-and deletes the collection. A stale worker writing to a RETIRED generation
+**and** after one complete verification pass over the DRAINING generation
+that started after promotion (missing points found there trigger the task
+re-runs of §12.9 H for tasks that searched it), and deletes the collection. A stale worker writing to a RETIRED generation
 gets "collection not found", checks the generation state in Scylla and
 treats it as a no-op; for any other state it is an error.
 
@@ -1061,9 +1109,9 @@ A generation is promoted only if all of these hold:
 |---|---|---|
 | completeness | `index_entries` | a full pass completed with every row at `applied[g] = seq` when checked |
 | authoritative coverage | P9 rows (`representations_by_spec`/`representations`; `target_representations` × `targets`) | a complete walk started after CATCHING_UP ended found no READY subject without an UPSERT row applied to g, and no live-row/DELETE disagreement |
-| manifest | `index_entries` UPSERT rows | Qdrant count per subject (filter `rep`/`trep`) = `segment_count`; total = Σ |
-| no extras | `index_entries` | Qdrant scroll of g (ids + payload `rep`/`trep`, `seq`): every point belongs to an UPSERT row with equal `seq` |
-| content digest | artifacts | per subject, SHA-256 over (sorted point ids, float32 original bytes, canonical payload without `seq`) equals the digest computed from the artifact; bucket digests combined order-independently into the generation manifest digest |
+| manifest | `index_entries` UPSERT rows | Qdrant count per subject with filter `subject = S AND seq = row.seq` = `segment_count`; total = Σ |
+| no extras | `index_entries` | Qdrant scroll of g (ids + payload `rep`/`trep`, `seq`): every point belongs to an UPSERT row with `seq` ≤ row `seq`; points with `seq` < row `seq` are removed by cleanup (§12.2 (b)) and the check repeated; a point of a DELETE row, of no row, or with `seq` > row `seq` fails validation (back to CATCHING_UP; a `seq` above the row is an invariant violation, alert) |
+| content digest | artifacts | per subject, SHA-256 over (sorted segment indexes, float32 original bytes, canonical payload without `seq`) of the points with `seq = row.seq` equals the digest computed from the artifact (point ids are excluded because they contain `seq`); bucket digests combined order-independently into the generation manifest digest |
 | classification | `lowinfo_class` | target payload `lowinfo_rev` = the row's `rev` |
 | params | `index_generations` | Qdrant collection config equals the recorded params |
 | capacity | `index_capacity`, `index_generations.reserved_points` | Qdrant exact count of g ≤ `reserved_points`; ledger ≥ Σ exact counts of all non-RETIRED collections |
@@ -1097,9 +1145,9 @@ cursors; R-21) — converges to the same state.
 |---|---|---|---|---|---|---|
 | missing point (authoritative READY, no/partial points) | P9 rows → `index_entries` desired UPSERT | Qdrant verification count per subject ≠ `segment_count`; authoritative scan finds no row | intent (if absent) + apply; then the subject's own task is re-enqueued (it re-covers every pair the gap could have hidden, §6.4) | deterministic ids; task `IF NOT EXISTS`/rerun | `index_miss_total` | R-17 |
 | orphan point (no `index_entries` row) | P9 rows | verification scroll | authoritative READY ⇒ write intent + apply; else delete by id | delete/upsert by id | `index_verify_orphans_total` | R-16 |
-| stale `seq` (point `seq` < row `seq`) | `index_entries` | verification scroll | re-apply the row's desired state | as above | `index_verify_stale_total` | R-14, R-18 |
-| point present for a DELETE row | `index_entries` (DELETE) | verification scroll, count by filter | delete by filter | delete by filter | `index_verify_stale_total` | R-5, R-14 |
-| row APPLIED but points missing | Qdrant (observed) vs `index_entries` | verification count | re-apply; re-enqueue the subject's task | as above | `index_miss_total` | R-17 |
+| stale `seq` (point `seq` < row `seq`) | `index_entries` | verification scroll | ensure the row's current points exist (re-apply (a) if not), then cleanup `seq < row.seq` | ids include `seq`; filter bounded by `seq` | `index_verify_stale_total` | R-14, R-18, R-23 |
+| point present for a DELETE row | `index_entries` (DELETE) | verification scroll, count by filter | delete by filter `subject AND seq ≤ d` | delete by filter | `index_verify_stale_total` | R-5, R-14 |
+| row APPLIED but current points missing (count of `seq = row.seq` < `segment_count`) | Qdrant (observed) vs `index_entries` | verification count | set `suspect_since` on g; re-apply (a); re-enqueue the subject's own task **after** the repair is confirmed; clear `suspect_since` when the pass finds no further miss | as above; rerun `IF NOT EXISTS` per (subject, repair id) | `index_miss_total`, `index_generation_suspect` | R-17, R-25 |
 | abandoned intent (PENDING/BLOCKED past grace) | `index_entries` | intents pass | apply (BLOCKED: retry with backoff, stays visible) | as above | `index_entries{state}` | R-2, R-3 |
 | mutation not in every routed generation | `index_entries.applied` vs generations in `CREATED…DRAINING` | intents pass and catch-up pass | apply to the missing generation | as above | `index_entries{state=PENDING}` | R-4 |
 | incomplete / failed generation | `index_generations` + build lease | generations pass (expired lease, stuck state) | resume under a new lease, or FAILED + `index drop --generation` | state transitions are epoch-fenced LWTs | `index_build_progress`, generation state | R-6, R-13, R-20 |
@@ -1154,16 +1202,19 @@ Scylla by the writer (§12.2 steps 1–2). A failed intent LWT ⇒ no Qdrant cal
 an unknown outcome ⇒ SERIAL read first. Bulk load and catch-up use the same
 rows.
 
-**B — Idempotent recovery.** UPSERT (deterministic ids, full payload) and
-DELETE (by filter on the subject) are idempotent, so retrying any uncertain
+**B — Idempotent recovery.** UPSERT (ids of its `seq`, full payload), its
+cleanup (`seq < u`) and DELETE (`seq ≤ d`) are idempotent, so retrying any uncertain
 outcome converges to the row's desired state; classification of errors
 (retryable vs permanent) is §12.2 step 2. A retry always re-reads the row and
-applies the *current* desired state, not the one first attempted.
+applies the *current* desired state, not the one first attempted: a worker
+whose DELETE 11 timed out and whose row now says UPSERT 12 retries with
+UPSERT 12, and even if its first DELETE 11 lands late it cannot touch the
+`seq = 12` points (S2 below).
 
 **C — Stale writes cannot become accepted evidence.** Qdrant only proposes
 candidates. Before a candidate is verified, the matcher checks (cached per
 task): (1) the hit's payload `spec` equals the query spec and the point id
-equals `uuid5(subject:k)` of its payload — otherwise the point is foreign
+equals `uuid5(subject:seq:k)` of its payload — otherwise the point is foreign
 (orphan repair); (2) the subject is **authoritatively live** at QUORUM:
 media — `representations(content_id, spec).state = READY`; target — binding
 READY and `targets.state ∉ {RETIRED, PURGED}`; (3) `temporal/v2` runs on the
@@ -1192,7 +1243,10 @@ work or delay, never create a match.
 - rebuild meeting a DELETE row ⇒ applies the DELETE to g (no-op on an empty
   collection, but records `applied[g]`), so tombstones are part of the
   completeness check;
-- crash after Qdrant delete, before bookkeeping ⇒ PENDING; re-apply (R-3).
+- crash after Qdrant delete, before bookkeeping ⇒ PENDING; re-apply (R-3);
+- **stale DELETE after a newer UPSERT** (C-12) ⇒ its `seq ≤ d` filter cannot
+  match the newer points; nothing to repair (R-22); also when a stale UPSERT
+  of an even older `seq` landed in between (R-23).
 
 **E — Generation completeness at promotion.** "Complete" is defined at the
 promotion LWT instant P, with writes continuing, as: (E1) every
@@ -1205,11 +1259,16 @@ until applied, that row is PENDING exactly as it is for the active
 generation, and its task has not yet passed its INDEXED step; (E3) the
 authoritative coverage walk (§12.5) found every READY subject with an UPSERT
 row applied to g; (E4) the no-extras scroll found no point outside UPSERT
-rows of equal `seq`; (E5) manifest and content digests match the artifacts;
+rows with `seq` ≤ row `seq` after cleanup; (E5) manifest and content digests match the artifacts;
 (E6) params and capacity checks pass. A point written by a stale worker after
 E4 is not excluded by these checks — it is covered by Invariant C and the
 verification cycle, which is why promotion does not claim "no stale point
-can ever exist", only "no stale point can be accepted". If READY waits longer
+can ever exist", only "no stale point can be accepted". A stale operation
+landing after VALIDATING, while READY, or right after promotion **cannot
+invalidate E1–E3**: it can add older-`seq` points but cannot remove the
+current points of any subject (S2). Promotion is therefore not invalidated by
+stale writes; only a non-protocol loss can make a validated generation
+incomplete, and that is handled by H. If READY waits longer
 than `revalidate_after_s`, VALIDATING is repeated before promotion.
 
 **F — Rebuild failure.** The active pointer changes only through the
@@ -1230,6 +1289,40 @@ available, one completed verification cycle plus one completed intents pass
 leave Qdrant equal to the desired state for every routed generation; with
 mutations continuing, every divergence that exists at the start of a cycle
 is repaired or reported BLOCKED by the end of that cycle.
+
+**H — Index completeness and task completion (corrected C-12).**
+
+| Guarantee | Kind | Mechanism |
+|---|---|---|
+| S1 no Qdrant write without a durable, read-back intent | strict | Invariant A |
+| S2 once UPSERT *u* is applied to g, the `seq = u` points of S stay in g until an intent newer than *u* is applied | strict (under: Qdrant applies filters as documented and loses no acknowledged data — R-24) | ids contain `seq`; every removal is bounded by `seq ≤ x` with *x* the operation's own intent; a stale operation has *x* < *u* |
+| S3 no accepted match from a stale, foreign or dead-subject point | strict | Invariant C |
+| S4 one ACTIVE generation; pointer changed only by the promotion LWT | strict | Invariant F |
+| removal of extra older-`seq` points | eventual: one verification cycle after they land | §12.6 |
+| repair of points lost by non-protocol causes, and re-consideration of every pair the loss may have hidden | eventual: detection within one verification cycle of g, plus task scheduling | below |
+
+Answers to the C-12 questions: (1) a stale DELETE **cannot** remove a newer
+UPSERT's points; (2) because point ids contain `seq` and the DELETE filter is
+`seq ≤ d`; (3) a missing-point state can still arise from non-protocol
+causes (storage fault, manual deletion, a defect) and is detected by the
+verification count of `seq = row.seq` points; (4) a task may **not** finish
+DONE while the generation it searched is `suspect` — before its DONE LWT it
+reads `suspect_since` of that generation and, if set, goes to
+`WAITING_INDEX(suspect)`; a generation that becomes suspect *after* a task
+finished is handled by (5); (5) when a missing subject S is repaired, S's own
+task (`media_vs_targets` or `target_vs_media`) is re-enqueued after the
+repair is confirmed; by the §6.4 argument every pair (S, X) is retrieved by
+S's re-run, because X's points are present (or X's own repair re-runs X
+after X is restored, whichever is later); index gaps cause *absent
+candidates*, never a stored `no_match` verdict (verdicts are computed on
+artifacts), so a re-run can always add the match; (6) no — a stale operation
+after validation cannot remove current points (E above); (7) the same right
+after promotion; DRAINING generations get one complete verification pass
+before RETIRED so tasks that searched them are covered by (5); (8) the table
+above. A task that finished DONE before a later non-protocol loss is not
+affected by it (it searched an intact generation). Temporary false
+negatives are therefore possible **only** after a non-protocol loss, from the
+loss until S's re-run completes — recorded as a known limitation (§17).
 
 **Routing races** (all rely on: intent LWT → fresh routing read → apply →
 `IF seq` bookkeeping; CREATED bumps `routing_epoch` in the same partition
@@ -1331,13 +1424,16 @@ corpus as the media role plus the 7 targets ≈ 10 k target points: steady
   of projected); if `reserved + projected(g) > max_points` the rebuild is
   refused with `CAPACITY_BLOCKED` (no collection created; the active
   generation untouched) and the requirement is reported; (2) **every UPSERT
-  that adds a subject to a generation** (no `applied[g]` yet), before the
-  Qdrant call: reserve `segment_count` (× each such routed generation); a
-  generation draws first on its own `reserved_points` headroom (builder
-  pages), then on the ledger; refused ⇒ row `BLOCKED: capacity`, no Qdrant
-  write; re-applies of an already-counted subject reserve nothing.
-- *Release:* only after the reduction is confirmed — a DELETE's bookkeeping
-  LWT for g (release that subject's points in g), or a collection deletion
+  whose `seq` is not yet applied to a generation** (a new subject, or a new
+  intent of an indexed one — its new-`seq` points coexist with the old ones
+  until cleanup, C-12), before the Qdrant call: reserve `segment_count` (×
+  each such routed generation); a generation draws first on its own
+  `reserved_points` headroom (builder pages), then on the ledger; refused ⇒
+  row `BLOCKED: capacity`, no Qdrant write; re-applies of the same `seq`
+  reserve nothing.
+- *Release:* only after the reduction is confirmed — an UPSERT's cleanup
+  (b) confirmed for g (release the older `seq`'s points in g), a DELETE's
+  bookkeeping LWT for g (release that subject's points in g), or a collection deletion
   confirmed for a RETIRED/FAILED generation (release its `reserved_points`).
   A DRAINING generation stays counted until RETIRED.
 - *Two generations:* during a rebuild the ledger holds active + DRAINING (if
@@ -1347,7 +1443,7 @@ corpus as the media role plus the 7 targets ≈ 10 k target points: steady
   **high** (safe). The capacity audit (§12.6) may lower it only to the bound
   Σ Qdrant exact counts of existing collections + Σ `segment_count` × routed
   generations of PENDING UPSERT rows; it raises it if below that bound.
-  Residual uncounted points: a stale worker re-landing deleted points after
+  Residual uncounted points: a stale worker re-landing older-`seq` points after
   release — bounded by concurrent appliers × the largest subject (≤ 1,440
   points each) — covered by `index.capacity_margin_points` (default 10,000),
   which admission and UPSERT checks subtract from `max_points`.
@@ -1373,17 +1469,29 @@ comes from this measurement. What E-R1 must test is the *same accounting*:
 resident points of all collections in the instance, two generations during a
 rebuild. The harness counts resident points exactly (`count` with `exact =
 true` per collection at each phase boundary, and its own running total in
-between) and enforces a **test ceiling** `P_test = 1,300,000` resident
+between) and enforces a **test ceiling** `P_test = 1,330,000` resident
 points: it stops live writes if they would exceed it and records that.
+
+*Why E-R1 is conservative for the instance-wide limit (checked by C-12):*
+the target payload is a superset of the media payload, so a resident point
+of the measurement costs at least what a media point costs; but the dev
+instance holds **both roles** (during a target rebuild: target old + target
+new + media ACTIVE), and per-collection overhead (segments, WAL, optimizer)
+is not proportional to points. E-R1 therefore keeps a third, media-role
+collection of 10,000 points (media payload, same parameters) resident in all
+phases, counted in the resident total; and the C-12 protocol's transient
+duplicates (new-`seq` points before cleanup) are exercised by making every
+10th live write a re-UPSERT of an existing subject at a new `seq` followed by
+cleanup.
 
 | Item | Specification |
 |---|---|
 | question | does one 1.5 GiB Qdrant instance hold a 626,658-point target-role generation **and** its rebuild (two generations resident, live writes, queries)? |
 | corpus | the 104,443 cached real vectors + 5 seeded random orthogonal rotations = 626,658 vectors (norms and intra-copy geometry kept, no exact duplicates; valid for memory/latency, **not** for recall); target-role payload |
 | Qdrant | 1.15.1, `--memory 1.5g --memory-swap 1.5g --cpus 2`, the §13.3 collection configuration, gRPC batches of 1,000 |
-| live writes | from phase 3 on: one new 12-segment subject per second upserted into **every** routed generation (both in phase 3), deterministic ids, its points counted |
+| live writes | from phase 3 on: one 12-segment write per second into **every** routed generation (both in phase 3), ids of the C-12 scheme, points counted; 9 of 10 are new subjects, every 10th a re-UPSERT of an existing subject at a new `seq` followed by its `seq <` cleanup |
 | query workload | 10 single-segment searches/s, `limit 100`, rescoring on, concurrency 2, from the 760 real target-query segments |
-| phases (resident points) | (1) build g1: 626,658; wait for green; (2) warm queries 3 × 760: 626,658; (3) build g2 of the same set while g1 serves queries and live writes go to both: **1,253,316 + 2 × live** (≈ 1.29 M at a 26-min build); (4) promote (harness pointer), delete g1: 626,658 + live; (5) 5 min steady queries |
+| phases (resident points, incl. the 10,000-point media collection) | (1) build g1: 636,658; wait for green; (2) warm queries 3 × 760: 636,658; (3) build g2 of the same set while g1 serves queries and live writes go to both: **1,263,316 + 2 × live** (≈ 1.30 M at a 26-min build); (4) promote (harness pointer), delete g1: 636,658 + live; (5) 5 min steady queries |
 | measurement (every 1 s, per phase) | cgroup `memory.current`, `memory.stat` (`anon`, `file`), `memory.peak`, `memory.events` (`oom_kill`); `du` of the volume; resident point count and generation count; query latency; live-write latency |
 | pass | no `oom_kill`; `anon` peak ≤ 1.35 GiB (10 % margin); query p95 ≤ 10 ms in phases 2, 3 and 5 after a 60 s warm-up; exact counts at every phase boundary equal the harness's resident total |
 | how the limit is set | `max_points` := the largest **resident total** at which every phase passed — phase-3 peak resident (measured), minus `capacity_margin_points`. Never an extrapolated value, never above a measured pass |
@@ -1443,6 +1551,7 @@ Metrics (`fingerprinter_` prefix, P9 registry):
 | `index_capacity_reserved_points`, `index_capacity_limit_points` (gauges) | instance |
 | `index_rebuild_capacity_blocked` (gauge) | spec, role |
 | `index_verify_stale_candidates_total` (stale point proposed a candidate; dropped) | role |
+| `index_generation_suspect` (gauge), `match_task_reruns_total{reason=index_repair}` | spec, role, generation |
 | `p10_scan_stalled_total` | scan |
 | `match_lowinfo_excluded_total` | kind |
 | `match_unpublished_uncalibrated` (gauge) | technique version |
@@ -1493,9 +1602,17 @@ between hosts and the index, and real machines are **P14**.
 - Dev capacity is provisional (`max_points` 250 k resident points per
   instance, all generations) until E-R1 (§13.4); a role larger than half the
   remaining capacity cannot be rebuilt in place.
-- Qdrant writes cannot be fenced; stale points are found by the Qdrant
+- Qdrant writes cannot be fenced; a stale DELETE cannot remove a newer
+  intent's points (`seq`-versioned ids, `seq`-bounded deletes, §12.2 — relies
+  on Qdrant's integer `range` filter, R-24); stale older points are found by the Qdrant
   verification cycle, not prevented, and cannot be accepted as evidence
   (§12.9 C). No time bound on a paused stale writer is claimed.
+- Temporary false negatives remain possible after a **non-protocol** loss
+  of index points (storage fault, manual deletion, defect): from the loss
+  until the affected subject's re-run completes (§12.9 H). Stale index
+  operations cannot cause them (S2).
+- A new intent of an indexed subject briefly doubles its points (new `seq`
+  before cleanup); counted by the capacity ledger, collapsed by §7.4.
 - Low-information exclusions cost one Scylla point read per distinct witness
   per task (§7.3); unobserved additions leave flags missing until the
   refresh (safe, but less filtering).
@@ -1542,3 +1659,4 @@ does not publish until a calibrated technique version exists.
 | C-9 | a classification at the current `target_set_rev` is fresh; affected targets found by "exact search" | `rev` is only what P10 has *observed*; a retirement P10 has not yet seen leaves a flag that suppresses evidence; a top-`L` search is not an enumeration | §7.3: four states separated; exclusion only through a **usable** flag — COMPLETE record **and** a witness authoritatively live at check time (point reads of P9 rows); removals found exactly from witness lists; `exact` + `quantization.ignore` + `score_threshold`; a result of size `L` = truncated ⇒ `done_rev` not advanced, full recomputation; stale payload never trusted | D8 changed (still provisional) | design reasoning; schema; Qdrant `SearchParams` (to be verified, L-14) | L-1…L-16; validation §3.4 | enabling the filter |
 | C-10 | `max_points` 250 k "per instance" and E-R1 with 626 k per generation | the guard as written forbids its own experiment; the meaning (per generation / per instance / during rebuild) was not fixed; extrapolated outcomes could raise the limit | §13.3: resident points per instance across all existing collections, ledger with reservation-before-write, rebuild admission reserves the projected generation; §13.4: E-R1 on a dedicated container with a test ceiling, counting the same way (≈ 1.25–1.29 M resident in phase 3); limit set only from a measured full pass, never raised by a failure | D14 changed | arithmetic; earlier measurements unchanged | E-R1; CAP-1…CAP-8 | E-R1 before I-2 |
 | C-11 | "the reconciler eventually fixes stale writes"; completeness proof without race list | no statement of what may be accepted as evidence while a stale point exists; routing set said `BUILDING…` while CREATED was routed; unknown intent LWT outcome not handled | §12.9 Invariants A–G with sources of truth, routing-race table; candidate acceptance only on live P9 rows + artifact vectors; authoritative coverage walk before promotion; generation numbers never reused; error classes; reconciliation table with detection/idempotency/metric/test | D19, D20 clarified | §12 text; `db.py` LWT unknown handling | R-1…R-21 | D19/D20 approval before I-2 |
+| C-12 (2026-10-17) | point ids `uuid5(subject:k)`; DELETE = delete by filter on the subject only; "stale writes are repaired within one verification cycle" | a stale DELETE (intent 11) landing after a newer UPSERT (12) was applied and recorded removes the newer points; also a stale UPSERT 10 overwrites the 12 points before a stale DELETE 11 removes them. A live subject goes missing from the index → candidate retrieval can miss a true match; a task could finish DONE meanwhile; the stale-UPSERT tests covered only the opposite direction | §4.3 ids include `seq`; §12.2 UPSERT = write ids of `u` then cleanup `seq < u`, DELETE = `seq ≤ d`; §12.9 S2 strict (a stale operation can no longer remove current points) and H (non-protocol loss: `suspect` generation, no DONE while suspect, re-run of the repaired subject's task, DRAINING verified before RETIRED); manifest by segment index; capacity reserves new-`seq` points; E-R1 adds a resident media collection and re-UPSERTs | **changed** D4 (point id); D19, D14 clarified | Qdrant `range` filter on an integer payload index and delete-by-filter are documented API; behaviour on 1.15.1 **not yet executed** (R-24) | R-22…R-25 (planned); E-R1 | D4/D19 approval before I-2 |
