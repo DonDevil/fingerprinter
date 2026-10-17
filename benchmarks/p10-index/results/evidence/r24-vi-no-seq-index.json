@@ -1,0 +1,23 @@
+{
+ "result": {
+  "i_delete_lte": {
+   "S-3@13": 0,
+   "S-3@14": 0,
+   "S-3@15": 4,
+   "Sp-3@14": 4,
+   "Sp-3@15": 4,
+   "Sp-3@8": 4
+  },
+  "ii_cleanup_lt": {
+   "S-3@13": 0,
+   "S-3@14": 0,
+   "S-3@15": 4,
+   "Sp-3@14": 4,
+   "Sp-3@15": 4,
+   "Sp-3@8": 4
+  },
+  "iii_count_eq": 4,
+  "iii_total": 24
+ },
+ "same_semantics_without_index": true
+}

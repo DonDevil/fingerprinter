@@ -122,6 +122,87 @@ class BackfillConfig(_Section):
     buckets: int = 64
 
 
+class IndexConfig(_Section):
+    """P10 vector index (design §4, §12, §13.3). Values are the design's provisional ones."""
+
+    url: str = "http://127.0.0.1:16333"
+    api_key: str | None = None
+    timeout_s: float = Field(default=10.0, gt=0)
+    instance: str = "dev-1"
+    """Key of the capacity ledger: one Qdrant instance (all specs, roles, generations)."""
+    max_points: int = Field(default=250_000, gt=0)
+    """Resident points per instance. Provisional 250,000 until E-R1 measures a value (P10-D14)."""
+    max_points_evidence: str | None = None
+    """E-R1 report id that measured ``max_points``; required for any other value (CAP-8)."""
+    capacity_margin_points: int = Field(default=10_000, ge=0)
+    rebuild_headroom: float = Field(default=0.05, ge=0, le=1)
+    active_ttl_s: float = Field(default=5.0, gt=0)
+    search_ef: int | None = Field(default=None, ge=1)
+    oversampling: float = Field(default=2.0, ge=1)
+    upsert_batch: int = Field(default=256, ge=1, le=4096)
+    mutation_lease_s: float = Field(default=120.0, gt=0)
+    mutation_max_attempts: int = Field(default=8, ge=1)
+    clock_margin_s: float = Field(default=5.0, ge=0)
+    drain_grace_s: float = Field(default=900.0, gt=0)
+    revalidate_after_s: float = Field(default=3600.0, gt=0)
+    build_lease_s: float = Field(default=300.0, gt=0)
+    verify_cycle_s: float = Field(default=3600.0, gt=0)
+    probe_queries: int = Field(default=8, ge=0)
+
+
+class MatchingConfig(_Section):
+    """P10 candidate generation, verification and tasks (design §7.2, §9, §11)."""
+
+    k0: int = Field(default=32, ge=1)
+    k_max_a: int = Field(default=256, ge=1)
+    k_max_b: int = Field(default=512, ge=1)
+    k_max_eq: int = Field(default=512, ge=1)
+    floor_a: float = Field(default=0.60, gt=-1, lt=1)
+    floor_b: float = Field(default=0.70, gt=-1, lt=1)
+    floor_eq: float = Field(default=0.70, gt=-1, lt=1)
+    min_hits: int = Field(default=2, ge=1)
+    cap_a: int = Field(default=50, ge=1)
+    page_b: int = Field(default=200, ge=1)
+    cap_b_total: int = Field(default=5000, ge=1)
+    cap_eq_total: int = Field(default=2000, ge=1)
+    search_timeout_s: float = Field(default=120.0, gt=0)
+    verify_timeout_s: float = Field(default=30.0, gt=0)
+    verify_retries: int = Field(default=3, ge=1)
+    workers: int = Field(default=2, ge=1, le=64)
+    task_lease_s: float = Field(default=300.0, gt=0)
+    task_max_attempts: int = Field(default=20, ge=1)
+    backoff_base_s: float = Field(default=30.0, gt=0)
+    backoff_max_s: float = Field(default=900.0, gt=0)
+    technique_version: str = "2.1"
+    equivalence_enabled: bool = False
+    publish_probable: bool = False
+    lowinfo_enabled: bool = False
+    lowinfo_limit: int = Field(default=256, ge=1)
+    lowinfo_threshold: float = Field(default=0.95, gt=0, le=1)
+    artifact_cache_bytes: int = Field(default=256 * 1024**2, ge=0)
+    poll_interval_s: float = Field(default=1.0, gt=0)
+
+
+class MatcherReconcileConfig(_Section):
+    """The P10 reconciler (design §6.1, §12.6, §12.10)."""
+
+    interval_s: float = Field(default=60.0, gt=0)
+    intent_grace_s: float = Field(default=120.0, ge=0)
+    scan_page: int = Field(default=500, ge=1)
+    targets_keys_page: int = Field(default=100, ge=2)
+    scan_rows_per_s: float = Field(default=200.0, gt=0)
+    reps_interval_s: float = Field(default=3600.0, ge=0)
+    targets_interval_s: float = Field(default=60.0, ge=0)
+    reader_batch: int = Field(default=200, ge=1)
+    lease_ttl_s: float = Field(default=60.0, gt=0)
+    capacity_audit_s: float = Field(default=60.0, gt=0)
+    repair_backoff_base_s: float = Field(default=30.0, gt=0)
+    repair_backoff_max_s: float = Field(default=900.0, gt=0)
+    repair_max_attempts: int = Field(default=10, ge=1)
+    rerun_per_s: float = Field(default=5.0, gt=0)
+    verify_page: int = Field(default=512, ge=1)
+
+
 class Settings(_Section):
     host_id: str = "host-1"
     roles: list[str] = ["intake", "scheduler", "encoder", "reconciler"]
@@ -141,6 +222,9 @@ class Settings(_Section):
     publisher: PublisherConfig = PublisherConfig()
     reconciler: ReconcilerConfig = ReconcilerConfig()
     backfill: BackfillConfig = BackfillConfig()
+    index: IndexConfig = IndexConfig()
+    matching: MatchingConfig = MatchingConfig()
+    matcher_reconcile: MatcherReconcileConfig = MatcherReconcileConfig()
     due_shards: int = Field(default=16, ge=1, le=256)
     intent_shards: int = Field(default=16, ge=1, le=256)
 
@@ -154,6 +238,7 @@ class Settings(_Section):
             )
         if self.encoder.attempt_lease_renew_s >= self.encoder.attempt_lease_s:
             raise ValueError("encoder.attempt_lease_renew_s must be below attempt_lease_s")
+        _check_p10(self)
         return self
 
     @classmethod
@@ -179,6 +264,28 @@ class Settings(_Section):
             return cls.model_validate(data)
         except ValueError as exc:
             raise ConfigError(str(exc)) from exc
+
+
+PROVISIONAL_MAX_POINTS = 250_000
+
+
+def _check_p10(s: Settings) -> None:
+    """P10 bounds that must hold together (design §7.2, §12.4, §13.3); fail closed at startup."""
+    ix, m = s.index, s.matching
+    if ix.capacity_margin_points >= ix.max_points:
+        raise ValueError("index.capacity_margin_points must be below index.max_points")
+    if ix.max_points != PROVISIONAL_MAX_POINTS and not ix.max_points_evidence:
+        # CAP-8: a limit other than the provisional one only from a measured E-R1 report
+        raise ValueError("index.max_points other than 250000 needs index.max_points_evidence (E-R1 report)")
+    if ix.drain_grace_s < 2 * ix.active_ttl_s + m.task_lease_s:
+        raise ValueError("index.drain_grace_s must be >= 2 * index.active_ttl_s + matching.task_lease_s")
+    for k_max in (m.k_max_a, m.k_max_b, m.k_max_eq):
+        if m.k0 > k_max:
+            raise ValueError("matching.k0 must not exceed any k_max")
+    if m.page_b > m.cap_b_total:
+        raise ValueError("matching.page_b must not exceed matching.cap_b_total")
+    if m.backoff_base_s > m.backoff_max_s:
+        raise ValueError("matching.backoff_base_s must not exceed matching.backoff_max_s")
 
 
 def _value(cls: type[BaseModel], path: list[str], raw: str) -> Any:
