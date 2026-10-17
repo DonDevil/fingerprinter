@@ -989,3 +989,61 @@ end-to-end path was **not run** — the per-pair V1 handler re-decodes each
 SOAK item per target (≈ 137 h of video × up to 7 targets on this host); the
 N-SOAK comparison therefore uses V1 on V2 vectors only (P 0.9846 / R 0.481,
 §13.3). This is a recorded limitation, not a pass.
+
+### 13.5 E-R1 — capacity boundary (design §13.4), dedicated `qdrant-e-r1` container
+
+Harness: `benchmarks/p10-index/capacity_e_r1.py` in the isolated venv
+(qdrant-client 1.15.1, gRPC batches of 1,000), container `qdrant-e-r1` (same
+digest, `--memory 1.5g --memory-swap 1.5g --cpus 2`), fresh volume per run,
+run alone on the host (the only other activity: idle crawler2 services).
+`FINGERPRINTER_INDEX__API_KEY=… ~/anti_piracy/datasets/p10/venv/bin/python -I benchmarks/p10-index/capacity_e_r1.py --vectors ~/anti_piracy/datasets/p10/vectors --copies <c> --container qdrant-e-r1 --cgroup /sys/fs/cgroup/system.slice/docker-<id>.scope --out benchmarks/p10-index/results/e-r1-<c>.json --samples ~/anti_piracy/datasets/p10/runs/e-r1/<c>.samples.jsonl`.
+(A first 6-copy attempt died because the *harness* held the corpus twice and
+systemd-oomd killed it; fixed by building the copies in place — no Qdrant
+measurement was affected.)
+
+**6 copies (N = 626,658, R_req = 1,304,649): FAIL — stopped in phase 2.**
+
+| Measured | Value |
+|---|---|
+| phase 1 (626,658 target + 10,000 media points) | ingested and indexed in ≈ 40 min (≈ 300 points/s while the optimizer indexed on 2 CPUs); green; exact counts = harness total (636,658) |
+| memory | `oom_kill` 0; `anon` 0.70 GiB at the end of phase 1 (≤ 1.35 GiB); `memory.peak` = the 1.5 GiB cap (page cache) |
+| volume | 3.34 GB after phase 1 |
+| query latency, phase 2 (single search, limit 100, int8 + rescore, oversampling 2) | probe of 20 queries: **p50 16.6 s, p95 23.2 s** (criterion p95 ≤ 10 ms) |
+| cause | rescoring reads the float32 originals from disk; with 1.5 GiB shared by ≈ 0.7 GiB anon and the page cache, the ≈ 1.9 GB of originals are not cached and every query does ~200 random reads on the host's HDD (`sda` 98 % busy, ≈ 108 reads/s at ≈ 18 ms) |
+
+Phase 2 alone (2,280 sequential queries) would have taken hours; phases 3–5
+were not run. The result cannot pass the latency rule, so per §13.4 the run
+is repeated at fewer copies. Record: `results/e-r1-6copies-aborted.json`.
+
+**1 copy (N = 104,443, R_req = 234,109): FAIL (latency); memory rules pass.**
+`results/e-r1-1copy.json` (per-second samples outside git).
+
+| Rule / measurement | Result |
+|---|---|
+| no `oom_kill` | pass (0) |
+| `anon` peak ≤ 1.35 GiB | pass — 0.394 GiB (phase 3: 0.42 GiB peak by phase table; `memory.peak` = cap via page cache) |
+| exact counts = harness total at every boundary | pass (114,443 → 234,222 → 122,111) |
+| phase 3 resident ≥ R_req | pass — 234,222 |
+| query p95 ≤ 10 ms after 60 s warm-up, phases 2/3/5 | **FAIL** — phase 3 (rebuild while serving): p50 27.7 ms, **p95 5.1 s**; phase 5 (steady): p50 8.7 ms, **p95 154 ms**; phase 2 lasted 14 s (2,280 queries) so it had no post-warm-up samples |
+| live writes (12 points into every routed generation) | p50 132 ms, p95 2.4 s; 0 errors |
+| build g2 while serving | ingest 153 s, green after 168 s |
+| volume | 0.89 GB (phase 1), 2.36 GB (phase 3), 1.07 GB (phase 4) |
+
+**E-R1 outcome: FAILED at every scale tried (6 copies, 1 copy) on the query
+latency rule; the memory and counting rules pass where measured.** Per
+design §13.4 ("if 1 copy fails too, P10 indexing on the dev host is blocked
+pending a separate decision"): no `max_points` value is derived from E-R1,
+the configured value stays the provisional 250,000 (never raised), the
+capacity gate (P10-T10) and the resource criterion (P10-T6) are **not met**,
+and the base target scenario is not supported by evidence. The measured
+cause is disk-bound rescoring of on-disk float32 originals on this HDD host
+under a 1.5 GiB cap (page cache cannot hold the originals; during a rebuild
+the optimizer competes for the same disk). Options, each a **separate
+operator decision** (none applied): an SSD-backed index host (P14), a
+larger memory limit (D14 "changed only by a separate decision"), originals
+in RAM for small roles (a D2 change), or a different latency criterion. The
+2- and 3-copy repeats were not run: they hold more originals per byte of
+page cache than the 1-copy run, so they cannot pass a rule the 1-copy run
+fails. Implementation and functional validation continue on small
+test-keyspace indexes (validation §13.6 onwards); none of them is evidence
+for this gate.

@@ -1,0 +1,25 @@
+{
+ "run": "E-R1 6 copies (N=626658, R_req=1304649)",
+ "aborted_at_phase": "2-warm",
+ "phase1_boundary": {
+  "media": 10000,
+  "g1": 626658,
+  "exact_equal_harness": true
+ },
+ "phase1_ingest_index_minutes": "about 40 (ingest ~300 points/s while indexing, 2 CPUs)",
+ "probe_latency_g1_limit100_rescore": {
+  "n": 20,
+  "p50_ms": 16587.9,
+  "p95_ms": 23179.8,
+  "max_ms": 23502.4,
+  "note": "measured while the harness's own warm-up queries ran"
+ },
+ "host_disk": "sda 98% util, ~108 reads/s at ~18 ms (HDD); rescoring reads float32 originals from disk",
+ "oom_kill": 0,
+ "cgroup_at_abort": {
+  "memory_peak_bytes": 1611276288,
+  "anon_bytes": 702758912,
+  "file_bytes": 888057856
+ },
+ "volume_du_bytes": 3340350340
+}

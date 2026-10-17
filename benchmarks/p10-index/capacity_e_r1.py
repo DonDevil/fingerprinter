@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import math
 import platform
 import subprocess
@@ -262,7 +263,7 @@ def main() -> None:
     ap.add_argument("--copies", type=int, default=6)
     ap.add_argument("--http-port", type=int, default=26333)
     ap.add_argument("--grpc-port", type=int, default=26334)
-    ap.add_argument("--api-key", default=None)
+    ap.add_argument("--api-key", default=os.environ.get("FINGERPRINTER_INDEX__API_KEY"))
     ap.add_argument("--container", default="qdrant-e-r1")
     ap.add_argument("--cgroup", type=Path, required=True)
     ap.add_argument("--steady-s", type=float, default=300.0)
@@ -274,8 +275,11 @@ def main() -> None:
     base, Q = load_corpus(a.vectors)
     if a.subset:
         base = base[: a.subset]
-    copies = [base] + [base @ rotation(768, 1000 + c) for c in range(1, a.copies)]
-    X = np.vstack(copies).astype(np.float32)
+    # one preallocated array (the copies are built in place: the corpus is held once, ~1.9 GB at 6 copies)
+    X = np.empty((len(base) * a.copies, base.shape[1]), dtype=np.float32)
+    X[: len(base)] = base
+    for c in range(1, a.copies):
+        np.matmul(base, rotation(768, 1000 + c), out=X[c * len(base):(c + 1) * len(base)])
     X /= np.linalg.norm(X, axis=1, keepdims=True)
     N = len(X)
     Xlive = (base @ rotation(768, 999)).astype(np.float32)
