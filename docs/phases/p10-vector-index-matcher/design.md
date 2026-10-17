@@ -23,6 +23,16 @@ UPSERT — sequence-versioned point ids and sequence-bounded deletes (§4.3,
 §12.2), strict vs eventual guarantees and task completion under a suspect
 generation (§12.9 H, §11.1). Still a proposal; nothing approved.
 
+**Fourth correction 2026-10-17** (C-13, §19.1): the C-12 rule "a task reads
+`suspect_since` and may not finish DONE while the generation is suspect" was
+a check-then-act across two partitions and did not hold. Replaced by the
+durable index-integrity recovery protocol of **§12.10** (recovery ledger
+`index_repairs`, run-numbered task reruns fenced on the task row, detection
+before any repair, DRAINING search horizon); §11.1, §12.4, §12.6, §12.9 H
+changed accordingly. Also: lowinfo witness cosines confirmed on artifact
+vectors (§7.3); E-R1 phase 3 sized to the rebuild-admission requirement
+(§13.3–§13.4). Still a proposal; nothing approved.
+
 Plan: crawler2 `docs/v2-phase-plan.md` §P10 (binding), invariants B.5 #3/#4.
 P9 is complete and is not reopened: no P9 identity, spec, table, artifact or
 event changes here (P10-D5 keeps P9 code unchanged).
@@ -95,7 +105,7 @@ event changes here (P10-D5 keeps P9 code unchanged).
                                         │
             P10 tables: match_tasks, match_due, match_candidates, matches,
             matches_by_target, equivalence_links, index_generations,
-            index_active, index_entries, match_intents, verifier_params
+            index_active, index_entries, index_repairs, match_intents, verifier_params
                                         │
                                         ▼ held publication (ADR-026 pattern)
                                  match.found (stream; held until a consumer registers)
@@ -219,7 +229,8 @@ them.
 
 | Table | Key | Content |
 |---|---|---|
-| `index_generations` | PK `(spec_digest, role)`, CK `generation`; **static** `active_generation`, `active_epoch`, `routing_epoch`, `next_generation` | per generation: state (§12.4), collection, params JSON + digest, `boundary_at`, per-bucket build cursor, expected/actual counts, `reserved_points` (§13.3), manifest digest, build owner epoch, `suspect_since` / `suspect_reason` (set by verification when an APPLIED subject's current points are missing, cleared after repair, §12.9 H), `last_clean_verify_at`, timestamps, audit. Generation numbers come from `next_generation` and are never reused |
+| `index_generations` | PK `(spec_digest, role)`, CK `generation`; **static** `active_generation`, `active_epoch`, `routing_epoch`, `next_generation` | per generation: state (§12.4), collection, params JSON + digest, `boundary_at`, per-bucket build cursor, expected/actual counts, `reserved_points` (§13.3), manifest digest, build owner epoch, `detect_count` (LWT-incremented per detected loss), `validated_detect_count`, `suspect_since` / `suspect_reason` (operator-visible flag; **never gates task completion**, §12.10), `audit_state` / `audit_cursor` (per-subject audit, §12.10), `promoted_at`, `drain_horizon_at`, `last_clean_verify_at`, timestamps, audit. Generation numbers come from `next_generation` and are never reused |
+| `index_repairs` | PK `(spec_digest, role, bucket)`, CK `(subject_id, generation)` | **the index-integrity recovery ledger** (§12.10): `obligation_id` timeuuid, `occurrence` int, `state` OPEN/REPAIRED/RERUN_PENDING/CLOSED, `gen_marked` bool, `detected_at`, `detected_by`, `row_seq`, `expected_count`, `observed_count`, `repaired_at`, `required_run map<text, int>` (task kind → run), `close_reason`, `attempts`, `next_attempt_at`, `last_error`, `owner_epoch`, audit. Never deleted while the spec is indexed |
 | `index_capacity` | PK `instance` (one Qdrant instance) | `max_points` (copied from config, audited), `reserved` bigint, `updated_at` — the capacity ledger (§13.3); changed only by LWT `IF reserved = :r` |
 | `index_build_lease` | PK `(spec_digest, role)` | `owner`, `epoch`, `lease_until` — one builder per (spec, role) (P9 intake lease pattern) |
 | `index_entries` | PK `(spec_digest, role, bucket)`, CK `subject_id` | **the durable mutation intent and its bookkeeping** (§12.2): `desired_op` UPSERT/DELETE, `desired_ver` (artifact SHA-256, plus `lowinfo_rev` for targets), `seq` bigint, `applied map<int, bigint>` (generation → applied seq), `segment_count`, `state` PENDING/APPLIED/BLOCKED, `attempts`, `last_error`, `updated_at` |
@@ -228,9 +239,9 @@ them.
 | `target_set_rev` | PK `spec_digest` | `rev` bigint, `members_digest`, `updated_at` — target-set revision for low-information classification (§7.3) |
 | `lowinfo_class` | PK `spec_digest`, CK `target_representation_id` | `rev`, `rule` (`lowinfo/v1`), `status` (`COMPLETE`/`PARTIAL`), per-segment flag bitmap, `witnesses map<int, frozen<list<text>>>` (segment → ≤ 4 witness target representation ids of other works), `computed_at` (§7.3) |
 | `lowinfo_refresh` | PK `spec_digest` | `requested_rev`, `done_rev`, `full_requested` bool, owner/epoch/lease, `last_error` (§7.3) |
-| `match_tasks` | PK `subject_id`, CK `(spec_digest, kind)` | `kind ∈ {media_vs_targets, target_vs_media, media_vs_media}`; state machine §11.1; lease fields, attempt, failures, `next_attempt_at`; generation used; target-set rev used; ANN statistics JSON; candidate counts; `incomplete_reason`; timestamps |
+| `match_tasks` | PK `subject_id`, CK `(spec_digest, kind)` | `kind ∈ {media_vs_targets, target_vs_media, media_vs_media}`; state machine §11.1; lease fields (`epoch`), **`run` int** (current run number), `run_started_at` (set by the claim LWT of the run), `done_run` int (last run that reached DONE/INCOMPLETE), `obligation_runs map<timeuuid, int>` (recovery obligation → the run it requires, §12.10), `rerun_reason`; attempt, failures, `next_attempt_at`; generation searched by the run; target-set rev used; ANN statistics JSON; candidate counts; `incomplete_reason`; timestamps |
 | `match_due` | PK `(due_day, shard)`, CK `(due_at, subject_id, spec_digest, kind)` | discoverability index of non-terminal tasks (P9 `encode_due` pattern) |
-| `match_candidates` | PK `(subject_id, spec_digest, kind, generation)`, CK `rank` | durable candidate list of a task (bounded by its cap), per-candidate state |
+| `match_candidates` | PK `(subject_id, spec_digest, kind, generation, run)`, CK `rank` | durable candidate list of **one run** of a task (bounded by its cap), per-candidate state; a new run never reuses an older run's list (§12.10) |
 | `matches` | PK `content_id`, CK `(target_id, target_version, media_spec_digest, target_spec_digest, technique_name, technique_version)` | `match_id` (checked equal to `MatchId.of(...)` of the key components on write), `representation_id`, `target_representation_id`, verdict, confidence, `calibration_id`, alignment JSON, verifier param digest, provenance JSON (§9.2), `decided_at`, stored envelope, `event_id`, `published_at` — *corrected C-6, §9.3a* |
 | `matches_by_target` | PK `(target_id, target_version)`, CK `(content_id, media_spec_digest, target_spec_digest, technique_name, technique_version)` | `match_id`; reverse lookup |
 | `matches_by_id` | PK `match_id` | the `matches` key components; idempotency lookup by id |
@@ -425,8 +436,11 @@ LWT on `epoch` for state transitions, Redis clock).
    capped at `cap_A` (§7.5).
 4. **Verify** each candidate: load the target representation's artifact
    (verified SHA-256), run `temporal/v2` (§8).
-5. **Commit** matches (§9) and finish the task (DONE or INCOMPLETE; never
-   DONE while the searched generation is `suspect`, §12.9 H).
+5. **Commit** matches (§9) and finish the run (DONE or INCOMPLETE) with the
+   completion LWT `IF epoch = :e AND run = :r` (§11.1). DONE asserts that this
+   run's search and verification finished on the generation it observed; it
+   does **not** assert index integrity — pairs hidden by a later-detected
+   point loss are re-covered by the lost subject's own rerun (§12.10).
 
 ### 6.3 Direction B — new target against historical media
 
@@ -462,8 +476,12 @@ Across index generations, live writes go to every non-dropped generation
 argument also needs the subject's points to *stay*: no stale index operation
 can remove the points of a subject's current intent (§12.9 S2). Points lost
 by any other cause (storage fault, operator action, defect) are a detected
-and repaired condition with task re-runs (§12.9 H) — an eventual, not a
-strict, guarantee.
+and repaired condition: a durable recovery obligation, repair, then a rerun
+of the lost subject's own task started after the repair (§12.10) — an
+eventual, not a strict, guarantee. The rerun re-establishes this section's
+argument for every pair the loss could have hidden: S's own tasks search
+again, and every X that searched while S was missing had already been
+indexed (X indexes before it searches), so S's rerun can retrieve X.
 
 ### 6.5 Spec coverage
 
@@ -548,8 +566,10 @@ its last justification can suppress evidence. Hence:
 `rule`, `status`, the per-segment bitmap and, for every flagged segment, up
 to 4 **witnesses**: target representation ids of *other* `target_id`s that
 have a segment with cosine ≥ 0.95 to it, preferring distinct `target_id`s. A
-flag is written only together with ≥ 1 witness whose cosine was computed on
-float32 vectors (below). Writes use `… IF rev < :r` (or `IF NOT EXISTS`) for
+flag is written only together with ≥ 1 witness whose cosine ≥ 0.95 was
+**recomputed on the SHA-256-verified artifact vectors** of both target
+representations (corrected C-13: the Qdrant score only nominates a witness;
+a corrupted or stale vector in the index can therefore not create a flag). Writes use `… IF rev < :r` (or `IF NOT EXISTS`) for
 a full classification of *T*, and `IF rev = :read` read-modify-write for an
 incremental bit/witness change, so a worker computing for an older revision
 can never overwrite a newer record. `status = PARTIAL` (a classification of
@@ -598,8 +618,8 @@ suppressed.
   generation with `params.exact = true` (no HNSW), `params.quantization.ignore
   = true` (float32 originals, not int8 — so no quantization error can create
   a flag), `score_threshold = 0.95`, filter `tid ≠ X's target_id`, `limit =
-  L` (256). Hits are candidates for witnesses; the cosine is the float32
-  score. The search covers the *target* collection only — bounded by the
+  L` (256). Hits are candidates for witnesses; each is confirmed on the
+  artifact vectors before it is recorded (above). The search covers the *target* collection only — bounded by the
   target-role size (base: ≈ 1,440 query segments × 0.6 M target vectors),
   never media; it is classification, not matching, and is never a fallback
   for candidate generation. There is no brute-force fallback anywhere in
@@ -617,6 +637,13 @@ suppressed.
   only propose witnesses that fail condition 3. The Qdrant parameters are
   documented `SearchParams`; their behaviour on 1.15.1 is verified by L-14,
   not assumed.
+- *Interaction with index recovery (§12.10)*: a target whose points are lost
+  from the queried generation can only fail to be found as a witness (flags
+  missing — safe) or make a recomputation clear a flag (safe; it enqueues the
+  `target_vs_media` re-run of the flag's owner as above). The repair step of a
+  target-role obligation enqueues the repaired target's classification step
+  (as for an observed addition), so flags the loss left missing are
+  restored; exclusion safety never depends on index health.
 
 The target points' payload (`lowinfo`, `lowinfo_rev`) is a derived copy
 applied through the index mutation protocol (§12.2; `desired_ver` includes
@@ -863,6 +890,9 @@ technique version adds rows and never replaces old ones.
 A new technique version or index generation does not re-run old tasks
 automatically. `match rerun --technique 2.<n> [--since …]` creates new tasks
 explicitly (rate-limited, audited); old matches remain under their version.
+The only automatic reruns are the obligation-driven runs of §12.10 (a
+detected index loss); they use the currently registered technique version
+and record `rerun_reason = index_repair`.
 
 ## 10. Level-5 media equivalence (P10-D13)
 
@@ -889,16 +919,54 @@ explicitly (rate-limited, audited); old matches remain under their version.
 
 ## 11. Concurrency, leases, idempotency, failures
 
-### 11.1 Task state machine
+### 11.1 Task state machine (corrected C-13)
+
+A task row (`match_tasks`, one per subject × spec × kind) executes numbered
+**runs**. States of the current run:
 
 `PENDING → INDEXED → SEARCHED → VERIFYING(page) → DONE | INCOMPLETE`;
-`→ WAITING_INDEX` when the spec/role has no ACTIVE generation, Qdrant is unhealthy, the subject is capacity-blocked, or the generation the task searched is `suspect` (§12.9 H; the task may not finish DONE while it is) (re-tried
-with backoff, not failed); `→ FAILED` only for non-retryable causes
-(artifact SHA-256 mismatch, invalid vector, missing representation row),
-each with a typed reason. Every transition is an LWT on `epoch`; a lost lease
-returns the task to the due index (P9 §7 pattern). States are resumable at
-each boundary: re-indexing is idempotent (deterministic ids), the candidate
-list is durable, verification pages are idempotent (`match_id`).
+`→ WAITING_INDEX` when the spec/role has no ACTIVE generation, Qdrant is
+unhealthy, or the subject is capacity-blocked (retried with backoff, never
+failed); `→ FAILED` only for non-retryable causes (artifact SHA-256 mismatch,
+invalid vector, missing representation row), each with a typed reason.
+
+| Class | States | Meaning |
+|---|---|---|
+| in progress | PENDING, INDEXED, SEARCHED, VERIFYING | owned through a lease; resumable at each boundary |
+| waiting / retryable | WAITING_INDEX (reason `unavailable`, `missing`, `capacity`); also any state with `next_attempt_at` set after a retryable error (storage unavailable, unknown LWT, witness read failure) | retried with backoff; never silently dropped; visible in `match status` |
+| run-terminal, re-openable | DONE, INCOMPLETE (with `incomplete_reason`) | this run finished; the row can be re-opened only by a **run bump** (an obligation, §12.10, or an audited `match rerun`/`retry`) |
+| failed | FAILED | non-retryable; operator alert; an obligation reaching a FAILED task closes as `TASK_FAILED` (visible), never silently |
+
+*Corrected:* C-12 added "the generation the task searched is `suspect` ⇒
+WAITING_INDEX(suspect); the task may not finish DONE while it is". That rule
+read `index_generations` and then wrote `match_tasks` — two partitions, no
+common Paxos instance — so a task paused between the read and its DONE LWT
+finished DONE after the generation was marked. It is **removed**: no task
+state depends on `suspect_since`. Correctness after an index loss comes from
+the recovery protocol of §12.10, whose only atomic step on a task is a
+single-row LWT.
+
+**Run fencing.** Every transition of a run is an LWT `IF epoch = :e AND run =
+:r` on the task row. The first claim of run *r* sets `run_started_at` (`IF run
+= :r AND run_started_at = null`). The completion LWT is `SET state = 'DONE' |
+'INCOMPLETE', done_run = :r IF epoch = :e AND run = :r`. A **run bump**
+(`SET run = :r+1, state = 'PENDING', run_started_at = null,
+obligation_runs[:oid] = :r+1, rerun_reason = :why, next_attempt_at = :now IF
+run = :r AND state IN (<every non-FAILED state>)`) invalidates every in-flight
+transition of run *r* (a run not yet claimed is instead tagged by a
+coalescing LWT, §12.10): a worker of run *r* that resumes fails its next LWT on
+`run`, re-reads, and stops. Bump and completion are LWTs on the **same row**,
+so Scylla's Paxos orders them: either run *r* completed first (and the bump
+re-opens the row) or the bump came first (and run *r* can no longer
+complete). A new run never reuses an earlier run's candidate list
+(`match_candidates` is keyed by `run`); matches an earlier run committed
+remain valid (they are artifact-verified, §12.9 C).
+
+A lost lease returns the task to the due index (P9 §7 pattern). Re-indexing
+is idempotent (deterministic ids), the candidate list is durable per run,
+verification pages are idempotent (`match_id`). Unknown LWT outcome on any
+transition: SERIAL read of the row; the worker continues only if the row
+shows its own `epoch` and `run` with the intended state.
 
 ### 11.2 Failure semantics
 
@@ -906,7 +974,8 @@ list is durable, verification pages are idempotent (`match_id`).
 |---|---|---|
 | Qdrant unreachable / timeout | `IndexUnavailableError` | task → `WAITING_INDEX`, backoff 30 s → 15 min; metric `fingerprinter_index_unavailable_total`; health endpoint reports degraded; no fallback |
 | no ACTIVE generation / collection missing (index lost) | `IndexMissingError` | as above; operator runs `index rebuild` (§12) |
-| Qdrant collection RED / point-count mismatch | `index check` | generation marked suspect; rebuild recommended; queries continue on the active generation unless the operator deactivates it |
+| Qdrant collection RED / point-count mismatch / suspected loss of unknown extent | `index check`, health, operator | per-subject **audit** of the generation requested (§12.10); every short subject gets a recovery obligation; queries continue (an unreadable collection fails searches loudly — `IndexUnavailableError`, never an empty result); if the audit cannot complete, the conservative role-wide obligation of §12.10 applies |
+| point loss of a subject detected (verification count, apply pre-count, audit) | §12.10 | obligation durable before any repair; repair; rerun of the subject's own tasks after the repair; tasks of other subjects are not gated |
 | stale entry (point whose representation is retired/absent) | candidate check against P9 rows before verification (§12.9 C) | dropped from the candidate list, counted `index_stale`, repaired by deleting the subject's points; check unreadable ⇒ task retries, never accepts |
 | missing entry (READY representation without points) | `index check` / `index_entries` | re-indexed; counted `index_miss` |
 | Scylla unavailable | `StorageUnavailableError`, `LwtUnknownError` | retry with backoff; LWT unknown resolved by SERIAL read (P9 pattern) |
@@ -957,8 +1026,16 @@ intent.
    `routing_epoch` — a fresh QUORUM read for every apply, never a cached
    copy — then, for an UPSERT whose `seq` is not yet applied to a routed
    generation, reserves its points there in the capacity ledger (§13.3;
-   refused ⇒ `BLOCKED: capacity`, no Qdrant write), then applies to each
-   (corrected C-12):
+   refused ⇒ `BLOCKED: capacity`, no Qdrant write). **Pre-count (C-13):** for
+   each routed generation in a *searched* state (ACTIVE, DRAINING) whose
+   `applied[g]` already holds a sequence `p`, the worker first counts `subject
+   = S AND seq = p` in g; a count below `segment_count` is a detected loss
+   and the recovery obligation of §12.10 is made durable **before** the apply
+   proceeds, so a later apply can never silently heal a gap that tasks may
+   have searched. (After a crash between cleanup and bookkeeping the `p`
+   points may be gone legitimately; that case is recorded conservatively —
+   an extra obligation costs one rerun, never a missed pair.) Then it applies
+   to each (corrected C-12):
    - **UPSERT at `u`**: (a) upsert all points of the subject with ids of
      `u` and payload `seq = u`, `wait=true`; then (b) **cleanup**: delete by
      filter `subject = S AND seq < u`, `wait=true`. Order (a) before (b), so
@@ -976,7 +1053,7 @@ intent.
    than 404/409/429: wrong dimension, invalid payload) is not retried: the row
    becomes `BLOCKED` with `last_error`. "Collection not found" is a no-op only
    if Scylla says the generation is RETIRED or FAILED; otherwise it is an
-   invariant violation (generation marked suspect, alert).
+   invariant violation (generation audit requested, §12.10; alert).
 3. **Bookkeeping.** `UPDATE index_entries SET applied[g] = :s, state =
    'APPLIED' IF seq = :s` for the generations applied. If the LWT fails
    because `seq` advanced, a newer intent exists: the worker re-reads and
@@ -1084,7 +1161,7 @@ catch-up pass began; every subject has a row (the bulk load writes them
 too); every row is either applied to g by its own mutator or by the pass.
 Hence no subject can be missing from g at promotion through the mutation
 protocol — stale operations included, since they cannot remove current
-points (§12.9 S2); a non-protocol loss is handled by §12.9 H (the `boundary_at` wait
+points (§12.9 S2); a non-protocol loss is handled by §12.10 (the `boundary_at` wait
 is an extra margin, not required for this argument); tombstones are rows with `desired_op = DELETE`
 and are checked the same way.
 
@@ -1094,10 +1171,26 @@ state(old) = DRAINING IF active_epoch = e AND state(g) = 'READY'`. Readers
 see either the old or the new pointer. Crash before: g stays READY and
 continues to receive live writes; the lease holder (or the next one)
 re-validates if READY is older than `revalidate_after_s`, then promotes.
-Crash after: done; the reconciler moves DRAINING → RETIRED after the grace
-**and** after one complete verification pass over the DRAINING generation
-that started after promotion (missing points found there trigger the task
-re-runs of §12.9 H for tasks that searched it), and deletes the collection. A stale worker writing to a RETIRED generation
+The batch also carries `AND detect_count(g) = :v`, where `:v` is the
+`validated_detect_count` that the VALIDATING → READY LWT recorded (a CQL
+condition compares a column with a value). The verification pass also
+scans READY generations; a short count there only raises `detect_count`
+(no obligation: g is not searched). A loss detected in g after validation
+therefore fails the promotion and sends g back to VALIDATING. Detection marks `detect_count` by
+LWT in the same partition, so this condition is a real atomic fence between
+detection *marking* and promotion; it is an operational guard only —
+correctness does not depend on it, because a loss in a promoted generation is
+covered by its obligation (§12.10). The promotion LWT records `promoted_at`
+and `drain_horizon_at(old) = promoted_at + active_ttl_s + search_timeout_s +
+clock_margin_s`, after which no reader can still be searching the old
+generation. Crash after: done; the reconciler moves DRAINING → RETIRED after
+the grace **and** after one complete verification pass over the DRAINING
+generation that **started after `drain_horizon_at`** (a loss that existed
+while any reader could search it is still present then — only the pre-counted
+apply path or an obligation repairs points — and gets its obligation,
+§12.10), and deletes the collection. *(Corrected C-13: the pass previously
+only had to start after promotion, so a loss occurring after a subject was
+checked but before the last search of the old generation went undetected.)* A stale worker writing to a RETIRED generation
 gets "collection not found", checks the generation state in Scylla and
 treats it as a no-op; for any other state it is an error.
 
@@ -1132,7 +1225,8 @@ P9's `reconcile run`, with its own leases. Passes:
 | intents | `index_entries` PENDING/BLOCKED older than grace; `match_intents` stale | apply / resolve |
 | scans | §6.1 B (missed hints, retirements) | write desired state, tasks |
 | Qdrant verification (per generation, scroll in id order, cursor persisted, rate-limited; full cycle ≤ `verify_cycle_s`, sampled vector digests) | point without UPSERT row (orphan); point `seq` < row `seq` (stale); row APPLIED but points missing or count ≠ `segment_count`; point present for DELETE row | re-apply the row's desired state; delete orphans by id |
-| generations | stuck non-terminal generations, expired build leases, DRAINING past grace | resume, FAILED, RETIRED |
+| generations | stuck non-terminal generations, expired build leases, DRAINING past grace and past a clean post-horizon pass | resume, FAILED, RETIRED |
+| repairs (C-13) | every `index_repairs` row not CLOSED (64 buckets per spec/role, cursor persisted); generations with `audit_state = REQUESTED/RUNNING` | drive OPEN → REPAIRED → RERUN_PENDING → CLOSED (§12.10); run the per-subject audit |
 | lowinfo | `done_rev < requested_rev`, `full_requested` | resume refresh / full recomputation |
 | capacity audit | ledger vs Qdrant exact counts | raise `reserved` if below the bound; lower it only to the conservative bound (§13.3) |
 
@@ -1143,11 +1237,11 @@ cursors; R-21) — converges to the same state.
 
 | Condition | Source of truth | Detection | Repair | Idempotent because | Observable | Test |
 |---|---|---|---|---|---|---|
-| missing point (authoritative READY, no/partial points) | P9 rows → `index_entries` desired UPSERT | Qdrant verification count per subject ≠ `segment_count`; authoritative scan finds no row | intent (if absent) + apply; then the subject's own task is re-enqueued (it re-covers every pair the gap could have hidden, §6.4) | deterministic ids; task `IF NOT EXISTS`/rerun | `index_miss_total` | R-17 |
+| missing point, subject never applied (authoritative READY, no row or row PENDING for g) | P9 rows → `index_entries` desired UPSERT | authoritative scan finds no row; intents pass | intent (if absent) + apply — a protocol lag, not a loss: the subject's own task has not passed INDEXED (§6.4) | deterministic ids | `index_miss_total` | R-2, R-4 |
 | orphan point (no `index_entries` row) | P9 rows | verification scroll | authoritative READY ⇒ write intent + apply; else delete by id | delete/upsert by id | `index_verify_orphans_total` | R-16 |
-| stale `seq` (point `seq` < row `seq`) | `index_entries` | verification scroll | ensure the row's current points exist (re-apply (a) if not), then cleanup `seq < row.seq` | ids include `seq`; filter bounded by `seq` | `index_verify_stale_total` | R-14, R-18, R-23 |
+| stale `seq` (point `seq` < row `seq`) | `index_entries` | verification scroll | if the row's current points are short in a searched generation, that is a loss: obligation first (*loss* row below); then cleanup `seq < row.seq` | ids include `seq`; filter bounded by `seq` | `index_verify_stale_total` | R-14, R-18, R-23 |
 | point present for a DELETE row | `index_entries` (DELETE) | verification scroll, count by filter | delete by filter `subject AND seq ≤ d` | delete by filter | `index_verify_stale_total` | R-5, R-14 |
-| row APPLIED but current points missing (count of `seq = row.seq` < `segment_count`) | Qdrant (observed) vs `index_entries` | verification count | set `suspect_since` on g; re-apply (a); re-enqueue the subject's own task **after** the repair is confirmed; clear `suspect_since` when the pass finds no further miss | as above; rerun `IF NOT EXISTS` per (subject, repair id) | `index_miss_total`, `index_generation_suspect` | R-17, R-25 |
+| **loss**: row APPLIED for g (searched state) but current points short (count of `seq = row.seq` < `segment_count`), found by verification, apply pre-count or audit | Qdrant (observed) vs `index_entries` | verification count (re-read row and re-count once to exclude an in-flight new intent; still short or ambiguous ⇒ loss) | **§12.10**: obligation `index_repairs(S, g)` durable before any repair and before the pass cursor passes S; generation marked; re-apply; confirm; run bump of S's own tasks; close after the bumped runs finish | obligation `IF NOT EXISTS` / `IF occurrence`; run bump `IF run`; repair by deterministic ids | `index_repairs{state}`, `index_miss_total`, `index_generation_suspect`, `match_task_reruns_total{reason=index_repair}` | R-17, R-25, R-26 |
 | abandoned intent (PENDING/BLOCKED past grace) | `index_entries` | intents pass | apply (BLOCKED: retry with backoff, stays visible) | as above | `index_entries{state}` | R-2, R-3 |
 | mutation not in every routed generation | `index_entries.applied` vs generations in `CREATED…DRAINING` | intents pass and catch-up pass | apply to the missing generation | as above | `index_entries{state=PENDING}` | R-4 |
 | incomplete / failed generation | `index_generations` + build lease | generations pass (expired lease, stuck state) | resume under a new lease, or FAILED + `index drop --generation` | state transitions are epoch-fenced LWTs | `index_build_progress`, generation state | R-6, R-13, R-20 |
@@ -1290,7 +1384,7 @@ leave Qdrant equal to the desired state for every routed generation; with
 mutations continuing, every divergence that exists at the start of a cycle
 is repaired or reported BLOCKED by the end of that cycle.
 
-**H — Index completeness and task completion (corrected C-12).**
+**H — Index completeness and task completion (corrected C-12; task completion corrected C-13).**
 
 | Guarantee | Kind | Mechanism |
 |---|---|---|
@@ -1298,31 +1392,31 @@ is repaired or reported BLOCKED by the end of that cycle.
 | S2 once UPSERT *u* is applied to g, the `seq = u` points of S stay in g until an intent newer than *u* is applied | strict (under: Qdrant applies filters as documented and loses no acknowledged data — R-24) | ids contain `seq`; every removal is bounded by `seq ≤ x` with *x* the operation's own intent; a stale operation has *x* < *u* |
 | S3 no accepted match from a stale, foreign or dead-subject point | strict | Invariant C |
 | S4 one ACTIVE generation; pointer changed only by the promotion LWT | strict | Invariant F |
+| S5 a rerun request for S and the completion of S's current run are linearized; a run that may have searched before S's repair cannot discharge S's recovery obligation | strict (single-row Paxos on the task row) | §11.1 run fencing, §12.10 |
 | removal of extra older-`seq` points | eventual: one verification cycle after they land | §12.6 |
-| repair of points lost by non-protocol causes, and re-consideration of every pair the loss may have hidden | eventual: detection within one verification cycle of g, plus task scheduling | below |
+| detection of a non-protocol loss, repair, and re-search of every pair the loss may have hidden | eventual: durable obligation at detection; detection within one verification cycle of a persisting loss; rerun scheduled by the reconciler | §12.10 (invariant R) |
 
-Answers to the C-12 questions: (1) a stale DELETE **cannot** remove a newer
-UPSERT's points; (2) because point ids contain `seq` and the DELETE filter is
-`seq ≤ d`; (3) a missing-point state can still arise from non-protocol
-causes (storage fault, manual deletion, a defect) and is detected by the
-verification count of `seq = row.seq` points; (4) a task may **not** finish
-DONE while the generation it searched is `suspect` — before its DONE LWT it
-reads `suspect_since` of that generation and, if set, goes to
-`WAITING_INDEX(suspect)`; a generation that becomes suspect *after* a task
-finished is handled by (5); (5) when a missing subject S is repaired, S's own
-task (`media_vs_targets` or `target_vs_media`) is re-enqueued after the
-repair is confirmed; by the §6.4 argument every pair (S, X) is retrieved by
-S's re-run, because X's points are present (or X's own repair re-runs X
-after X is restored, whichever is later); index gaps cause *absent
-candidates*, never a stored `no_match` verdict (verdicts are computed on
-artifacts), so a re-run can always add the match; (6) no — a stale operation
-after validation cannot remove current points (E above); (7) the same right
-after promotion; DRAINING generations get one complete verification pass
-before RETIRED so tasks that searched them are covered by (5); (8) the table
-above. A task that finished DONE before a later non-protocol loss is not
-affected by it (it searched an intact generation). Temporary false
-negatives are therefore possible **only** after a non-protocol loss, from the
-loss until S's re-run completes — recorded as a known limitation (§17).
+Answers to the C-12 questions, as corrected by C-13: (1) a stale DELETE
+**cannot** remove a newer UPSERT's points; (2) because point ids contain
+`seq` and the DELETE filter is `seq ≤ d`; (3) a missing-point state can still
+arise from non-protocol causes (storage fault, manual deletion, a defect)
+and is detected by the verification count of `seq = row.seq` points, by the
+apply pre-count (§12.2) and by the generation audit (§12.10); (4)
+**corrected:** a task *can* finish DONE on a generation from which points are
+missing — before detection nothing can know, and after detection the C-12
+read of `suspect_since` followed by the task LWT was not a fence (§11.1,
+§12.10). The design no longer claims otherwise: DONE asserts only that the
+run finished on the generation as observed; (5) every detected loss of S
+creates a durable obligation, closed only after a run of each of S's own
+tasks, numbered after S's repair, has finished (§12.10); index gaps cause
+*absent candidates*, never a stored `no_match` verdict (verdicts are computed
+on artifacts), so the rerun can always add the match; (6) no — a stale
+operation after validation cannot remove current points (E above); (7) the
+same right after promotion; a DRAINING generation gets one complete
+verification pass that starts after its search horizon before RETIRED
+(§12.4); (8) the table above. Temporary false negatives are possible **only**
+after a non-protocol loss, from the loss until S's qualifying rerun finishes —
+a known limitation (§17).
 
 **Routing races** (all rely on: intent LWT → fresh routing read → apply →
 `IF seq` bookkeeping; CREATED bumps `routing_epoch` in the same partition
@@ -1346,7 +1440,243 @@ the same collection (single node; §6.4); `exact = true` and
 `quantization.ignore = true` behave as documented on 1.15.1 (L-14); Scylla
 QUORUM reads after a P9 LWT write on the same single-DC cluster observe it
 (P9 uses the same pattern); the worker's clock margin used by `boundary_at`
-is not needed for correctness (E1/E2), only as a margin.
+is not needed for correctness (E1/E2), only as a margin; the execution
+semantics of the run-fence and obligation LWT conditions (`IN`, `= null`,
+map-entry updates) on Scylla 6.2.3 (R-26; only their acceptance by
+`prepare` was checked).
+
+### 12.10 Index-integrity recovery: obligations and task reruns (P10-D19, P10-D20; corrected C-13)
+
+This section is the authoritative description of what happens to tasks and
+results when index points are found missing. §11.1, §12.6, §12.9 H, the
+ADR and validation R-17/R-25/R-26 refer to it.
+
+**Why the C-12 rule did not hold.** C-12 said a task reads `suspect_since` of
+the generation it searched and may finish DONE only if it is unset. The read
+is on `index_generations(spec, role)`, the DONE LWT on `match_tasks(subject)`
+— different partitions, therefore different Paxos instances, and no
+condition of the DONE LWT refers to the generation:
+
+| Step | Matcher task X | Verifier |
+|---|---|---|
+| T1 | reads `suspect_since = null` | |
+| T2 | paused after the read | |
+| T3 | | finds S's points missing in g, sets `suspect_since` |
+| T4 | | repairs S, arranges reruns |
+| T5 | resumes; DONE LWT `IF epoch = :e` succeeds | |
+
+A second read just before the LWT only narrows the window. Independently of
+the race, the rule could never protect the tasks that matter most: a loss
+happens at an unknown time `t_loss` and is detected later, at `t_detect`;
+every task that searched g in `[t_loss, t_detect)` finished DONE before any
+flag existed and missed the pair in exactly the same way.
+
+**Datastore facts the protocol relies on (Scylla 6.2.3, vnodes, as `db.py`
+configures it).** Guaranteed by Scylla: an LWT is a Paxos round on **one
+partition**; LWTs on one partition are linearizable; a conditional `BATCH` is
+allowed only within one partition; there is no multi-partition transaction;
+a timed-out LWT has an unknown outcome, resolved by a SERIAL read (P9
+`LwtUnknownError`); a plain write and an LWT on the same cells are not
+ordered with each other, so every cell used as a fence below is written only
+by LWT. Checked read-only on 2026-10-17 against the running Scylla 6.2.3 by
+**preparing** (not executing) statements on an existing test table: `IF
+epoch = ? AND mode IN (…)`, `IF … != …`, `IF … = null` and `IF … <= ?` are
+accepted. Their execution semantics are exercised by R-26, not assumed
+from the prepare. Guaranteed only by the application protocol: everything
+else in this section.
+
+**Option A (strict generation-health fence) — evaluated, rejected.** A real
+fence between "generation becomes suspect" and "task completes" needs both
+writes in one partition: either every task completion of a (spec, role)
+commits inside `index_generations(spec, role)` (one Paxos partition for all
+completions of the role, contended with builds, promotion and detections —
+an unbounded hotspot, and a change of where task state lives), or
+completions commit into N fence shards and detection marks all N shards
+(N separate fences, not one atomic transition). Either way it fences only
+completions *after* the marking; the tasks of `[t_loss, t_detect)` still need
+a post-hoc recovery, and once that recovery exists the racing task is just
+one more task in that interval. The fence would add contention and a schema
+relocation without removing the recovery or strengthening any guarantee
+about pairs. **Rejected.** Where a single partition already exists, the
+design does use a real fence: the rerun request versus completion on the
+lost subject's own task row (S5), and detection marking versus promotion in
+`index_generations` (§12.4).
+
+**Selected protocol (Option B): durable revalidation keyed by the lost
+subject.** A loss of S's current points from a searched generation g can
+hide only pairs (S, X) whose X-side search queried g while S was missing. By
+§6.4 every such X was indexed before it searched. Hence a run of **S's own
+tasks whose search starts after S is repaired in g** (or after g stops being
+searched) sees every such X in the role it searches, and every X' that
+searches g after the repair sees S. The obligation is therefore attached to
+S and its own tasks — a bounded, known set — not to the unknown set of tasks
+that searched g. Tasks of other subjects are never gated, re-opened or
+invalidated.
+
+| Role of S | Tasks re-run (kinds) | Pairs re-covered |
+|---|---|---|
+| media | `media_vs_targets`; `media_vs_media` if equivalence is enabled | (S, target) hidden from `target_vs_media` searches; (S, media) hidden from `media_vs_media` searches |
+| target | `target_vs_media` | (S, media) hidden from `media_vs_targets` searches |
+
+**Times.** `t_loss` (points disappear; unknowable), `t_detect` (obligation
+durable), `t_repair` (S's current points confirmed present in g, or g
+confirmed RETIRED/FAILED), `t_bump` (run-bump LWT on S's task row, after
+`t_repair`), `t_close` (every bumped run finished).
+
+**Detection — where a loss is found, and the rule every detector follows.**
+
+| Detector | Scope |
+|---|---|
+| Qdrant verification pass (§12.6) | ACTIVE and DRAINING generations, every subject once per `verify_cycle_s`; per-subject count of `seq = row.seq` (READY generations too, for the promotion fence only) |
+| apply pre-count (§12.2) | any apply to a searched generation where the subject was already applied |
+| generation audit | a full per-subject count of g, requested by `index check` (RED, total-count mismatch), health findings or the operator; `audit_state` REQUESTED → RUNNING → DONE with a persisted bucket cursor |
+| DRAINING post-horizon pass (§12.4) | the last check of a generation before RETIRED |
+
+Rule: a detector makes the obligation durable **before** it (a) advances its
+cursor past S and (b) writes anything that repairs S in g. A short count is
+re-checked once against a fresh read of the `index_entries` row (an
+in-flight new intent may legitimately be mid-cleanup); still short, or
+ambiguous ⇒ loss. Conservative errors cost one rerun, never a missed pair.
+
+**Detection completeness.** The only writers of index points are the §12.2
+protocol (pre-counted for searched generations) and obligation repairs. A
+loss that persists until a count of S in g is taken is therefore detected
+while g is ACTIVE (verification cycle) or DRAINING (post-horizon pass),
+before any write can heal it. Not covered: a *transient* loss that Qdrant
+itself reverts before any count observes it (contrary to the trust
+assumption that acknowledged writes stay durable and visible, §12.9; a known
+limitation, §17), and a searched generation destroyed without its final pass
+(handled by the fallback below).
+
+**Obligation record and state machine** (`index_repairs`, PK `(spec_digest,
+role, bucket = shard_of(subject, 64))`, CK `(subject_id, generation)`; every
+step an LWT conditioned on `occurrence` and `state`; nothing is ever deleted
+while the spec is indexed):
+
+| State | Entered by (LWT) | Durable facts | Next step (owner: P10 reconciler `repairs` pass, lease `p10_readers("repairs")`) |
+|---|---|---|---|
+| OPEN | detector: `INSERT … IF NOT EXISTS` (first loss); `UPDATE SET state = 'OPEN', occurrence = :o+1, gen_marked = false, required_run = {} … IF occurrence = :o AND state IN ('REPAIRED', 'RERUN_PENDING', 'CLOSED')` (a new loss after a confirmed repair) | `obligation_id`, `occurrence`, `row_seq`, expected/observed counts, `detected_by` | mark the generation; repair |
+| (mark) | `UPDATE index_generations SET detect_count = :c+1, suspect_since = …, suspect_reason = … IF detect_count = :c`, then `SET gen_marked = true IF occurrence = :o` | g's `detect_count` raised (promotion fence, §12.4) | — |
+| REPAIRED | reconciler, after the repair is confirmed: `SET state = 'REPAIRED', repaired_at = … IF occurrence = :o AND state = 'OPEN'` | `repaired_at` | run bumps |
+| RERUN_PENDING | reconciler, after every kind's bump is recorded: `SET required_run[k] = :n …, state = 'RERUN_PENDING' IF occurrence = :o AND state = 'REPAIRED'` | `required_run` per kind | wait for `done_run ≥ required_run[k]` |
+| CLOSED | reconciler: SERIAL read of each task row; `SET state = 'CLOSED', close_reason, closed_at IF occurrence = :o AND state = 'RERUN_PENDING'` | `close_reason` ∈ {`RERUN_DONE`, `RERUN_INCOMPLETE`, `TASK_FAILED`, `SUBJECT_RETIRED`} | — |
+
+*Repair (OPEN → REPAIRED).* Re-read the `index_entries` row and the
+authoritative P9 row. Subject no longer live (desired DELETE) ⇒ close with
+`SUBJECT_RETIRED` (its tasks stop, §12.3; pairs it lost while it was live
+are not recovered — §17). Otherwise re-apply the row's desired state to g
+through §12.2 (same `seq`, same ids; capacity already reserved) and confirm
+with an exact count `seq = row.seq` = `segment_count` after the `wait=true`
+write. If g is RETIRED or FAILED (SERIAL read), the repair is confirmed
+without a write — g is no longer searched. A target-role repair also
+enqueues the target's classification step (§7.3).
+
+*Run bump (REPAIRED → RERUN_PENDING), per kind k of S.* Write the
+`match_due` entry first (idempotent; a stray entry is a no-op), then SERIAL
+read `match_tasks(S, spec, k)`:
+- `obligation_runs[oid]` already present ⇒ the bump happened (a crash or
+  unknown outcome earlier); record that run number;
+- row absent ⇒ `INSERT … run = 1, obligation_runs = {oid: 1} IF NOT EXISTS`;
+- state PENDING with `run_started_at = null` (run *r* not yet claimed, so it
+  will search after now) ⇒ coalesce: `SET obligation_runs[oid] = :r IF run =
+  :r AND run_started_at = null`;
+- state FAILED ⇒ kind closed as `TASK_FAILED` (visible; operator alert);
+- otherwise ⇒ bump: `SET run = :r+1, state = 'PENDING', run_started_at =
+  null, obligation_runs[oid] = :r+1, rerun_reason = 'index_repair' IF run = :r
+  AND state IN (<non-FAILED states>)`.
+A failed condition ⇒ re-read and repeat; unknown outcome ⇒ SERIAL read
+(`obligation_runs[oid]` present ⇔ applied). The bump is
+the only atomic step and it lives on S's own row: Scylla linearizes it with
+the completion LWT of run *r* (§11.1), so a run that may have searched
+before `t_repair` cannot satisfy `required_run`.
+
+*Close.* For every kind, `done_run ≥ required_run[k]` (DONE ⇒ `RERUN_DONE`;
+the qualifying run INCOMPLETE ⇒ `RERUN_INCOMPLETE`, which leaves S's task
+visibly INCOMPLETE — `match retry --raise-cap` as usual). Afterwards the
+reconciler removes `obligation_runs[oid]` from the task rows (cosmetic,
+idempotent).
+
+*Generation flag.* `suspect_since` is cleared by `SET suspect_since = null IF
+detect_count = :c` only after (i) a scan of all 64 `index_repairs` buckets of
+(spec, role) finds no non-CLOSED row for g and (ii) a complete verification
+pass of g that started after the last detection found no loss; `:c` is read
+before (i), so a concurrent detection fails the clear. "Trusted again" means
+exactly (i) + (ii). The flag gates promotion (§12.4) and retirement
+bookkeeping, never a task.
+
+**Crash, retry and duplicate handling.**
+
+| Event | State left | Recovery |
+|---|---|---|
+| detector crashes before the obligation LWT | cursor not past S, no repair written | restart re-counts S; the loss cannot have been healed meanwhile (only pre-counted applies and obligations write) |
+| obligation LWT outcome unknown | unknown | SERIAL read; neither cursor advance nor repair until resolved |
+| crash after OPEN, before the generation mark | `gen_marked = false` | reconciler marks, then continues |
+| repair worker crashes mid-repair / before REPAIRED | OPEN | re-apply (idempotent ids) and re-confirm |
+| crash after a bump, before `required_run` recorded | task row holds `obligation_runs[oid]` | reconciler reads it, records it; never bumps twice for one `oid` |
+| duplicate verifier runs / concurrent detectors | — | `IF NOT EXISTS` / `IF occurrence`; the loser re-reads, sees OPEN, no-op |
+| duplicate reconcilers | — | pass lease; every step conditioned on `occurrence`/`state` |
+| rerun worker crash, lease expiry, duplicate delivery | run *r+1* in progress | P9 lease pattern; the same run resumes (it was numbered after `t_repair`); duplicates fail on `epoch`/`run` |
+| retry exhaustion in the rerun | run INCOMPLETE (`verification_failed`) | `RERUN_INCOMPLETE`, visible |
+| step keeps failing (Scylla/Qdrant down) | row unchanged | `attempts`, `next_attempt_at` (30 s → 15 min), `last_error`; after `max_attempts` metric `index_repairs_blocked` and alert, still retried; never dropped |
+| S lost again during REPAIRED/RERUN_PENDING | new loss | detector reopens (`occurrence + 1`); the new repair is followed by a new bump |
+| g retired while obligations are open | — | repair confirmed by RETIRED; reruns follow |
+| process or service restart | all state in Scylla | the `repairs` pass resumes from its bucket cursor; Redis due ZSET rebuilt from `match_due`; nothing in memory or Redis is authoritative |
+| a searched generation cannot be audited (collection lost or unreadable before its final pass, `index drop --force-unverified`) | extent unknown | **fallback:** one obligation per `index_entries` row with `applied[g]` set (exact enumeration from Scylla); reruns rate-limited (`reconcile.rerun_per_s`), audited, visible; a whole-index loss (R-20) uses the same rule |
+
+**Invariant R (the corrected guarantee).** For every non-protocol loss of the
+current points of a live subject S from a generation g while g is searched
+that a detector observes:
+- R1 an `index_repairs(S, g)` obligation is durable before any write repairs
+  S in g and before the detecting pass moves past S;
+- R2 it is never deleted, and it becomes CLOSED only by a close LWT issued
+  after, for every task kind of S, a run numbered by a task-row LWT that
+  followed `t_repair` has finished (DONE or INCOMPLETE), or with the visible
+  terminal reason `TASK_FAILED` / `SUBJECT_RETIRED`;
+- R3 a run of S that may have searched before `t_repair` cannot satisfy R2
+  (S5);
+- R4 a task of any other subject finishes DONE on what it observed; that DONE
+  is never re-opened by the obligation and asserts nothing about index
+  integrity.
+Consequence: every pair (S, X) the loss could have hidden is searched again
+by S's qualifying run with X's points visible (§6.4) — unless X's points are
+also lost, in which case X's own obligation re-runs X. As in §6.4 this is a
+*visibility* guarantee; retrieval by ANN is measured (validation §4).
+**Not guaranteed:** that no task finishes DONE during a loss (impossible
+before `t_detect`); a bound on `t_detect − t_loss` beyond one verification
+cycle for a persisting loss; recovery of undetected transient losses or of
+subjects retired before their rerun.
+
+**Results and publication.**
+- A positive decision is never invalidated by an index defect: it is computed
+  on SHA-verified artifacts after an authoritative liveness check (§12.9 C);
+  missing or stale points only remove or add candidates. Published
+  `match.found` envelopes remain valid; nothing is retracted; the contract is
+  unchanged.
+- P10 stores and publishes no negative result. "No match between X and Y" is
+  always **provisional**. `match status` reports, per spec, `recovery_open`
+  (non-CLOSED obligations + pending audits); a subject's "no match found" is
+  reported `settled` only when its last run is DONE (not INCOMPLETE) and the
+  spec has `recovery_open = 0`, otherwise `provisional (recovery pending)`.
+- Publication is still held only for calibration (§9.1). Matches found by a
+  rerun are new decisions, published like any other (idempotent `match_id`).
+- Validation gates (M3, drop/rebuild equivalence, growth, direction B) compare
+  decision sets only at `recovery_open = 0` and record the obligation counts.
+
+**Interactions.** Mutation intents: repairs use §12.2 and never bypass
+intents or the capacity ledger. Promotion: the `detect_count` fence (§12.4).
+Retirement: the post-horizon pass; obligations outlive retirement.
+Rebuild: a new generation is built from authority and needs no obligation;
+the old generation's obligations still require their reruns. Low-information:
+§7.3. Contention: obligations exist only after losses; the bump and the
+completion stay on the task's own row; detection marks one generation row;
+no path of normal task completion touches a shared partition.
+
+**Schema implications (P10 tables only; none exists yet, so no migration).**
+New `index_repairs`; `match_tasks` gains `run`, `run_started_at`,
+`done_run`, `obligation_runs`, `rerun_reason`; `match_candidates` gains
+`run` in its partition key; `index_generations` gains `detect_count`,
+`validated_detect_count`, `audit_state`/`audit_cursor`, `promoted_at`,
+`drain_horizon_at`. No P8 or P9 table, code or contract changes.
 
 ## 13. Resource budgets (P10-D14, corrected C-1)
 
@@ -1404,7 +1734,7 @@ uncertainty band — hence E-R1.
 |---|---|---|
 | Qdrant | 1.15.1, `mem_limit` **1.5 GiB (hard; changed only by a separate decision)**, swap 0, 2 CPUs; both roles int8 `always_ram` + on-disk originals + on-disk payload, m=32 | proposed |
 | capacity guard | `index.max_points` = the maximum number of **resident points in one Qdrant instance**: all specs, both roles, every generation whose collection exists (CREATED, BUILDING, CATCHING_UP, VALIDATING, READY, ACTIVE, DRAINING, and FAILED until its collection is deleted); enforced through the `index_capacity` ledger (below) | proposed |
-| `index.max_points` value | **250,000 resident points** until E-R1 provides a measured value (it lies below the lower bound, ≈ 255 k, of the extrapolated *with-rebuild* band of §13.2, i.e. it already assumes two generations resident). Because a rebuild needs both generations resident, the largest (spec, role) that can still be rebuilt in place is ≈ ½ × (`max_points` − every other resident collection) | provisional |
+| `index.max_points` value | **250,000 resident points** until E-R1 provides a measured value (it lies below the lower bound, ≈ 255 k, of the extrapolated *with-rebuild* band of §13.2, i.e. it already assumes two generations resident). Because a rebuild needs both generations resident, the largest (spec, role) of N points that can still be rebuilt in place satisfies resident + ⌈1.05 N⌉ ≤ `max_points` − `capacity_margin_points`, i.e. N ≈ (`max_points` − margin − every other resident collection) / 2.05 | provisional |
 | matcher (each) | RSS ≤ 1 GiB, artifact LRU 256 MiB, 2 verification workers | proposed |
 | rest of the host | crawler2 stack ≈ 4 GiB (P0); GPU encoder 2–3 GiB typical, > 5 GiB seen for a 4K source; desktop/browsers the remainder; Qdrant is **not** given the host's free memory | constraint |
 
@@ -1412,7 +1742,8 @@ The dev configuration is therefore suitable for development corpora
 (L-PAIRS, SOAK-scale, the 7 targets) and for the I-2…I-5 tests; it is **not**
 claimed to hold the base target scenario. (Example: the 104,443-vector
 corpus as the media role plus the 7 targets ≈ 10 k target points: steady
-≈ 115 k resident; a media-role rebuild ≈ 219 k — inside 250 k.)
+≈ 114.4 k resident; media-role rebuild admission needs 114,443 +
+⌈1.05 × 104,443⌉ = 224,109 ≤ 250,000 − 10,000 — admitted.)
 
 **Capacity accounting (corrected C-10).**
 - *What is counted:* reserved points, a conservative upper bound of resident
@@ -1421,8 +1752,8 @@ corpus as the media role plus the 7 targets ≈ 10 k target points: steady
 - *When it is checked:* (1) **rebuild admission**, before CREATED: reserve
   `projected(g) = Σ segment_count of the (spec, role)'s UPSERT rows +
   index.rebuild_headroom_points` (live growth during the build; default 5 %
-  of projected); if `reserved + projected(g) > max_points` the rebuild is
-  refused with `CAPACITY_BLOCKED` (no collection created; the active
+  of projected); if `reserved + projected(g) > max_points −
+  index.capacity_margin_points` the rebuild is refused with `CAPACITY_BLOCKED` (no collection created; the active
   generation untouched) and the requirement is reported; (2) **every UPSERT
   whose `seq` is not yet applied to a generation** (a new subject, or a new
   intent of an indexed one — its new-`seq` points coexist with the old ones
@@ -1472,6 +1803,19 @@ true` per collection at each phase boundary, and its own running total in
 between) and enforces a **test ceiling** `P_test = 1,330,000` resident
 points: it stops live writes if they would exceed it and records that.
 
+*What phase 3 must reach (corrected C-13).* The guard admits a rebuild of a
+(spec, role) only if `reserved + projected ≤ max_points − margin` (§13.3),
+and `max_points` may be set only to a measured passing total. For the
+rebuild E-R1 models to be admissible under the limit E-R1 produces, phase 3
+must therefore hold **at least** the admission requirement resident:
+`R_req(N) = (N + 10,000) + ⌈1.05 N⌉ + 10,000` (resident before the rebuild +
+projected with 5 % headroom + `capacity_margin_points`). For N = 626,658:
+636,658 + 657,991 + 10,000 = **1,304,649** resident (≤ `P_test`). The
+previous text stopped phase 3 at the end of the build (≈ 1.30 M only at a
+26-min build, less with faster gRPC ingest) and then subtracted the margin
+from the measured total, so the guard would have refused the very rebuild
+E-R1 had measured.
+
 *Why E-R1 is conservative for the instance-wide limit (checked by C-12):*
 the target payload is a superset of the media payload, so a resident point
 of the measurement costs at least what a media point costs; but the dev
@@ -1491,14 +1835,14 @@ cleanup.
 | Qdrant | 1.15.1, `--memory 1.5g --memory-swap 1.5g --cpus 2`, the §13.3 collection configuration, gRPC batches of 1,000 |
 | live writes | from phase 3 on: one 12-segment write per second into **every** routed generation (both in phase 3), ids of the C-12 scheme, points counted; 9 of 10 are new subjects, every 10th a re-UPSERT of an existing subject at a new `seq` followed by its `seq <` cleanup |
 | query workload | 10 single-segment searches/s, `limit 100`, rescoring on, concurrency 2, from the 760 real target-query segments |
-| phases (resident points, incl. the 10,000-point media collection) | (1) build g1: 636,658; wait for green; (2) warm queries 3 × 760: 636,658; (3) build g2 of the same set while g1 serves queries and live writes go to both: **1,263,316 + 2 × live** (≈ 1.30 M at a 26-min build); (4) promote (harness pointer), delete g1: 636,658 + live; (5) 5 min steady queries |
+| phases (resident points, incl. the 10,000-point media collection) | (1) build g1: 636,658; wait for green; (2) warm queries 3 × 760: 636,658; (3) build g2 of the same set while g1 serves queries and live writes go to both: 1,263,316 + 2 × live; **after the build, keep queries and live writes running until resident ≥ `R_req` = 1,304,649** (≈ 20.7 k live points per generation, ≈ 29 min of live writes in total; phase 3 never ends below `R_req`); (4) promote (harness pointer), delete g1: 636,658 + live; (5) 5 min steady queries |
 | measurement (every 1 s, per phase) | cgroup `memory.current`, `memory.stat` (`anon`, `file`), `memory.peak`, `memory.events` (`oom_kill`); `du` of the volume; resident point count and generation count; query latency; live-write latency |
 | pass | no `oom_kill`; `anon` peak ≤ 1.35 GiB (10 % margin); query p95 ≤ 10 ms in phases 2, 3 and 5 after a 60 s warm-up; exact counts at every phase boundary equal the harness's resident total |
-| how the limit is set | `max_points` := the largest **resident total** at which every phase passed — phase-3 peak resident (measured), minus `capacity_margin_points`. Never an extrapolated value, never above a measured pass |
-| fail in phase 3 only (one generation fits, two do not) | `max_points` := the phase-3 resident total of the largest repeat that passes in full (repeat with 3 copies = 313,329 per generation, then 2 copies); an in-place rebuild of a larger role on the dev host is **not supported**; an offline rebuild (stop, drop, rebuild) or a second instance would each need a separate approved procedure |
-| fail in phase 1 | repeat at 3 and 2 copies as above; if even 2 copies (≈ 418 k resident in phase 3) fail, repeat with 1 copy (≈ 209 k resident) and **lower** `max_points` to the largest fully passing measured total, below 250,000 if so; if 1 copy fails too, P10 indexing on the dev host is blocked pending a separate decision |
+| how the limit is set | `max_points` := the largest **resident total** measured in a run in which every phase passed (the phase-3 peak, which is ≥ `R_req`). The margin is **not** subtracted here — the guard subtracts it once at every check (§13.3). Never an extrapolated value, never above a measured pass. With a pass at 1,304,649 the guard admits exactly the modelled rebuild: 636,658 + 657,991 ≤ 1,304,649 − 10,000 |
+| fail in phase 3 only (one generation fits, two do not) | `max_points` := the phase-3 resident total of the largest repeat that passes in full (repeat with 3 copies, N = 313,329, `R_req` = 662,325; then 2 copies, N = 208,886, `R_req` = 448,217); an in-place rebuild of a larger role on the dev host is **not supported**; an offline rebuild (stop, drop, rebuild) or a second instance would each need a separate approved procedure |
+| fail in phase 1 | repeat at 3 and 2 copies as above; if even 2 copies fail, repeat with 1 copy (N = 104,443, `R_req` = 234,109) and **lower** `max_points` to the largest fully passing measured total, below 250,000 if so; if 1 copy fails too, P10 indexing on the dev host is blocked pending a separate decision |
 | what a failure can never do | raise `max_points`; the provisional 250,000 stays until a full pass at ≥ 250,000 resident is measured |
-| cost | ≈ 45–90 min host time per run, run alone; no new data; container and volume removed afterwards |
+| cost | ≈ 60–100 min host time per run, run alone; no new data; container and volume removed afterwards |
 
 ### 13.5 First deployable and scale-out configurations (input to P14, not validated)
 
@@ -1552,6 +1896,8 @@ Metrics (`fingerprinter_` prefix, P9 registry):
 | `index_rebuild_capacity_blocked` (gauge) | spec, role |
 | `index_verify_stale_candidates_total` (stale point proposed a candidate; dropped) | role |
 | `index_generation_suspect` (gauge), `match_task_reruns_total{reason=index_repair}` | spec, role, generation |
+| `index_repairs` (gauge), `index_repairs_blocked` (gauge), `index_repair_oldest_open_seconds` (gauge), `index_repairs_closed_total` | spec, role, state / close_reason |
+| `index_audit_progress` (gauge, buckets done), `match_recovery_open` (gauge, §12.10) | spec, role, generation |
 | `p10_scan_stalled_total` | scan |
 | `match_lowinfo_excluded_total` | kind |
 | `match_unpublished_uncalibrated` (gauge) | technique version |
@@ -1609,8 +1955,16 @@ between hosts and the index, and real machines are **P14**.
   (§12.9 C). No time bound on a paused stale writer is claimed.
 - Temporary false negatives remain possible after a **non-protocol** loss
   of index points (storage fault, manual deletion, defect): from the loss
-  until the affected subject's re-run completes (§12.9 H). Stale index
-  operations cannot cause them (S2).
+  until the lost subject's qualifying rerun finishes (§12.10, invariant R).
+  Tasks of other subjects may finish DONE during that interval — before
+  detection nothing can prevent it; their DONE asserts no index integrity and
+  every "no match" is provisional until `recovery_open = 0`. Stale index
+  operations cannot cause such losses (S2).
+- Not recovered: a transient loss that Qdrant reverts before any count
+  observes it (outside the trust assumption of §12.9), and pairs of a subject
+  retired before its rerun (`SUBJECT_RETIRED`). An unauditable searched
+  generation falls back to rerunning every subject indexed in it
+  (rate-limited, §12.10).
 - A new intent of an indexed subject briefly doubles its points (new `seq`
   before cleanup); counted by the capacity ledger, collapsed by §7.4.
 - Low-information exclusions cost one Scylla point read per distinct witness
@@ -1628,16 +1982,38 @@ between hosts and the index, and real machines are **P14**.
 | Increment | Content | Depends on | Exit |
 |---|---|---|---|
 | **I-1** (first) | (a) **V1 end-to-end baseline**, reproducible (validation §2.1) — before any verifier threshold is chosen; (b) verifier `temporal/v2`, `lowinfo/v1` evaluated offline on the vector cache against an unfiltered oracle; (c) nested film-grouped tuning and calibration; (d) dataset adequacy statement. No Qdrant. | D7, D8, D9, D10, D17 | baseline report; held-out P/R vs both V1 baselines; calibration status; param set `2.1` registered or an explicit "data insufficient" outcome (validation §2–§3) |
-| I-2 | `vindex` + Qdrant (fingerprinter-owned dev compose), E-R1, generations, mutation protocol, builder/catch-up/validation/promotion, P10 reconciler (intents, scans, Qdrant verification), capacity guard | D1–D4, D14, **D19, D20**, E-R1 result | validation §5, §9 (index part), §10 |
-| I-3 | match tasks, hint reader, direction A and B, candidates, commits with the corrected `matches` key, held `match.found` | D5, D6, D11, I-1 calibration status | validation §4, §6, §7, §9, §9a |
+| I-2 | `vindex` + Qdrant (fingerprinter-owned dev compose), generations, mutation protocol (with apply pre-count), builder/catch-up/validation/promotion (detection fence, DRAINING horizon), P10 reconciler (intents, scans, Qdrant verification, audit, `repairs` pass over `index_repairs`), capacity guard; R-24 is the first test run | D1–D4, D14, **D19, D20**, a passed E-R1 (run separately, before I-2) | validation §5, §9 (index part), §10; R-1…R-24 |
+| I-3 | match tasks with run fencing (§11.1), hint reader, direction A and B, candidates, commits with the corrected `matches` key, held `match.found`, obligation-driven reruns | D5, D6, D11, D19, I-1 calibration status | validation §4, §6, §7, §9, §9a incl. R-25, R-26 |
 | I-4 | equivalence | D13, D18 | validation §8 |
 | I-5 | failure injection, growth test, simulated two-host, M3 run, docs | all | M3 gate (validation §11); real multi-machine stays P14 |
 
 Each increment is committed separately with tests and documentation.
 Migrations are additive (P10 tables only). P10 can be disabled by not
 running `matcher run` / `matcher reconcile run` — P9 behaviour is
-unaffected. I-2 does not start until E-R1, D19 and D20 are approved; I-3
-does not publish until a calibrated technique version exists.
+unaffected. I-2 does not start until the design is approved (D1–D4, D14, D19,
+D20) **and** E-R1 has passed; I-3 does not publish until a calibrated
+technique version exists.
+
+**Status vocabulary (2026-10-17).** *Design corrected*: C-1…C-13 written.
+*Design reviewed*: reviews 1–3 done; C-13 not yet reviewed. *Decision
+approved*: none. *Implementation completed*: none. *Validation passed*: none
+(no P10 test, E-R1 or I-1 measurement has run). *Permitted next*: design
+review of C-13 and the approval decisions of decisions.md §2; after the
+relevant approvals, I-1 (no Qdrant) and E-R1 (harness only) may run; I-2
+only after both D-approvals and an E-R1 pass.
+
+**Facts still unknown, how they are established, what they block.**
+
+| Fact | Established by | Blocks |
+|---|---|---|
+| V1 end-to-end P/R on L-PAIRS / N-SOAK | I-1 (a), validation §2.1 | threshold choice, M3 |
+| `temporal/v2` held-out P/R, calibration adequacy | I-1 (b)(c), §3 | publication, M3 |
+| `lowinfo/v1` `lost_tp` | I-1, §3.4 | enabling lowinfo (not I-2) |
+| 1.5 GiB holds two generations at ≥ `R_req` | E-R1 | I-2 (and the `max_points` value) |
+| Qdrant 1.15.1 integer `range`/`match` filter, boundary and subject scoping semantics | R-24 (first I-2 test) | the §12.2 cleanup/DELETE protocol; if it fails, the protocol is revised before any other I-2 work |
+| Scylla 6.2.3 execution semantics of the run-fence LWTs (`IN`, `= null`) | R-26 (I-3) | I-3 exit |
+| targets-scan completeness on populated data | H-9 | D20 / I-2 exit |
+| `exact` + `quantization.ignore` on 1.15.1 | L-14 | enabling lowinfo |
 
 ## 19. Correction record (2026-10-15, after the first design review)
 
@@ -1657,6 +2033,7 @@ does not publish until a calibrated technique version exists.
 |---|---|---|---|---|---|---|---|
 | C-8 | targets backstop: `token(target_id) > last_token LIMIT 200`, cursor = last token per page | `target_representations` has clustering rows `(version, spec_digest)` under one `target_id`; a page ending inside a partition makes `>` skip the rest of that partition on every cycle | §6.1: partition-granular walk (`SELECT DISTINCT … token >= :t`), whole partition read, cursor `(token, target_id)` of the last fully processed partition, epoch-fenced, `>=` resume; completeness argument; `scan_stalled` instead of skipping | D5 clarified | `db.py` schema (PK `(target_id, version, spec_digest)`, tablets off), `targets.py` (no deletes; bind `IF state = 'PENDING'`; retirement in `targets`) | H-6, H-9 on Scylla 6.2.3 | D20 / I-2 |
 | C-9 | a classification at the current `target_set_rev` is fresh; affected targets found by "exact search" | `rev` is only what P10 has *observed*; a retirement P10 has not yet seen leaves a flag that suppresses evidence; a top-`L` search is not an enumeration | §7.3: four states separated; exclusion only through a **usable** flag — COMPLETE record **and** a witness authoritatively live at check time (point reads of P9 rows); removals found exactly from witness lists; `exact` + `quantization.ignore` + `score_threshold`; a result of size `L` = truncated ⇒ `done_rev` not advanced, full recomputation; stale payload never trusted | D8 changed (still provisional) | design reasoning; schema; Qdrant `SearchParams` (to be verified, L-14) | L-1…L-16; validation §3.4 | enabling the filter |
-| C-10 | `max_points` 250 k "per instance" and E-R1 with 626 k per generation | the guard as written forbids its own experiment; the meaning (per generation / per instance / during rebuild) was not fixed; extrapolated outcomes could raise the limit | §13.3: resident points per instance across all existing collections, ledger with reservation-before-write, rebuild admission reserves the projected generation; §13.4: E-R1 on a dedicated container with a test ceiling, counting the same way (≈ 1.25–1.29 M resident in phase 3); limit set only from a measured full pass, never raised by a failure | D14 changed | arithmetic; earlier measurements unchanged | E-R1; CAP-1…CAP-8 | E-R1 before I-2 |
+| C-10 | `max_points` 250 k "per instance" and E-R1 with 626 k per generation | the guard as written forbids its own experiment; the meaning (per generation / per instance / during rebuild) was not fixed; extrapolated outcomes could raise the limit | §13.3: resident points per instance across all existing collections, ledger with reservation-before-write, rebuild admission reserves the projected generation; §13.4: E-R1 on a dedicated container with a test ceiling, counting the same way (≈ 1.25–1.29 M resident in phase 3; revised by C-12 to include a media collection and by C-13 to ≥ `R_req` = 1,304,649); limit set only from a measured full pass, never raised by a failure | D14 changed | arithmetic; earlier measurements unchanged | E-R1; CAP-1…CAP-8 | E-R1 before I-2 |
 | C-11 | "the reconciler eventually fixes stale writes"; completeness proof without race list | no statement of what may be accepted as evidence while a stale point exists; routing set said `BUILDING…` while CREATED was routed; unknown intent LWT outcome not handled | §12.9 Invariants A–G with sources of truth, routing-race table; candidate acceptance only on live P9 rows + artifact vectors; authoritative coverage walk before promotion; generation numbers never reused; error classes; reconciliation table with detection/idempotency/metric/test | D19, D20 clarified | §12 text; `db.py` LWT unknown handling | R-1…R-21 | D19/D20 approval before I-2 |
-| C-12 (2026-10-17) | point ids `uuid5(subject:k)`; DELETE = delete by filter on the subject only; "stale writes are repaired within one verification cycle" | a stale DELETE (intent 11) landing after a newer UPSERT (12) was applied and recorded removes the newer points; also a stale UPSERT 10 overwrites the 12 points before a stale DELETE 11 removes them. A live subject goes missing from the index → candidate retrieval can miss a true match; a task could finish DONE meanwhile; the stale-UPSERT tests covered only the opposite direction | §4.3 ids include `seq`; §12.2 UPSERT = write ids of `u` then cleanup `seq < u`, DELETE = `seq ≤ d`; §12.9 S2 strict (a stale operation can no longer remove current points) and H (non-protocol loss: `suspect` generation, no DONE while suspect, re-run of the repaired subject's task, DRAINING verified before RETIRED); manifest by segment index; capacity reserves new-`seq` points; E-R1 adds a resident media collection and re-UPSERTs | **changed** D4 (point id); D19, D14 clarified | Qdrant `range` filter on an integer payload index and delete-by-filter are documented API; behaviour on 1.15.1 **not yet executed** (R-24) | R-22…R-25 (planned); E-R1 | D4/D19 approval before I-2 |
+| C-12 (2026-10-17) | point ids `uuid5(subject:k)`; DELETE = delete by filter on the subject only; "stale writes are repaired within one verification cycle" | a stale DELETE (intent 11) landing after a newer UPSERT (12) was applied and recorded removes the newer points; also a stale UPSERT 10 overwrites the 12 points before a stale DELETE 11 removes them. A live subject goes missing from the index → candidate retrieval can miss a true match; a task could finish DONE meanwhile; the stale-UPSERT tests covered only the opposite direction | §4.3 ids include `seq`; §12.2 UPSERT = write ids of `u` then cleanup `seq < u`, DELETE = `seq ≤ d`; §12.9 S2 strict (a stale operation can no longer remove current points) and H (non-protocol loss: `suspect` generation, no DONE while suspect — *superseded by C-13* — re-run of the repaired subject's task, DRAINING verified before RETIRED); manifest by segment index; capacity reserves new-`seq` points; E-R1 adds a resident media collection and re-UPSERTs | **changed** D4 (point id); D19, D14 clarified | Qdrant `range` filter on an integer payload index and delete-by-filter are documented API; behaviour on 1.15.1 **not yet executed** (R-24) | R-22…R-25 (planned); E-R1 | D4/D19 approval before I-2 |
+| C-13 (2026-10-17) | (a) C-12: a task reads `suspect_since` and may finish DONE only if unset (`WAITING_INDEX(suspect)` otherwise); (b) DRAINING verified by a pass "started after promotion"; (c) lowinfo witness cosine = Qdrant float32 score; (d) E-R1 limit = phase-3 peak − margin | (a) check-then-act across `index_generations` and `match_tasks` (different partitions, no shared Paxos instance): a task paused after its read finishes DONE after the marking; and no rule at detection time can cover tasks that finished between the loss and its detection; (b) a loss after a subject was checked but before the last search of the old generation goes undetected; any repair/apply could silently heal an unrecorded gap; (c) a corrupted index vector could create a flag; (d) margin subtracted twice and phase 3 below the admission requirement ⇒ the guard would refuse the measured rebuild | §12.10: Option A (generation-health fence) evaluated and rejected; durable recovery ledger `index_repairs` keyed by the lost subject; detection durable before repair and cursor advance; apply pre-count; generation audit and unauditable fallback; run-numbered tasks with single-row run fencing (§11.1); invariant R replaces "no DONE while suspect"; promotion fenced on `detect_count`; DRAINING pass after the search horizon; results: positives never invalidated, negatives provisional until `recovery_open = 0`; §7.3 witness cosine on artifacts; §13.4 phase 3 ≥ `R_req`, limit = measured total, margin applied once | D19, D20 clarified (D19 text corrected); D8 clarified; D14 clarified | Scylla single-partition LWT/conditional-batch rules (documented); LWT condition forms prepared (not executed) on the running Scylla 6.2.3 | R-25 revised, R-26 new; R-24 expanded; E-R1 | D19/D20 approval before I-2; R-26 before I-3 exit |

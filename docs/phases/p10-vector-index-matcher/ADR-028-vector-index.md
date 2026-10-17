@@ -2,7 +2,7 @@
 
 Status: **Proposed** (2026-10-15, P10 design review; decisions P10-D1, D2,
 D3, D4, D14, D19, D20; corrected the same day — design §19 C-1, C-3, C-4,
-and §19.1 C-10, C-11, C-12).
+and §19.1 C-10, C-11, C-12; 2026-10-17 C-13).
 Not accepted. Number taken as the next free number after
 crawler2's ADR-027; this file lives in the fingerprinter repository until the
 operator decides where P10 records belong (P10-D16) — crawler2's
@@ -58,7 +58,10 @@ ordering argument needs (design §6.4).
    CATCHING_UP → VALIDATING → READY → ACTIVE (one LWT) → DRAINING →
    RETIRED, promoted only after a full catch-up pass and manifest-digest
    validation against the artifacts (design §12). Guarantees and routing
-   races: design §12.9.
+   races: design §12.9. Points lost outside the protocol are handled by the
+   index-integrity recovery protocol (design §12.10): a durable obligation
+   per lost subject and generation, repair, then a fenced rerun of the lost
+   subject's own tasks.
 6. FAISS exact search is used **only** as the offline oracle for recall
    tests; there is no production fallback to brute force.
 
@@ -71,12 +74,17 @@ ordering argument needs (design §6.4).
   limit is a hard 1.5 GiB; dev capacity is **unresolved** (capacity guard
   `max_points` = 250,000 resident points per instance, all generations,
   provisional) until experiment E-R1 measures a 626 k-point generation and
-  its rebuild (≈ 1.26–1.30 M resident, with a resident media collection) on a dedicated test container; the base target
+  its rebuild (held at ≥ 1,304,649 resident — the rebuild-admission requirement — with a resident media collection) on a dedicated test container; the base target
   scenario (600 k vectors, 1.717 GiB raw FP32) is not claimed for the dev
   host; production volumes need a dedicated index host (P14).
-- Points lost by non-protocol causes are repaired eventually: the
-  generation is marked suspect (no task finishes DONE on it) and the
-  repaired subject's task is re-run (design §12.9 H).
+- Points lost by non-protocol causes are repaired eventually, not
+  prevented: a durable `index_repairs` obligation is written at detection,
+  before any repair; it closes only after a run of the lost subject's own
+  tasks numbered after the repair has finished (design §12.10). Tasks that
+  finish meanwhile are not gated (C-13 withdrew the C-12 claim that no task
+  finishes DONE on a suspect generation — it was a cross-partition
+  check-then-act); their "no match" is provisional until no obligation is
+  open; positive matches are never invalidated (artifact-verified).
 - REST ingest measured at ≈ 310–500 points/s (lower bound): a full rebuild at
   base 1-year volume is hours to a day until faster ingest is measured.
 - Qdrant upgrades are handled like runtime changes: a new generation built
