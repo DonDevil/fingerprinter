@@ -19,7 +19,7 @@ the local operator guide is [`docs/p10-matcher.md`](../../p10-matcher.md).
 
 | Step | Status | Evidence | Remaining |
 |---|---|---|---|
-| I-1 (a) V1 end-to-end baseline | running (L-PAIRS) | — | result; N-SOAK cost decision |
+| I-1 (a) V1 end-to-end baseline | **done** (L-PAIRS): TP 34, FP 0, R 0.227 | validation §13.4 | N-SOAK not run (cost; limitation recorded) |
 | I-1 (b–d) verifier, tuning, calibration, lowinfo offline | **done** | validation §13.3, `results/tune-eval.json` | — (calibration UNAVAILABLE is the measured outcome) |
 | R-24 / L-14 / Scylla LWT semantics / §9a.4 | **pass** | validation §13.1–§13.2, `results/evidence/` | — |
 | E-R1 capacity experiment | harness written, smoke-checked | — | the gate run (alone on the host) |

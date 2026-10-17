@@ -963,3 +963,29 @@ machinery is implemented and tested (§13.4) but excludes nothing.
 
 Limits: seven animated films from one reel; correlated clips; no live
 action; candidate generation exact here.
+
+### 13.4 I-1 (a): V1 end-to-end baseline on L-PAIRS (executed)
+
+`env/bin/python benchmarks/p10-index/v1_e2e_baseline.py --data ~/anti_piracy/datasets/p9 --device cuda --scratch ~/anti_piracy/datasets/p10/runs/v1-e2e --out benchmarks/p10-index/results/v1-e2e-l-pairs.json`
+— the unchanged V1 worker handler (V1 DINOv2 engine at the pinned revision,
+`fps=1/5` sampling, V1 `TargetRegistry` with build-on-miss, coarse screen
+0.60, `match_segments` 0.90/3/1/2, aggregation), one `Job` per pair, clips
+over HTTP from a loopback fixture server, `MediaAcquirer(allow_private_networks=True)`
+as in V1's own integration tests, Redis db 15; RTX 2050, torch 2.13.0+cu130;
+480 pairs in 45 min. **Gate-eligible.**
+
+| V1 end to end | TP | FN | FP | TN | Precision | Recall (Wilson 95 %) |
+|---|---|---|---|---|---|---|
+| L-PAIRS, all 480 pairs | 34 | 116 | 0 | 330 | 1.000 | 0.227 (0.167–0.299) |
+
+No pair needed the environmental probe-timeout retry; strict V1 worker
+semantics give the same counts. Per transform: re-encode 14/35, pillarbox
+10/28, crop 6/28, letterbox 2/28, 360p 2/31. Per outer fold 2–7 TP, 0 FP
+everywhere.
+
+**Stronger baseline for M3-1 on L-PAIRS** (validation §2.2): V1 matcher on V2
+vectors, P 1.000 / R 0.247 (37 TP) ≥ V1 end to end (34 TP). N-SOAK: the V1
+end-to-end path was **not run** — the per-pair V1 handler re-decodes each
+SOAK item per target (≈ 137 h of video × up to 7 targets on this host); the
+N-SOAK comparison therefore uses V1 on V2 vectors only (P 0.9846 / R 0.481,
+§13.3). This is a recorded limitation, not a pass.

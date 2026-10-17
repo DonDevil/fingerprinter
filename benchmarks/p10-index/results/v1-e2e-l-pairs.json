@@ -1,0 +1,477 @@
+{
+ "benchmark": "P10-I1a-V1-E2E-BASELINE",
+ "code_path": "worker.matching_handler.build_matching_handler(MediaAcquirer(allow_private_networks=True), DINOv2EmbeddingEngine(device), TargetRegistry(redis db 15, fs caches), MatcherConfig())",
+ "device": "cuda",
+ "fingerprinter_commit": "b9848705425ea03eac44997dbc507dc559f0cfba",
+ "gate_eligible": true,
+ "gpu": "NVIDIA GeForce RTX 2050",
+ "host": "Ubuntu-24-04",
+ "manifests_sha256": {
+  "l-pairs/l-pairs.csv": "ff43168cb5d6f36f57ea5438826d28a493d2faed67f25afafc2c6d9554f7b4c7",
+  "l-pairs/manifest.json": "ab3d7711ce9bfa199b10dc7330ac89adcb2e71ce733cdafcf56bf2e1319af9c4",
+  "reel/manifest.json": "7fada8a65ad4cfd5ba2d0bd433a4b8619ec8c3a33bb42e59232d20916b8053fb"
+ },
+ "non_decisions": {},
+ "overall": {
+  "fn": 116,
+  "fp": 0,
+  "precision": 1.0,
+  "precision_wilson95": [
+   0.8985,
+   1.0
+  ],
+  "recall": 0.2267,
+  "recall_wilson95": [
+   0.167,
+   0.3
+  ],
+  "tn": 330,
+  "tp": 34
+ },
+ "overall_strict_v1_worker_semantics": {
+  "fn": 116,
+  "fp": 0,
+  "precision": 1.0,
+  "precision_wilson95": [
+   0.8985,
+   1.0
+  ],
+  "recall": 0.2267,
+  "recall_wilson95": [
+   0.167,
+   0.3
+  ],
+  "tn": 330,
+  "tp": 34
+ },
+ "pairs": 480,
+ "per_outer_fold_heldout": {
+  "coffee-run": {
+   "fn": 17,
+   "fp": 0,
+   "precision": 1.0,
+   "precision_wilson95": [
+    0.5101,
+    1.0
+   ],
+   "recall": 0.1905,
+   "recall_wilson95": [
+    0.0767,
+    0.4
+   ],
+   "tn": 46,
+   "tp": 4
+  },
+  "elephants-dream": {
+   "fn": 15,
+   "fp": 0,
+   "precision": 1.0,
+   "precision_wilson95": [
+    0.6457,
+    1.0
+   ],
+   "recall": 0.3182,
+   "recall_wilson95": [
+    0.1636,
+    0.5268
+   ],
+   "tn": 49,
+   "tp": 7
+  },
+  "hero": {
+   "fn": 17,
+   "fp": 0,
+   "precision": 1.0,
+   "precision_wilson95": [
+    0.5101,
+    1.0
+   ],
+   "recall": 0.1905,
+   "recall_wilson95": [
+    0.0767,
+    0.4
+   ],
+   "tn": 46,
+   "tp": 4
+  },
+  "sintel": {
+   "fn": 20,
+   "fp": 0,
+   "precision": 1.0,
+   "precision_wilson95": [
+    0.3424,
+    1.0
+   ],
+   "recall": 0.0909,
+   "recall_wilson95": [
+    0.0253,
+    0.2781
+   ],
+   "tn": 49,
+   "tp": 2
+  },
+  "spring": {
+   "fn": 15,
+   "fp": 0,
+   "precision": 1.0,
+   "precision_wilson95": [
+    0.6097,
+    1.0
+   ],
+   "recall": 0.2857,
+   "recall_wilson95": [
+    0.1381,
+    0.4996
+   ],
+   "tn": 46,
+   "tp": 6
+  },
+  "sprite-fright": {
+   "fn": 15,
+   "fp": 0,
+   "precision": 1.0,
+   "precision_wilson95": [
+    0.6097,
+    1.0
+   ],
+   "recall": 0.2857,
+   "recall_wilson95": [
+    0.1381,
+    0.4996
+   ],
+   "tn": 46,
+   "tp": 6
+  },
+  "tears-of-steel": {
+   "fn": 17,
+   "fp": 0,
+   "precision": 1.0,
+   "precision_wilson95": [
+    0.5655,
+    1.0
+   ],
+   "recall": 0.2273,
+   "recall_wilson95": [
+    0.1012,
+    0.4344
+   ],
+   "tn": 48,
+   "tp": 5
+  }
+ },
+ "per_pair_output": "/home/dhanush/anti_piracy/datasets/p10/runs/v1-e2e/pairs.jsonl",
+ "per_target_film": {
+  "coffee-run": {
+   "fn": 17,
+   "fp": 0,
+   "precision": 1.0,
+   "precision_wilson95": [
+    0.5101,
+    1.0
+   ],
+   "recall": 0.1905,
+   "recall_wilson95": [
+    0.0767,
+    0.4
+   ],
+   "tn": 47,
+   "tp": 4
+  },
+  "elephants-dream": {
+   "fn": 15,
+   "fp": 0,
+   "precision": 1.0,
+   "precision_wilson95": [
+    0.6457,
+    1.0
+   ],
+   "recall": 0.3182,
+   "recall_wilson95": [
+    0.1636,
+    0.5268
+   ],
+   "tn": 49,
+   "tp": 7
+  },
+  "hero": {
+   "fn": 17,
+   "fp": 0,
+   "precision": 1.0,
+   "precision_wilson95": [
+    0.5101,
+    1.0
+   ],
+   "recall": 0.1905,
+   "recall_wilson95": [
+    0.0767,
+    0.4
+   ],
+   "tn": 47,
+   "tp": 4
+  },
+  "sintel": {
+   "fn": 20,
+   "fp": 0,
+   "precision": 1.0,
+   "precision_wilson95": [
+    0.3424,
+    1.0
+   ],
+   "recall": 0.0909,
+   "recall_wilson95": [
+    0.0253,
+    0.2781
+   ],
+   "tn": 47,
+   "tp": 2
+  },
+  "spring": {
+   "fn": 15,
+   "fp": 0,
+   "precision": 1.0,
+   "precision_wilson95": [
+    0.6097,
+    1.0
+   ],
+   "recall": 0.2857,
+   "recall_wilson95": [
+    0.1381,
+    0.4996
+   ],
+   "tn": 47,
+   "tp": 6
+  },
+  "sprite-fright": {
+   "fn": 15,
+   "fp": 0,
+   "precision": 1.0,
+   "precision_wilson95": [
+    0.6097,
+    1.0
+   ],
+   "recall": 0.2857,
+   "recall_wilson95": [
+    0.1381,
+    0.4996
+   ],
+   "tn": 47,
+   "tp": 6
+  },
+  "tears-of-steel": {
+   "fn": 17,
+   "fp": 0,
+   "precision": 1.0,
+   "precision_wilson95": [
+    0.5655,
+    1.0
+   ],
+   "recall": 0.2273,
+   "recall_wilson95": [
+    0.1012,
+    0.4344
+   ],
+   "tn": 46,
+   "tp": 5
+  }
+ },
+ "per_transform": {
+  "crop-10pct": {
+   "fn": 22,
+   "fp": 0,
+   "precision": 1.0,
+   "precision_wilson95": [
+    0.6097,
+    1.0
+   ],
+   "recall": 0.2143,
+   "recall_wilson95": [
+    0.1021,
+    0.3954
+   ],
+   "tn": 56,
+   "tp": 6
+  },
+  "downscale-360p": {
+   "fn": 29,
+   "fp": 0,
+   "precision": 1.0,
+   "precision_wilson95": [
+    0.3424,
+    1.0
+   ],
+   "recall": 0.0645,
+   "recall_wilson95": [
+    0.0179,
+    0.2072
+   ],
+   "tn": 62,
+   "tp": 2
+  },
+  "letterbox": {
+   "fn": 26,
+   "fp": 0,
+   "precision": 1.0,
+   "precision_wilson95": [
+    0.3424,
+    1.0
+   ],
+   "recall": 0.0714,
+   "recall_wilson95": [
+    0.0198,
+    0.2265
+   ],
+   "tn": 56,
+   "tp": 2
+  },
+  "pillarbox": {
+   "fn": 18,
+   "fp": 0,
+   "precision": 1.0,
+   "precision_wilson95": [
+    0.7225,
+    1.0
+   ],
+   "recall": 0.3571,
+   "recall_wilson95": [
+    0.2071,
+    0.5417
+   ],
+   "tn": 56,
+   "tp": 10
+  },
+  "re-encode": {
+   "fn": 21,
+   "fp": 0,
+   "precision": 1.0,
+   "precision_wilson95": [
+    0.7847,
+    1.0
+   ],
+   "recall": 0.4,
+   "recall_wilson95": [
+    0.2555,
+    0.5643
+   ],
+   "tn": 70,
+   "tp": 14
+  },
+  "synthetic lavfi cellauto": {
+   "fn": 0,
+   "fp": 0,
+   "precision": null,
+   "precision_wilson95": [
+    null,
+    null
+   ],
+   "recall": null,
+   "recall_wilson95": [
+    null,
+    null
+   ],
+   "tn": 5,
+   "tp": 0
+  },
+  "synthetic lavfi gradients": {
+   "fn": 0,
+   "fp": 0,
+   "precision": null,
+   "precision_wilson95": [
+    null,
+    null
+   ],
+   "recall": null,
+   "recall_wilson95": [
+    null,
+    null
+   ],
+   "tn": 5,
+   "tp": 0
+  },
+  "synthetic lavfi life": {
+   "fn": 0,
+   "fp": 0,
+   "precision": null,
+   "precision_wilson95": [
+    null,
+    null
+   ],
+   "recall": null,
+   "recall_wilson95": [
+    null,
+    null
+   ],
+   "tn": 5,
+   "tp": 0
+  },
+  "synthetic lavfi mandelbrot": {
+   "fn": 0,
+   "fp": 0,
+   "precision": null,
+   "precision_wilson95": [
+    null,
+    null
+   ],
+   "recall": null,
+   "recall_wilson95": [
+    null,
+    null
+   ],
+   "tn": 5,
+   "tp": 0
+  },
+  "synthetic lavfi smptehdbars": {
+   "fn": 0,
+   "fp": 0,
+   "precision": null,
+   "precision_wilson95": [
+    null,
+    null
+   ],
+   "recall": null,
+   "recall_wilson95": [
+    null,
+    null
+   ],
+   "tn": 5,
+   "tp": 0
+  },
+  "synthetic lavfi testsrc2": {
+   "fn": 0,
+   "fp": 0,
+   "precision": null,
+   "precision_wilson95": [
+    null,
+    null
+   ],
+   "recall": null,
+   "recall_wilson95": [
+    null,
+    null
+   ],
+   "tn": 5,
+   "tp": 0
+  }
+ },
+ "pid": 167755,
+ "population": "L-PAIRS",
+ "positive_decision": "Result.decision == match (PROCESSING_FAILURE and worker failures count as no decision)",
+ "probe_timeout_retries": 0,
+ "v1_matcher_config": {
+  "coarse_similarity_threshold": 0.6,
+  "max_index_gap": 2,
+  "min_matched_segments": 3,
+  "offset_tolerance_segments": 1,
+  "segment_similarity_threshold": 0.9
+ },
+ "v1_model": {
+  "id": "facebook/dinov2-base",
+  "revision": "f9e44c814b77203eaa57a6bdbbd535f21ede1415"
+ },
+ "v1_segment_sampling": "SegmentSamplingConfig(segment_duration_s=5.0, frame_selection='segment_start')",
+ "versions": {
+  "python": "3.12.3",
+  "torch": "2.13.0+cu130",
+  "transformers": "5.15.1"
+ },
+ "wall_seconds": 2716.0
+}
