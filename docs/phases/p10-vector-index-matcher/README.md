@@ -22,9 +22,9 @@ the local operator guide is [`docs/p10-matcher.md`](../../p10-matcher.md).
 | I-1 (a) V1 end-to-end baseline | **done** (L-PAIRS): TP 34, FP 0, R 0.227 | validation §13.4 | N-SOAK not run (cost; limitation recorded) |
 | I-1 (b–d) verifier, tuning, calibration, lowinfo offline | **done** | validation §13.3, `results/tune-eval.json` | — (calibration UNAVAILABLE is the measured outcome) |
 | R-24 / L-14 / Scylla LWT semantics / §9a.4 | **pass** | validation §13.1–§13.2, `results/evidence/` | — |
-| E-R1 capacity experiment | harness written, smoke-checked | — | the gate run (alone on the host) |
-| I-2 index, generations, mutations, reconciler, capacity | in progress | — | code, R-*/CAP-*/H-* tests |
-| I-3 tasks, both directions, persistence, held publication, recovery | not started | — | |
+| E-R1 capacity experiment | **FAILED** (latency) at 6 and 1 copies | validation §13.5 | operator decision (host/limits) |
+| I-2 index, generations, mutations, reconciler, capacity | **implemented**; core tests pass | validation §13.6 | remaining R-/CAP- variants; E-R1 FAILED (§13.5) |
+| I-3 tasks, both directions, persistence, held publication, recovery | **implemented**; core tests pass | validation §13.6 | live M3 run |
 | I-4 equivalence / I-5 failure injection, growth, M3 | not started | — | |
 
 **History of the design review.** Status (2026-10-17): **IN DESIGN REVIEW.** Audit complete; design proposed;

@@ -1047,3 +1047,46 @@ page cache than the 1-copy run, so they cannot pass a rule the 1-copy run
 fails. Implementation and functional validation continue on small
 test-keyspace indexes (validation §13.6 onwards); none of them is evidence
 for this gate.
+
+### 13.6 Implementation tests on the real stack (I-2, I-3, part of I-5)
+
+`. scripts/p10-env.sh && env/bin/python -m pytest -p no:cacheprovider tests/p10 -q`
+— **49 passed** (10 min 19 s) against Scylla 6.2.3, Qdrant 1.15.1 (dev
+container), MinIO, Redis; P9 unit suite unchanged (`tests/v2`, 100 passed).
+Data enter through P9's own request → claim → commit protocol and
+`TargetManager.register` (fixture `tests/p10/conftest.py::p10`), with
+artifacts from cached real `dinov2-seg/2` vectors (L-PAIRS) or seeded
+synthetic vectors. Faults are injected at named hook points or by direct
+Qdrant calls (stale/paused workers, non-protocol losses). These are
+functional tests on small indexes — **not** evidence for E-R1 or for scale.
+
+| Group | Tests (file) | Result | What was shown |
+|---|---|---|---|
+| H integration, both directions | `test_flow.py` | PASS | A: clip → Sintel confirmed, no cross-film match; B: a target registered after the media matched it with **zero new encode claims**; candidates come from ANN (`queries ≥ query segments`, bounded); decisions stored with full provenance, **held** (no confidence, no envelope, nothing XADDed: 2.1 UNAVAILABLE); an unrelated subject reports `settled` |
+| R-2, R-3 | `test_mutation.py` | PASS | crash after the intent (no Qdrant write; reconciler applies) and after Qdrant before bookkeeping (no duplicate points) |
+| R-4 (C-14k) | | PASS after fix | **found a defect**: an apply restricted to some generations marked the row APPLIED; fixed — APPLIED is judged against the full routing set |
+| R-5, R-11, R-16 | | PASS | interrupted DELETE repeated; write to a RETIRED generation is a no-op and re-creates nothing; orphans of an unknown subject deleted by verification |
+| R-22 / R-23 (S2) | | PASS | stale UPSERT of an older seq + stale DELETE `seq ≤ u−1` after UPSERT u: the seq-u points survive at every step; verification removes the extras |
+| CAP-1, CAP-3, audit | | PASS | refusal before any Qdrant write (`BLOCKED:capacity`, `WaitingIndexError(capacity)`); rebuild `CAPACITY_BLOCKED` creates no generation row; no reservation for an already-applied seq; audit bound ≥ resident points |
+| R-17 / R-25 (a) | `test_recovery.py` | PASS | loss before the search: M DONE without (M, T) and `settled` while unknown; detection ⇒ occurrence OPEN ⇒ M `provisional`; repair, bump of T (run 2, `recovery_runs = {oid: 2}`), (M, T) found by T's own rerun; CLOSED `RERUN_DONE`, RESOLVED; M untouched (R4) |
+| R-26 a | | PASS | M blocked at P1 while the verifier writes the occurrence; order M@P1 → occurrence durable → M's DONE (not gated); the pair is recovered by T's run 2 |
+| R-26 b (S5) | | PASS | T's own run 2 blocked at P5; bump first ⇒ run 2's completion rejected (`superseded`), never recorded; `required_run = 3`, resolved by run 3 |
+| R-27 | | PASS | second loss ⇒ a **new row** (occurrence 2, new `occurrence_id`, initial values), row 1 byte-for-byte unchanged; run 3 required and used; counters 0/0 at the end |
+| R-29 (u1/v2) | | PASS | rerun INCOMPLETE (cap 1) ⇒ CLOSED `RERUN_INCOMPLETE`, PENDING; an unrelated subject `provisional (recovery unresolved)`; `retry --raise-cap` ⇒ DONE ⇒ resolved `LATER_RUN` by its own LWT; probe `settled` afterwards |
+| G-10 (C-14d) | | PASS | a corrupt **candidate** artifact fails only that candidate (`artifact_corrupt`), run INCOMPLETE `verification_failed`; the subject's own corrupt artifact ⇒ its task FAILED |
+| G-15 (C-14g) | | PASS | saturation ⇒ INCOMPLETE `saturated_segments`, never DONE; `match status` provisional with that reason |
+| K-1, K-6, K-9 | | PASS | `match_id = MatchId.of(key)`; `matches_by_id` resolves back; three concurrent re-commits with a different later score are no-ops (first decision final). **Found a gap**: a target's reference content matched its own target in direction A — fixed (N-13) |
+| §5 drop/rebuild, R-20 | `test_rebuild_discovery.py` | PASS | collections deleted ⇒ a probe task `WAITING_INDEX` (no decision, no fallback); rebuild target role first, **manifest digests equal** the recorded ones and the artifact-only digest; lost generations stay ACTIVE until superseded, become DRAINING, get the 7 unauditable-fallback occurrences, then RETIRED; reruns re-propose every earlier decision; **decision set identical**; counters 0/0 |
+| H-1, H-2, H-3, H-4, H-5 | | PASS | crash before the cursor LWT ⇒ batch re-read, work recorded once; a second reader cannot advance the cursor; trimmed hints ⇒ gap recorded, backstop scan creates the missed task |
+| H-9 a–h | | PASS | 300 target partitions (20 with 4 rows: 2 versions × 2 specs), keys page 3, fetch size 1, kill right before a cursor LWT: resume from `>=` the last completed partition; a full cycle visits every row present; cursor never inside a partition |
+
+Defects found and fixed by this round: R-4 bookkeeping (above); stale
+`match_due` rows re-enqueued finished tasks every round (completion now
+clears every due row of the task); a DRAINING generation's grace counted
+from its *own* old `promoted_at` (now from its recorded search horizon);
+build-lease renew/release raised on an unknown LWT outcome (now advisory —
+the `build_epoch` condition remains the fence). Not yet run: the remaining
+R-* crash variants (R-6…R-10, R-12…R-15, R-18, R-19, R-21, R-28, the c*/d*
+variants of R-26 and j*/v* of R-27/R-29), G-1…G-9, G-11…G-14, L-1…L-17
+(lowinfo not enabled), K-2…K-5, K-7, K-8, K-10, K-11, CAP-2, CAP-4…CAP-9 as
+full scenarios, §8 E-SET.

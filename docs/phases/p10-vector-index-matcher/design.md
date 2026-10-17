@@ -2486,3 +2486,25 @@ occurrence continues on its own requirement instead of being superseded;
 run fencing (S5), the detection fence of promotion, the DRAINING horizon,
 the unauditable fallback, rebuild and `index drop` behave as before;
 publication and `match.found` are unaffected. No decision was approved.
+
+## 20. Implementation notes (2026-10-18)
+
+The implementation follows §3–§16; module map in `docs/p10-matcher.md` §6.
+Where the code makes a choice the design left open, or differs in a way a
+reviewer should know, it is listed here (none weakens an invariant):
+
+| # | Point | Implementation | Why / impact |
+|---|---|---|---|
+| N-1 | Qdrant client | REST via `requests` (already a dependency); E-R1 harness uses `qdrant-client` gRPC in the isolated benchmark venv, as §13.4 specifies | no new service dependency; parameters such as `exact`, `quantization.ignore` passed literally (R-24/L-14 verified) |
+| N-2 | latest occurrence of (S, g) | the `LOCAL_SERIAL … LIMIT 1` slice read (validated §9a.4) | the walk stays documented and tested as fallback |
+| N-3 | hint reader | run by the P10 reconciler cycle (`reconcile_once`), not by `matcher run` | one owner per reader row either way (epoch-fenced); the task workers stay pure |
+| N-4 | task queue | Redis ZSET rebuilt from `match_due` at every worker round; per-task Redis lease for avoidance; correctness from the `epoch`/`run` LWTs | as §6.1 D |
+| N-5 | search deadline | measured on the matcher's monotonic clock from the pointer read; every round checks it and passes the remaining time as the request timeout | bounds the DRAINING horizon as §11.1 requires |
+| N-6 | verification timeout | measured after `verify()` returns (CPython cannot pre-empt a pure computation); an over-long verification counts as a failed attempt | the bound is enforced per attempt, not mid-computation; measured verification times are < 1 s (validation §13) |
+| N-7 | lowinfo refresh | on a revision change every member without a current COMPLETE record is reclassified (full per-target exact searches), instead of incremental owner updates | same records (deterministic), more work per revision; acceptable at the 7-target scale; revisit before the base target scenario. Not enabled anyway (validation §13.3) |
+| N-8 | `reps` scan pacing | one page per bucket per reconciler call, rate-limited by `scan_rows_per_s` | cycle completion as §6.1 B |
+| N-9 | a subject no longer live | its task run ends INCOMPLETE `subject_not_live` (the task "stops", §12.3); its occurrences close/resolve `SUBJECT_RETIRED` | an INCOMPLETE status never asserts completeness |
+| N-10 | `match rerun --raise-cap` | per-task `cap_override` column (additive) used by the search step | audited (`audit_log`) |
+| N-11 | content digest | per subject SHA-256 over (segment index, float32 bytes, canonical payload without `seq`), bucket digests sorted then hashed, generation digest over buckets in order | R-24 (vii) makes Qdrant-side and artifact-side digests comparable bit for bit |
+| N-12 | test fixtures | integration tests ingest through P9's own request → claim → commit and `TargetManager.register`, with artifacts built from vectors (cached real `dinov2-seg/2` vectors or seeded synthetic ones) — no GPU encode in tests | the P10 path under test is unchanged; P9 encoding is P9's gate |
+| N-13 | own content in direction A | a target's reference content is itself a media subject; its `media_vs_targets` run excludes hits whose payload content id is its own (§6.3 states the exclusion for direction B only) | found by test K-9: without it every reference content "matched" its own target — a self-match, not a finding; symmetric with §6.3 |
