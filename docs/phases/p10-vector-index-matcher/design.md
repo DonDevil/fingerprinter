@@ -33,6 +33,18 @@ changed accordingly. Also: lowinfo witness cosines confirmed on artifact
 vectors (§7.3); E-R1 phase 3 sized to the rebuild-admission requirement
 (§13.3–§13.4). Still a proposal; nothing approved.
 
+**Fifth correction 2026-10-17** (C-14, §19.2): consistency and edge-case
+audit. Recovery occurrences get a unique `occurrence_id` and the task map is
+keyed by it (C-13 reused one id across occurrences, so an old run could
+satisfy a new loss); detection-versus-repair fence; unresolved closes keep
+negatives provisional and an exact `settled` rule (§12.10); verifier inputs
+independent of ANN (§8); first decision per `match_id` final (§9.3);
+saturation ⇒ INCOMPLETE (§7.5); per-hit low-information exclusion (§6.2);
+pinned search step and deadline (§11.1); one liveness predicate (§4.2);
+capacity released only by the audit (§13.3); lost ACTIVE/DRAINING
+collections (§12.4); `equiv/v1` coverage (§10). Still a proposal; nothing
+approved.
+
 Plan: crawler2 `docs/v2-phase-plan.md` §P10 (binding), invariants B.5 #3/#4.
 P9 is complete and is not reopened: no P9 identity, spec, table, artifact or
 event changes here (P10-D5 keeps P9 code unchanged).
@@ -119,7 +131,7 @@ Components (new modules in the `fingerprinter` package; the V1 top-level
 | `fingerprinter/vindex.py` | `VectorIndex` protocol + `QdrantIndex` adapter (collections, upsert/delete/search/count/scroll, health; no conditional writes); typed errors |
 | `fingerprinter/indexing.py` | generation model, incremental indexer, builder (full rebuild), checker |
 | `fingerprinter/candidates.py` | adaptive-k retrieval, low-information filtering, grouping, ranking, caps |
-| `fingerprinter/verify.py` | verifier `temporal/v2`, pure function of two `fp-seg-npz/v1` payloads and a registered parameter set |
+| `fingerprinter/verify.py` | verifier `temporal/v2`, pure function of two `fp-seg-npz/v1` payloads, a registered parameter set and the set of excluded (usable low-information) target segments; it receives no ANN output (§8) |
 | `fingerprinter/matching.py` | match tasks (state machine, leases, retries), commit of matches/equivalence, publication |
 | `fingerprinter/cli.py` (extended) | `index …`, `match …`, `equivalence …`, `matcher run` |
 | `benchmarks/p10-index/` | offline oracle, tuning and validation harnesses (not imported by the service) |
@@ -187,9 +199,24 @@ leaves headroom above the build peak for that reason.
   **not** interchangeable. Adding such a rule would need its own decision.
 - **Roles.** `media`: every READY content representation of the spec,
   including target reference contents (they are contents too). `target`: the
-  segments of every READY target binding (`target_representations`) whose
-  target version is not RETIRED, keyed by the target representation.
-  The two roles have different cardinalities and budgets (§13).
+  segments of every **live** target binding, keyed by the target
+  representation. The two roles have different cardinalities and budgets
+  (§13).
+- **Liveness — one predicate used everywhere (corrected C-14).** A media
+  subject is live iff `representations(content_id, spec).state = 'READY'`. A
+  target subject is live iff `target_representations(tid, ver, spec).state =
+  'READY'` **and** `targets(tid, ver).state ∉ {RETIRED, PURGED}`. (§4.2 said
+  "not RETIRED" while §7.3 and §12.9 said "∉ {RETIRED, PURGED}".) Checked in
+  P9 code (`commit.py`, `specs.py`, `targets.py`): a representation row is
+  inserted once and becomes RETIRED only by spec retirement, which
+  `retire_guard` blocks while P10 indexes the spec; a binding is bound READY
+  once (`IF state = 'PENDING'`) and never unbound; a target version with a
+  READY binding may still be REGISTERING or BUILD_FAILED for a moment
+  (`bind_ready` moves it to READY right after the bind), and RETIRED/PURGED
+  are never left. Hence liveness is **monotone**: once true it stays true
+  until it becomes false for good. Desired state, candidate acceptance
+  (§12.9 C), witness checks (§7.3), the backstop and the repair step all use
+  this predicate.
 - Distance `Dot` (vectors are L2-normalized by the spec; the indexer rejects
   a vector whose norm deviates from 1 by more than 1e-4 with
   `InvalidVectorError`, measured norms are 1.0).
@@ -230,8 +257,8 @@ them.
 | Table | Key | Content |
 |---|---|---|
 | `index_generations` | PK `(spec_digest, role)`, CK `generation`; **static** `active_generation`, `active_epoch`, `routing_epoch`, `next_generation` | per generation: state (§12.4), collection, params JSON + digest, `boundary_at`, per-bucket build cursor, expected/actual counts, `reserved_points` (§13.3), manifest digest, build owner epoch, `detect_count` (LWT-incremented per detected loss), `validated_detect_count`, `suspect_since` / `suspect_reason` (operator-visible flag; **never gates task completion**, §12.10), `audit_state` / `audit_cursor` (per-subject audit, §12.10), `promoted_at`, `drain_horizon_at`, `last_clean_verify_at`, timestamps, audit. Generation numbers come from `next_generation` and are never reused |
-| `index_repairs` | PK `(spec_digest, role, bucket)`, CK `(subject_id, generation)` | **the index-integrity recovery ledger** (§12.10): `obligation_id` timeuuid, `occurrence` int, `state` OPEN/REPAIRED/RERUN_PENDING/CLOSED, `gen_marked` bool, `detected_at`, `detected_by`, `row_seq`, `expected_count`, `observed_count`, `repaired_at`, `required_run map<text, int>` (task kind → run), `close_reason`, `attempts`, `next_attempt_at`, `last_error`, `owner_epoch`, audit. Never deleted while the spec is indexed |
-| `index_capacity` | PK `instance` (one Qdrant instance) | `max_points` (copied from config, audited), `reserved` bigint, `updated_at` — the capacity ledger (§13.3); changed only by LWT `IF reserved = :r` |
+| `index_repairs` | PK `(spec_digest, role, bucket)`, CK `(subject_id, generation)` | **the index-integrity recovery ledger** (§12.10; corrected C-14): one row per (subject, generation). Row-level: `occurrence` int and `occurrence_id` timeuuid (identity of the current occurrence; both changed together only by the open LWT; an id is never reused), `history list<text>` (ended occurrences). Occurrence-scoped, written explicitly at every open: `state` OPEN/REPAIRED/RERUN_PENDING/CLOSED, `detections` int, `gen_marked` bool, `detected_at`, `detected_by`, `row_seq`, `expected_count`, `observed_count`, `repaired_at`, `required_run map<text, int>` (task kind → run), `close_reason`, `closed_at`, `resolved_run`, `resolved_at`, `attempts`, `next_attempt_at`, `last_error`. Never deleted while the spec is indexed |
+| `index_capacity` | PK `instance` (one Qdrant instance), CK `holder` | the capacity ledger (§13.3; corrected C-14): **static** `max_points` (copied from config, audited), `reserved` bigint, `updated_at` — `reserved` changed only by LWT `IF reserved = :r`; one clustering row per rebuild admission (`holder = gen:<spec12>:<role>:<g>`, `points`), written in the same conditional batch as the reservation |
 | `index_build_lease` | PK `(spec_digest, role)` | `owner`, `epoch`, `lease_until` — one builder per (spec, role) (P9 intake lease pattern) |
 | `index_entries` | PK `(spec_digest, role, bucket)`, CK `subject_id` | **the durable mutation intent and its bookkeeping** (§12.2): `desired_op` UPSERT/DELETE, `desired_ver` (artifact SHA-256, plus `lowinfo_rev` for targets), `seq` bigint, `applied map<int, bigint>` (generation → applied seq), `segment_count`, `state` PENDING/APPLIED/BLOCKED, `attempts`, `last_error`, `updated_at` |
 | `p10_readers` | PK `reader` | hint-reader lease and cursor: `owner`, `epoch`, `lease_until`, `cursor_id`, `last_gap_at` (§6.1) |
@@ -239,7 +266,7 @@ them.
 | `target_set_rev` | PK `spec_digest` | `rev` bigint, `members_digest`, `updated_at` — target-set revision for low-information classification (§7.3) |
 | `lowinfo_class` | PK `spec_digest`, CK `target_representation_id` | `rev`, `rule` (`lowinfo/v1`), `status` (`COMPLETE`/`PARTIAL`), per-segment flag bitmap, `witnesses map<int, frozen<list<text>>>` (segment → ≤ 4 witness target representation ids of other works), `computed_at` (§7.3) |
 | `lowinfo_refresh` | PK `spec_digest` | `requested_rev`, `done_rev`, `full_requested` bool, owner/epoch/lease, `last_error` (§7.3) |
-| `match_tasks` | PK `subject_id`, CK `(spec_digest, kind)` | `kind ∈ {media_vs_targets, target_vs_media, media_vs_media}`; state machine §11.1; lease fields (`epoch`), **`run` int** (current run number), `run_started_at` (set by the claim LWT of the run), `done_run` int (last run that reached DONE/INCOMPLETE), `obligation_runs map<timeuuid, int>` (recovery obligation → the run it requires, §12.10), `rerun_reason`; attempt, failures, `next_attempt_at`; generation searched by the run; target-set rev used; ANN statistics JSON; candidate counts; `incomplete_reason`; timestamps |
+| `match_tasks` | PK `subject_id`, CK `(spec_digest, kind)` | `kind ∈ {media_vs_targets, target_vs_media, media_vs_media}`; state machine §11.1; lease fields (`epoch`), **`run` int** (current run number), `run_started_at` (set by the claim LWT of the run), `done_run` int and `done_state` (DONE/INCOMPLETE) of the last run that finished, `recovery_runs map<timeuuid, int>` (recovery **occurrence id** → the run it requires, §12.10; corrected C-14), `rerun_reason`; attempt, failures, `next_attempt_at`; `searched_generation` (pinned by the run's search step, §11.1); target-set rev used; ANN statistics JSON; candidate counts; `incomplete_reason`; timestamps |
 | `match_due` | PK `(due_day, shard)`, CK `(due_at, subject_id, spec_digest, kind)` | discoverability index of non-terminal tasks (P9 `encode_due` pattern) |
 | `match_candidates` | PK `(subject_id, spec_digest, kind, generation, run)`, CK `rank` | durable candidate list of **one run** of a task (bounded by its cap), per-candidate state; a new run never reuses an older run's list (§12.10) |
 | `matches` | PK `content_id`, CK `(target_id, target_version, media_spec_digest, target_spec_digest, technique_name, technique_version)` | `match_id` (checked equal to `MatchId.of(...)` of the key components on write), `representation_id`, `target_representation_id`, verdict, confidence, `calibration_id`, alignment JSON, verifier param digest, provenance JSON (§9.2), `decided_at`, stored envelope, `event_id`, `published_at` — *corrected C-6, §9.3a* |
@@ -261,7 +288,7 @@ Authoritative sources for every derived thing:
 | Derived | Rebuilt from |
 |---|---|
 | media collection | `representations_by_spec(spec, *)` → `representations` (READY) → artifact (SHA-256 verified) |
-| target collection | `target_representations` (READY, target not RETIRED) → bound content representation → artifact |
+| target collection | live `target_representations` (§4.2) → bound content representation → artifact |
 | `index_entries` | recomputable from the same authoritative rows (desired state); applied state is re-verified against Qdrant (§12.6) |
 | `lowinfo_class`, target `lowinfo` payload | recomputed by `lowinfo/v1` (full recomputation, §7.3); used only through the per-flag witness check against P9 rows |
 | Redis keys (`fp:` leases, `fp:q:match`) | `match_due` |
@@ -427,17 +454,23 @@ LWT on `epoch` for state transitions, Redis clock).
 
 1. **Index own vectors**: upsert the representation's segments into the media
    collection(s) of its spec (`wait=true`), record `index_entries`.
-2. **Search targets**: every informative segment (§7.3) queries the target
-   collection (active generation) of the same spec with adaptive k (§7.1);
-   a segment whose best hit is a target segment with a *usable*
-   low-information flag does not vote (§7.3).
+2. **Search targets**: every media segment (media segments are never
+   classified, §7.3) queries the target collection of the same spec — the
+   generation pinned by the search step (§11.1) — with adaptive k (§7.1);
+   a **hit** on a target segment with a *usable* low-information flag does
+   not vote, the segment's other hits still do (corrected C-14: the earlier
+   rule silenced the whole query segment when its *best* hit was flagged,
+   which can drop a true, lower-scoring hit on an unflagged segment of
+   another target).
 3. **Candidates**: hits ≥ floor grouped by target version; candidate iff ≥
    `min_hits` distinct query segments; ranked by (distinct hits, best score);
    capped at `cap_A` (§7.5).
 4. **Verify** each candidate: load the target representation's artifact
    (verified SHA-256), run `temporal/v2` (§8).
-5. **Commit** matches (§9) and finish the run (DONE or INCOMPLETE) with the
-   completion LWT `IF epoch = :e AND run = :r` (§11.1). DONE asserts that this
+5. **Commit** matches (§9) and finish the run with the completion LWT `IF
+   epoch = :e AND run = :r` (§11.1): INCOMPLETE if any bound of §7.5 was hit
+   (`candidate_cap`, `saturated_segments`, `verification_failed`), otherwise
+   DONE. DONE asserts that this
    run's search and verification finished on the generation it observed; it
    does **not** assert index integrity — pairs hidden by a later-detected
    point loss are re-covered by the lost subject's own rerun (§12.10).
@@ -449,15 +482,17 @@ LWT on `epoch` for state transitions, Redis clock).
    (§7.3); the new target is searchable at once (a flag that is not usable
    counts as informative).
 2. **Search media**: every target segment without a *usable*
-   low-information flag (§7.3) queries the media collection (active generation)
-   with adaptive k (k₀ → k_max, §7.1); saturation is recorded per segment.
+   low-information flag (§7.3) queries the media collection (the generation
+   pinned by the search step, §11.1) with adaptive k (k₀ → k_max, §7.1);
+   saturation is recorded per segment.
 3. **Candidates**: grouped by `content_id`, ≥ `min_hits`, ranked, written to
    `match_candidates` (≤ `cap_B_total`); the target's own reference content is
    excluded.
 4. **Verify in pages** of `page_B` candidates; the task's cursor survives
    restarts; each page is one lease-bounded unit of work.
 5. **Commit** each page's matches; the task ends DONE, or INCOMPLETE with
-   reason `candidate_cap` / `saturated_segments` when bounds were hit (§7.5).
+   reason `candidate_cap` / `saturated_segments` / `verification_failed`
+   when a bound was hit (§7.5) — the same rule as direction A.
 
 No media is re-encoded: direction B reads stored representations only (the
 validation test asserts zero new encode attempts, validation §7).
@@ -499,9 +534,14 @@ registers `retire_guard(spec, "p10-index")` for each indexed spec.
 For each informative query segment: search with `k₀`; while the k-th score is
 still ≥ `floor` and `k < k_max`, double k and search again. A segment that
 ends at `k_max` with the k-th score ≥ floor is **saturated** — more
-neighbours above the floor exist than were retrieved. Saturation is counted
-per task and, if any segment saturates, the task's outcome records
-`saturated_segments = n` (audit F-6, F-7: fixed k loses recall silently as
+neighbours above the floor exist than were retrieved. Stopping condition:
+the k-th score < floor (complete for that segment) or k = `k_max`
+(saturated); queries per segment ≤ log₂(k_max/k₀) + 1 (4–5), hits per
+segment ≤ k_max. Saturation is counted per task and, if any segment
+saturates, the run ends **INCOMPLETE `saturated_segments = n`** in every
+direction (corrected C-14: §7.5 previously only recorded it, contradicting
+§6.3 and D6; a saturated segment may hide a true candidate, so the run
+cannot claim completeness) (audit F-6, F-7: fixed k loses recall silently as
 copies accumulate; adaptive k reached media recall 0.9965 at 19× growth vs
 0.745 for k=100 with a 200 cap).
 
@@ -536,7 +576,7 @@ that a later target registration or retirement could silently invalidate).
 
 | State | Where | Trusted for exclusion? |
 |---|---|---|
-| authoritative target set | P9 rows `target_representations` (binding READY) × `targets.state ∉ {RETIRED, PURGED}` | the only truth; may change at any moment, and P10 learns of it only through the targets scan (target events are held, §6.1) |
+| authoritative target set | P9 rows: live target bindings (§4.2 predicate) | the only truth; may change at any moment, and P10 learns of it only through the targets scan (target events are held, §6.1) |
 | last observed set | `target_set_rev(spec)`: `rev`, `members_digest` | **no** — it lags the authoritative set by up to two scan cycles |
 | classification of one target | `lowinfo_class(spec, trep)`: `rev`, `status`, bitmap, witnesses | only through the per-flag witness check below |
 | payload copy | target point `lowinfo`, `lowinfo_rev` | **no** — a hint that a Scylla read is worth doing |
@@ -582,8 +622,8 @@ query in direction B, does not count in verification) only if **all** hold:
 2. `lowinfo_class(spec, T)` exists with the configured `rule` and `status =
    COMPLETE`, and bit *s* is set;
 3. **at least one witness of *s* is authoritatively live at check time**:
-   point reads at QUORUM of `target_representations(tid, ver, spec)` (state
-   READY) and `targets(tid, ver)` (state not RETIRED/PURGED) — the same rows
+   point reads at QUORUM of `target_representations(tid, ver, spec)` and
+   `targets(tid, ver)` satisfying the §4.2 liveness predicate — the same rows
    the targets scan reads; results cached for the duration of one task.
    A witness's vectors cannot have changed: a target representation id is
    bound once (P9 `bind_ready … IF state = 'PENDING'`) to an immutable
@@ -701,7 +741,7 @@ its own decision).
 
 | Bound | Effect when reached | Recorded as |
 |---|---|---|
-| `k_max` per segment | further neighbours not retrieved | `saturated_segments` on the task, metric |
+| `k_max` per segment | further neighbours not retrieved | task INCOMPLETE `saturated_segments` (count), metric |
 | `cap_A` | lowest-ranked targets not verified | task INCOMPLETE `candidate_cap`, the truncated count, the rank threshold |
 | `page_B` | next page in a new lease | progress cursor (not incomplete) |
 | `cap_B_total` | candidates beyond rank `cap_B_total` not stored | task INCOMPLETE `candidate_cap`; `match retry --raise-cap` re-runs with a higher cap (audited) |
@@ -728,7 +768,7 @@ shows to be wrong:
 | V1 `temporal_v1` | `temporal/v2` | Why |
 |---|---|---|
 | offset in segment-index units, tolerance 1 index | offset in **seconds** from `pts_s`; a media segment at time t is compared with the target segments whose sampled frames lie within ±`d` of `t + Δ` (the two neighbours in phase) and the max is used | sampling phase is the main loss (audit F-1) |
-| single dominant offset | up to `n_offsets` (3) offset modes from the ANN hit votes, each verified, best kept | repeated scenes, intros |
+| single dominant offset | up to `n_offsets` (3) offset modes taken from the **dense similarity of the two artifacts** (histogram of the per-media-segment best-match offsets, deterministic tie-break), each verified, all runs ≥ `L` kept | repeated scenes, intros, several clips of one source |
 | 0.90 segment and mean thresholds | `s_seg`, `s_mean`, `L` fitted on the training split | audit §7.3 |
 | all segments count | target segments with a *usable* low-information flag (§7.3) neither count nor break a run; all other segments count | audit F-2 |
 | `score` = mean similarity | calibrated `confidence` (§9.1) | contract semantics |
@@ -736,7 +776,19 @@ shows to be wrong:
 
 Deterministic: same inputs, same parameter set ⇒ same output, on any host
 (float32 matrix products are computed in float64 as in V1 to avoid
-order-dependent rounding; ties broken by indices). Drift (VFR/speed change,
+order-dependent rounding; ties broken by indices). **The inputs are exactly
+the two artifacts, the parameter set and the exclusion set** — no ANN hit,
+score, rank, generation or direction enters the decision (corrected C-14:
+the first proposal took the offset modes from ANN hit votes, so the decision
+for one `match_id` could differ between direction A and B, between
+generations and between exact and ANN search, contradicting the
+drop/rebuild criterion of validation §5 and "ANN only proposes"). The
+exclusion set (target segments with a usable flag at verification time) is
+recorded in provenance as a digest and count. Segment duration and timebase
+come from the artifact's `pts_s`; different frame rates and VFR enter only
+through `pts_s`; reordered segments break a run (runs are monotone in
+both time axes); duplicate and repeated scenes produce several offset
+modes, each verified separately. Drift (VFR/speed change,
 audit M-8) remains a documented limitation; it is measured on the 24 VFR
 SOAK items, not designed for.
 
@@ -790,7 +842,12 @@ per-decision probability; operating-point precision is reported separately.
   probability is fabricated, and an uncalibrated score is never placed in the
   `confidence` field. Once calibration becomes available, held decisions of
   that technique version get `confidence = g(s)` and are released by an
-  audited `match publish-held`. Only `confirmed` is published by default;
+  audited `match publish-held` (per row: `SET confidence, calibration_id IF
+  calibration_id = null`, then the envelope LWT of §9.3 step 3; repeating
+  it is a no-op). Calibration that becomes `STALE` stops new publications
+  of that technique version; already-published events are not retracted
+  (the contract has no retraction) and keep their `calibration_id` for
+  audit. Only `confirmed` is published by default;
   `probable` only if `matching.publish_probable` is enabled.
 - **Limits stated with every calibration.** Seven animated films from one
   reel; clips of one film are correlated (effective sample size closer to
@@ -809,7 +866,9 @@ per-decision probability; operating-point precision is reported separately.
 - Stored provenance per match (`matches.provenance`): spec digest(s), both
   representation ids, target representation id, verifier param digest,
   index generation and its params digest, Qdrant version, target-set
-  revision and `lowinfo` rule, `calibration_id` (or null), ANN parameters
+  revision and `lowinfo` rule, the exclusion-set digest and count (§8),
+  task run number and `rerun_reason` (and the occurrence id for an
+  obligation-driven run), `calibration_id` (or null), ANN parameters
   (k₀, k_max, floor, min_hits, caps, ef, quantization/rescore), similarity
   metric, query and candidate counts, rank of this candidate, saturation and
   truncation counts of the task, `complete` flag, verification duration,
@@ -819,13 +878,26 @@ per-decision probability; operating-point precision is reported separately.
 
 1. Write intent `match_commit(match_id, …)` (`match_intents`).
 2. `INSERT … IF NOT EXISTS` into `matches` (LWT) with the key of §9.3a,
-   then `matches_by_target` and `matches_by_id`. A duplicate decision with
-   the same `match_id` is a no-op (same inputs ⇒ same decision; a different
-   stored decision for the same id is an invariant violation, reported and
-   never overwritten).
+   then `matches_by_target` and `matches_by_id`. **The first committed
+   decision for a `match_id` is the decision** (immutable; corrected C-14).
+   A later verification of the same pair under the same technique version
+   is normally skipped (a candidate whose `match_id` already has a row is
+   counted `already_decided`, not re-verified — this also deduplicates the
+   A and B directions and reruns). If one does run (e.g. a race between A
+   and B), its insert is a no-op; when its result differs, the difference is
+   recorded (`match_decision_divergence_total`, audit entry with both input
+   digests), never overwritten. A difference is expected only from a
+   different exclusion set (low-information flags whose witnesses changed,
+   §7.3) — the artifacts and parameters are immutable — so it is a
+   provenance fact, not an invariant violation; any other cause is an alarm.
+   (The earlier text called every difference an invariant violation, which
+   flagged legitimate lowinfo-driven differences.)
 3. If the technique version is `CALIBRATED` (§9.1): build the `match.found`
    1.0 envelope (producer `fingerprinter/matcher`, idempotency key
-   `match.match_id`), store it on the row, publish through the P9 publisher
+   `match.match_id`), store it and its `event_id` on the row by LWT `IF
+   event_id = null` (a retry or a second publisher reads the stored envelope
+   instead of building a new one, so one `match_id` never gets two event
+   ids), publish through the P9 publisher
    API (read-only reuse) with **held publication**: stream `match.found`
    registered by P10 (its own registry row) with `hold_until_registered =
    true` and no required group until P11/P12 register theirs. Held events
@@ -899,17 +971,24 @@ and record `rerun_reason = index_repair`.
 - **Path:** `media_vs_media` tasks query the media collection of the same spec
   with adaptive k (§7), exclude the subject's own content, group by content,
   verify with `temporal/v2` and then apply the **equivalence rule**
-  `equiv/v1`: one run covering ≥ 90 % of the informative segments of
-  *both* items, absolute duration difference ≤ max(5 s, 2 %), and
+  `equiv/v1`: one run covering ≥ 90 % of **all** segments of *both* items
+  (no low-information exclusion applies between media: only target segments
+  are ever classified, §7.3 — corrected C-14, the earlier "informative
+  segments" was undefined for media), absolute duration difference ≤
+  max(5 s, 2 %), and
   |offset| ≤ 10 s (container/packaging start differences). Partial overlap
   (a clip of a film) is a match-like relation, not equivalence, and is not
   recorded in P10.
 - **Persistence:** `equivalence_links` rows in both orientations with state
   `LINKED`, confidence (calibrated on the equivalence set), technique version,
   evidence (alignment, coverage), provenance, `decided_at`, via an intent.
-- **Reversible:** `equivalence revoke <a> <b> --reason …` sets `REVOKED` with
-  an audit entry; nothing is deleted; a later technique version creates its
-  own rows. **No `ContentId`, representation, media or observation is ever
+- **Reversible:** `equivalence revoke <a> <b> --reason …` sets `REVOKED` in
+  both orientations through an intent (two partitions, resolved by the P10
+  reconciler), with an audit entry; nothing is deleted; a rerun under the
+  same technique version cannot re-link a revoked pair (`IF NOT EXISTS`
+  keeps the REVOKED row); a later technique version creates its own rows.
+  ANN similarity and metadata never create a link: only `equiv/v1` on the
+  two artifacts does. **No `ContentId`, representation, media or observation is ever
   merged** (level 3 stays byte identity; P8 invariant).
 - **Visibility to crawler2:** no contract event exists. P10 exposes the
   relation through the CLI and the table; a `media.equivalence_linked` event
@@ -927,15 +1006,16 @@ A task row (`match_tasks`, one per subject × spec × kind) executes numbered
 `PENDING → INDEXED → SEARCHED → VERIFYING(page) → DONE | INCOMPLETE`;
 `→ WAITING_INDEX` when the spec/role has no ACTIVE generation, Qdrant is
 unhealthy, or the subject is capacity-blocked (retried with backoff, never
-failed); `→ FAILED` only for non-retryable causes (artifact SHA-256 mismatch,
-invalid vector, missing representation row), each with a typed reason.
+failed); `→ FAILED` only for non-retryable causes of the **subject itself**
+(its artifact SHA-256 mismatch, invalid vector, missing representation row),
+each with a typed reason; candidate failures never fail the task (below).
 
 | Class | States | Meaning |
 |---|---|---|
 | in progress | PENDING, INDEXED, SEARCHED, VERIFYING | owned through a lease; resumable at each boundary |
 | waiting / retryable | WAITING_INDEX (reason `unavailable`, `missing`, `capacity`); also any state with `next_attempt_at` set after a retryable error (storage unavailable, unknown LWT, witness read failure) | retried with backoff; never silently dropped; visible in `match status` |
 | run-terminal, re-openable | DONE, INCOMPLETE (with `incomplete_reason`) | this run finished; the row can be re-opened only by a **run bump** (an obligation, §12.10, or an audited `match rerun`/`retry`) |
-| failed | FAILED | non-retryable; operator alert; an obligation reaching a FAILED task closes as `TASK_FAILED` (visible), never silently |
+| failed | FAILED | non-retryable; operator alert; an obligation reaching a FAILED task closes as `TASK_FAILED` — an **unresolved** close that keeps the spec's negatives provisional (§12.10), never silently |
 
 *Corrected:* C-12 added "the generation the task searched is `suspect` ⇒
 WAITING_INDEX(suspect); the task may not finish DONE while it is". That rule
@@ -949,10 +1029,13 @@ single-row LWT.
 **Run fencing.** Every transition of a run is an LWT `IF epoch = :e AND run =
 :r` on the task row. The first claim of run *r* sets `run_started_at` (`IF run
 = :r AND run_started_at = null`). The completion LWT is `SET state = 'DONE' |
-'INCOMPLETE', done_run = :r IF epoch = :e AND run = :r`. A **run bump**
+'INCOMPLETE', done_run = :r, done_state = <the same> IF epoch = :e AND run =
+:r`. A **run bump**
 (`SET run = :r+1, state = 'PENDING', run_started_at = null,
-obligation_runs[:oid] = :r+1, rerun_reason = :why, next_attempt_at = :now IF
-run = :r AND state IN (<every non-FAILED state>)`) invalidates every in-flight
+recovery_runs[:occurrence_id] = :r+1, rerun_reason = :why, next_attempt_at =
+:now IF run = :r AND state IN (<every non-FAILED state>)`; an audited `match
+rerun`/`retry` uses the same statement without the map entry, and a retry of
+a FAILED task conditions on `state = 'FAILED'` instead) invalidates every in-flight
 transition of run *r* (a run not yet claimed is instead tagged by a
 coalescing LWT, §12.10): a worker of run *r* that resumes fails its next LWT on
 `run`, re-reads, and stops. Bump and completion are LWTs on the **same row**,
@@ -961,6 +1044,32 @@ re-opens the row) or the bump came first (and run *r* can no longer
 complete). A new run never reuses an earlier run's candidate list
 (`match_candidates` is keyed by `run`); matches an earlier run committed
 remain valid (they are artifact-verified, §12.9 C).
+
+**Search step (corrected C-14).** The search step of a run resolves the
+active generation once, records it with the `SEARCHED` transition as
+`searched_generation`, and sends every query of the step (all query
+segments, every adaptive-k round) to that one collection. The step has a
+deadline `step_start + search_timeout_s` on the matcher's clock, where
+`step_start` is no earlier than the time the pointer (cached ≤
+`index.active_ttl_s`) was read; no query is sent after the deadline — the
+step is abandoned and repeated with a fresh pointer. This is what bounds the
+DRAINING search horizon of §12.4 (`search_timeout_s` bounds the whole step,
+not one query). `SEARCHED` is written only after **every** query segment's
+search returned: a failed, timed-out or "not found" query fails the step
+(retry / `WAITING_INDEX`), and is never counted as zero hits. A repeated
+search step writes a new candidate list for the new
+`(searched_generation, run)`; verification reads the list named by the task
+row. The low-information classification queries of §7.3 obey the same
+pinning and deadline.
+
+**Candidate failures do not fail the task.** A candidate whose artifact is
+missing, unreadable or fails its SHA-256 check is marked FAILED
+(`artifact_unavailable` / `artifact_corrupt`, the latter with an operator
+alert); the run ends INCOMPLETE `verification_failed`. The task itself goes
+FAILED only when the **subject's own** row or artifact is invalid
+(corrected C-14: the earlier text let one corrupt candidate artifact fail the
+subject's task, which would also close the subject's recovery obligations as
+`TASK_FAILED`).
 
 A lost lease returns the task to the due index (P9 §7 pattern). Re-indexing
 is idempotent (deterministic ids), the candidate list is durable per run,
@@ -979,7 +1088,7 @@ shows its own `epoch` and `run` with the intended state.
 | stale entry (point whose representation is retired/absent) | candidate check against P9 rows before verification (§12.9 C) | dropped from the candidate list, counted `index_stale`, repaired by deleting the subject's points; check unreadable ⇒ task retries, never accepts |
 | missing entry (READY representation without points) | `index check` / `index_entries` | re-indexed; counted `index_miss` |
 | Scylla unavailable | `StorageUnavailableError`, `LwtUnknownError` | retry with backoff; LWT unknown resolved by SERIAL read (P9 pattern) |
-| MinIO unavailable / artifact missing | typed error from `Objects` | candidate retryable (×3) → `verification_failed`; artifact SHA-256 mismatch → FAILED + operator alert (authoritative data corrupt) |
+| MinIO unavailable / artifact missing | typed error from `Objects` | candidate retryable (×3) → `verification_failed` (task INCOMPLETE); a **candidate's** artifact SHA-256 mismatch → that candidate FAILED `artifact_corrupt`, task INCOMPLETE `verification_failed`, operator alert; the **subject's own** artifact mismatch → task FAILED + operator alert (authoritative data corrupt) (§11.1) |
 | verification timeout | per-candidate wall-clock limit (default 30 s) | candidate retry ×3 → `verification_failed` (task INCOMPLETE) |
 | matcher crash | lease expiry | task resumes at its last durable state |
 | duplicate hints / events / tasks | `IF NOT EXISTS`, deterministic ids | no-ops |
@@ -1012,7 +1121,7 @@ intent.
    backstop scan, lowinfo refresh) derives the desired state from the
    authoritative rows: `UPSERT` with `desired_ver` = artifact SHA-256 (+
    `lowinfo_rev` for targets) if the representation is READY (target: binding
-   READY and target not RETIRED), else `DELETE`. If it differs from the row,
+   live, §4.2), else `DELETE`. If it differs from the row,
    write it with `UPDATE … SET desired_op, desired_ver, seq = :s+1, state =
    'PENDING' IF seq = :s` (or `IF NOT EXISTS`). Nothing touches Qdrant before
    this LWT succeeds; an unknown LWT outcome (`LwtUnknownError`) is resolved
@@ -1054,8 +1163,16 @@ intent.
    becomes `BLOCKED` with `last_error`. "Collection not found" is a no-op only
    if Scylla says the generation is RETIRED or FAILED; otherwise it is an
    invariant violation (generation audit requested, §12.10; alert).
-3. **Bookkeeping.** `UPDATE index_entries SET applied[g] = :s, state =
-   'APPLIED' IF seq = :s` for the generations applied. If the LWT fails
+3. **Bookkeeping.** `UPDATE index_entries SET applied[g] = :s IF seq = :s`
+   for each generation applied (map-entry updates of different generations
+   on one row are serialized by the LWT and never overwrite each other);
+   `state = 'APPLIED'` is set in the same LWT only when `applied` then holds
+   `:s` for **every** generation of the routing set the worker read —
+   otherwise the row stays PENDING (corrected C-14: the earlier text set
+   APPLIED after any one generation, while R-4 expected PENDING). `state` is
+   a summary for operators; every correctness check (catch-up, completeness,
+   detection, capacity audit) reads `applied[g]` per generation, never
+   `state`. If the LWT fails
    because `seq` advanced, a newer intent exists: the worker re-reads and
    re-applies the newer desired state itself (so the last writer to finish
    leaves Qdrant in the newest state). After `max_attempts` failures the row
@@ -1122,12 +1239,22 @@ cycle (`verify_cycle_s`).
 | `ACTIVE` | the generation readers use (exactly one per spec/role) | yes | yes |
 | `DRAINING` | previous active, kept for `drain_grace_s` ≥ 2 × `active_ttl_s` + max task lease | yes | by readers with a cached old pointer only |
 | `RETIRED` | collection deleted | no | no |
-| `FAILED` | abandoned (from any non-active state; the transition bumps `routing_epoch`); collection kept for inspection, then deleted by `index drop --generation`, which releases its capacity reservation | no | no |
+| `FAILED` | abandoned (from any non-active state; the transition bumps `routing_epoch`); collection kept for inspection, then deleted by `index drop --generation`; the next capacity audit then releases its holder row and points (§13.3) | no | no |
 
 Legal transitions: CREATED→BUILDING→CATCHING_UP→VALIDATING→READY→ACTIVE→DRAINING→RETIRED;
-VALIDATING→CATCHING_UP (lag found); any of CREATED…READY→FAILED. Every
+VALIDATING→CATCHING_UP (lag found); READY→VALIDATING (re-validation, failed
+`detect_count` fence); any of CREATED…READY→FAILED. Every
 transition is an LWT on the generation row conditioned on the builder's
-`build_epoch`; ACTIVE is entered only through the promotion LWT.
+`build_epoch`; ACTIVE is entered only through the promotion LWT and left only
+through a later promotion (→ DRAINING). There is **no ACTIVE→FAILED**: an
+ACTIVE generation whose collection is lost or unreadable stays ACTIVE —
+every search of it fails loudly (`IndexMissingError`/`IndexUnavailableError`,
+tasks `WAITING_INDEX`, never an empty result) — until a rebuilt generation is
+promoted over it (§12.7). **DRAINING → RETIRED** requires the grace period and
+either a clean post-horizon verification pass (below) or, if g cannot be
+read, the durable unauditable-fallback occurrences of §12.10 for every
+UPSERT row with `applied[g]` set (corrected C-14: the earlier text required a
+pass that cannot run on a lost collection, leaving no path to RETIRED).
 
 **Ownership.** A builder holds `index_build_lease(spec, role)` (owner, epoch,
 lease_until; acquire `IF epoch = :e`). A second rebuild cannot acquire it; a
@@ -1226,9 +1353,9 @@ P9's `reconcile run`, with its own leases. Passes:
 | scans | §6.1 B (missed hints, retirements) | write desired state, tasks |
 | Qdrant verification (per generation, scroll in id order, cursor persisted, rate-limited; full cycle ≤ `verify_cycle_s`, sampled vector digests) | point without UPSERT row (orphan); point `seq` < row `seq` (stale); row APPLIED but points missing or count ≠ `segment_count`; point present for DELETE row | re-apply the row's desired state; delete orphans by id |
 | generations | stuck non-terminal generations, expired build leases, DRAINING past grace and past a clean post-horizon pass | resume, FAILED, RETIRED |
-| repairs (C-13) | every `index_repairs` row not CLOSED (64 buckets per spec/role, cursor persisted); generations with `audit_state = REQUESTED/RUNNING` | drive OPEN → REPAIRED → RERUN_PENDING → CLOSED (§12.10); run the per-subject audit |
+| repairs (C-13) | every `index_repairs` row not CLOSED (64 buckets per spec/role, cursor persisted); generations with `audit_state = REQUESTED/RUNNING` | drive each current occurrence OPEN → REPAIRED → RERUN_PENDING → CLOSED, re-check unresolved closes for `resolve` (§12.10, C-14); run the per-subject audit |
 | lowinfo | `done_rev < requested_rev`, `full_requested` | resume refresh / full recomputation |
-| capacity audit | ledger vs Qdrant exact counts | raise `reserved` if below the bound; lower it only to the conservative bound (§13.3) |
+| capacity audit | ledger vs holder rows, pending UPSERT rows and Qdrant exact counts (§13.3 order a–d) | set `reserved` to the bound by CAS — the **only** path that lowers it (C-14) |
 
 Repair table (Invariant G, §12.9). Every repair is a re-application of the
 row's desired state or a delete by deterministic id, so repeating a repair —
@@ -1241,12 +1368,12 @@ cursors; R-21) — converges to the same state.
 | orphan point (no `index_entries` row) | P9 rows | verification scroll | authoritative READY ⇒ write intent + apply; else delete by id | delete/upsert by id | `index_verify_orphans_total` | R-16 |
 | stale `seq` (point `seq` < row `seq`) | `index_entries` | verification scroll | if the row's current points are short in a searched generation, that is a loss: obligation first (*loss* row below); then cleanup `seq < row.seq` | ids include `seq`; filter bounded by `seq` | `index_verify_stale_total` | R-14, R-18, R-23 |
 | point present for a DELETE row | `index_entries` (DELETE) | verification scroll, count by filter | delete by filter `subject AND seq ≤ d` | delete by filter | `index_verify_stale_total` | R-5, R-14 |
-| **loss**: row APPLIED for g (searched state) but current points short (count of `seq = row.seq` < `segment_count`), found by verification, apply pre-count or audit | Qdrant (observed) vs `index_entries` | verification count (re-read row and re-count once to exclude an in-flight new intent; still short or ambiguous ⇒ loss) | **§12.10**: obligation `index_repairs(S, g)` durable before any repair and before the pass cursor passes S; generation marked; re-apply; confirm; run bump of S's own tasks; close after the bumped runs finish | obligation `IF NOT EXISTS` / `IF occurrence`; run bump `IF run`; repair by deterministic ids | `index_repairs{state}`, `index_miss_total`, `index_generation_suspect`, `match_task_reruns_total{reason=index_repair}` | R-17, R-25, R-26 |
+| **loss**: row APPLIED for g (searched state) but current points short (count of `seq = row.seq` < `segment_count`), found by verification, apply pre-count or audit | Qdrant (observed) vs `index_entries` | verification count (re-read row and re-count once to exclude an in-flight new intent; still short or ambiguous ⇒ loss) | **§12.10**: obligation `index_repairs(S, g)` durable before any repair and before the pass cursor passes S; generation marked; re-apply; confirm; run bump of S's own tasks; close after the bumped runs finish | occurrence open `IF NOT EXISTS` / `IF occurrence AND occurrence_id`, fresh `occurrence_id` per occurrence; run bump `IF run`, task map keyed by `occurrence_id`; repair by deterministic ids | `index_repairs{state}`, `index_miss_total`, `index_generation_suspect`, `match_task_reruns_total{reason=index_repair}` | R-17, R-25, R-26, R-27 |
 | abandoned intent (PENDING/BLOCKED past grace) | `index_entries` | intents pass | apply (BLOCKED: retry with backoff, stays visible) | as above | `index_entries{state}` | R-2, R-3 |
 | mutation not in every routed generation | `index_entries.applied` vs generations in `CREATED…DRAINING` | intents pass and catch-up pass | apply to the missing generation | as above | `index_entries{state=PENDING}` | R-4 |
 | incomplete / failed generation | `index_generations` + build lease | generations pass (expired lease, stuck state) | resume under a new lease, or FAILED + `index drop --generation` | state transitions are epoch-fenced LWTs | `index_build_progress`, generation state | R-6, R-13, R-20 |
 | generation content ≠ manifest | artifacts | validation digest check (§12.5) or `index check` | generation stays non-active / FAILED; rebuild | new generation number | generation state, alert | R-6, §5 |
-| ledger below the conservative bound | `index_capacity` vs Qdrant counts | capacity audit | raise `reserved` | LWT on `reserved` | `index_capacity_reserved_points` | CAP-6 |
+| ledger differs from the conservative bound | `index_capacity` holder rows + pending rows + Qdrant counts | capacity audit | set `reserved` to the bound (the only lowering path) | CAS `IF reserved = :r`, bound recomputed from durable state | `index_capacity_reserved_points` | CAP-6, CAP-9 |
 
 ### 12.7 Loss of the complete index
 
@@ -1309,9 +1436,8 @@ UPSERT 12, and even if its first DELETE 11 lands late it cannot touch the
 candidates. Before a candidate is verified, the matcher checks (cached per
 task): (1) the hit's payload `spec` equals the query spec and the point id
 equals `uuid5(subject:seq:k)` of its payload — otherwise the point is foreign
-(orphan repair); (2) the subject is **authoritatively live** at QUORUM:
-media — `representations(content_id, spec).state = READY`; target — binding
-READY and `targets.state ∉ {RETIRED, PURGED}`; (3) `temporal/v2` runs on the
+(orphan repair); (2) the subject is **authoritatively live** (§4.2
+predicate) at QUORUM; (3) `temporal/v2` runs on the
 **artifact** vectors (SHA-256 verified), never on Qdrant vectors. No
 sequence comparison is required for acceptance: a live subject's vectors are
 immutable (its representation id is bound to one artifact), so a stale point
@@ -1365,11 +1491,23 @@ stale writes; only a non-protocol loss can make a validated generation
 incomplete, and that is handled by H. If READY waits longer
 than `revalidate_after_s`, VALIDATING is repeated before promotion.
 
+Four different properties, kept apart (C-14):
+
+| Property | Holds | Kind |
+|---|---|---|
+| P1 completeness at the promotion instant (E1–E6) | yes, by the catch-up pass, coverage walk and validation checks | protocol, single instant |
+| P2 the current points of every live subject stay in g after promotion while writes continue | yes against every protocol and stale operation (S2) | strict, **conditional on R-24** (Qdrant filter semantics) and on Qdrant keeping acknowledged writes |
+| P3 stale older-`seq` extras disappear | eventually: within one verification cycle after they land; never accepted meanwhile (C) | eventual |
+| P4 every point a search needs is present while the search runs | **not guaranteed**: a non-protocol loss can remove points at any time; handled after detection by §12.10 (invariant R) | not guaranteed — recovery only |
+
+"Complete generation" in this document means P1 (+ P2 under its conditions),
+never P4.
+
 **F — Rebuild failure.** The active pointer changes only through the
 promotion LWT (`IF active_epoch = e AND state(g) = 'READY'`), so a failed or
 abandoned build cannot change it. A failed generation goes FAILED (routing
 epoch bumped, no longer written or searched), stays inspectable, and its
-collection deletion releases its capacity reservation. Live mutations are
+collection deletion lets the next capacity audit release its reservation (§13.3). Live mutations are
 not lost: their rows are in `index_entries` and were applied to the active
 generation independently. A later builder either adopts the non-terminal
 generation (resumes from its state and bucket cursor under a new
@@ -1442,10 +1580,14 @@ QUORUM reads after a P9 LWT write on the same single-DC cluster observe it
 (P9 uses the same pattern); the worker's clock margin used by `boundary_at`
 is not needed for correctness (E1/E2), only as a margin; the execution
 semantics of the run-fence and obligation LWT conditions (`IN`, `= null`,
-map-entry updates) on Scylla 6.2.3 (R-26; only their acceptance by
-`prepare` was checked).
+map-entry updates, list append inside a conditional update, a conditional
+batch with a static-column condition and a clustering-row insert — the
+capacity admission) on Scylla 6.2.3 (R-26; only acceptance by `prepare` was
+checked, and only for `IN`, `!=`, `= null`, `<=`); that a `Dot` collection
+returns the stored float32 originals bit-identically (the manifest/content
+digest of §12.5 depends on it; R-24 (vii)).
 
-### 12.10 Index-integrity recovery: obligations and task reruns (P10-D19, P10-D20; corrected C-13)
+### 12.10 Index-integrity recovery: obligations and task reruns (P10-D19, P10-D20; corrected C-13, C-14)
 
 This section is the authoritative description of what happens to tasks and
 results when index points are found missing. §11.1, §12.6, §12.9 H, the
@@ -1548,103 +1690,180 @@ assumption that acknowledged writes stay durable and visible, §12.9; a known
 limitation, §17), and a searched generation destroyed without its final pass
 (handled by the fallback below).
 
-**Obligation record and state machine** (`index_repairs`, PK `(spec_digest,
-role, bucket = shard_of(subject, 64))`, CK `(subject_id, generation)`; every
-step an LWT conditioned on `occurrence` and `state`; nothing is ever deleted
-while the spec is indexed):
+**Obligation, occurrence and their identities (corrected C-14).**
 
-| State | Entered by (LWT) | Durable facts | Next step (owner: P10 reconciler `repairs` pass, lease `p10_readers("repairs")`) |
+- The **obligation row** is `index_repairs(spec_digest, role, bucket =
+  shard_of(subject, 64); subject_id, generation)`: at most one per (S, g),
+  never deleted while the spec is indexed.
+- An **occurrence** is one detected loss episode of S in g that must be
+  repaired and then re-searched by S's own tasks. Its identity is the pair
+  (`occurrence` int = 1, 2, …, `occurrence_id` timeuuid). The
+  `occurrence_id` is generated fresh by the detector that opens the
+  occurrence (time-based, node-unique; never derived from the row, never
+  reused), and both columns change together, only in the *open* LWT below.
+- A task row records the run an occurrence requires in **`recovery_runs
+  map<timeuuid, int>` keyed by `occurrence_id`** (§5, §11.1). An entry
+  written for occurrence *k* can therefore never be read as the bump of
+  occurrence *j ≠ k*; entries are never needed after their occurrence closes
+  and correctness depends neither on deleting nor on keeping them.
+- *Corrected C-14:* C-13 kept one `obligation_id` per row for all
+  occurrences and keyed the task map by it. After a close and a re-open, the
+  bump step found the first occurrence's map entry "already present", took
+  it as the bump, and recorded an already finished run as the new
+  requirement: the second loss closed without any new rerun. C-13 called the
+  removal of that entry cosmetic; correctness depended on it.
+
+Row columns. *Row-level* (never reset): the key, `occurrence`,
+`occurrence_id`, `history list<text>` (one JSON entry appended per ended
+occurrence: number, id, `close_reason` or `SUPERSEDED`, times). *Occurrence-
+scoped* (all written explicitly by the open LWT — none is inherited from an
+earlier occurrence and none relies on null-as-default, so every condition
+compares written values): `state`, `detections` int (0), `gen_marked` bool
+(false), `detected_at`, `detected_by`, `row_seq`, `expected_count`,
+`observed_count`, `repaired_at` (null), `required_run map<text, int>` ({}),
+`close_reason` (null), `closed_at` (null), `resolved_run` (null),
+`resolved_at` (null), `attempts` (0), `next_attempt_at`, `last_error` (null).
+Every cell used in a condition is written only by LWT.
+
+**Transitions — each one single-row LWT on `index_repairs`** (conditions
+`O` = `occurrence = :o AND occurrence_id = :oid`, the values the actor read):
+
+| Transition | Actor | Statement | What the condition protects |
 |---|---|---|---|
-| OPEN | detector: `INSERT … IF NOT EXISTS` (first loss); `UPDATE SET state = 'OPEN', occurrence = :o+1, gen_marked = false, required_run = {} … IF occurrence = :o AND state IN ('REPAIRED', 'RERUN_PENDING', 'CLOSED')` (a new loss after a confirmed repair) | `obligation_id`, `occurrence`, `row_seq`, expected/observed counts, `detected_by` | mark the generation; repair |
-| (mark) | `UPDATE index_generations SET detect_count = :c+1, suspect_since = …, suspect_reason = … IF detect_count = :c`, then `SET gen_marked = true IF occurrence = :o` | g's `detect_count` raised (promotion fence, §12.4) | — |
-| REPAIRED | reconciler, after the repair is confirmed: `SET state = 'REPAIRED', repaired_at = … IF occurrence = :o AND state = 'OPEN'` | `repaired_at` | run bumps |
-| RERUN_PENDING | reconciler, after every kind's bump is recorded: `SET required_run[k] = :n …, state = 'RERUN_PENDING' IF occurrence = :o AND state = 'REPAIRED'` | `required_run` per kind | wait for `done_run ≥ required_run[k]` |
-| CLOSED | reconciler: SERIAL read of each task row; `SET state = 'CLOSED', close_reason, closed_at IF occurrence = :o AND state = 'RERUN_PENDING'` | `close_reason` ∈ {`RERUN_DONE`, `RERUN_INCOMPLETE`, `TASK_FAILED`, `SUBJECT_RETIRED`} | — |
+| open (first) | detector | `INSERT … (occurrence = 1, occurrence_id = :new, state = 'OPEN', detections = 0, gen_marked = false, required_run = {}, …) IF NOT EXISTS` | one row per (S, g) |
+| open (again) | detector | `UPDATE SET occurrence = :o + 1, occurrence_id = :new, state = 'OPEN',` every occurrence-scoped column to its initial value `IF O AND state = 'CLOSED'`; or, from REPAIRED/RERUN_PENDING, the same plus `history = history + [:superseded] IF O AND state IN ('REPAIRED', 'RERUN_PENDING')` (a CLOSED occurrence was appended by its close, so each ended occurrence appears once) | a loss seen after the occurrence's repair was confirmed gets a new identity; the old occurrence ends `SUPERSEDED` (a run that satisfies the new one starts after the new repair, so it also satisfies the old one) |
+| merge | detector | `UPDATE SET detections = :d + 1, observed_count = … IF O AND state = 'OPEN' AND detections = :d` | a loss seen while the repair is still unconfirmed invalidates any confirmation read before it |
+| mark | reconciler | `index_generations`: `SET detect_count = :c + 1, suspect_since, suspect_reason IF detect_count = :c`; then `SET gen_marked = true IF O AND state = 'OPEN'` | promotion fence and operator flag (§12.4); a crash between the two statements raises `detect_count` twice — harmless, the fence only needs it to increase |
+| repaired | reconciler | `SET state = 'REPAIRED', repaired_at = :t IF O AND state = 'OPEN' AND gen_marked = true AND detections = :d` | `:d` is read (SERIAL) **after** the repair write and **before** the confirming count; a merge that landed after that read fails the transition |
+| rerun pending | reconciler | `SET required_run = :m, state = 'RERUN_PENDING' IF O AND state = 'REPAIRED'` | `:m` is built only from `recovery_runs[:oid]` of S's task rows |
+| close | reconciler | `SET state = 'CLOSED', close_reason = :r, closed_at = :t, history = history + [:ended] IF O AND state = 'RERUN_PENDING'` (for `SUBJECT_RETIRED`: `… IF O AND state IN ('OPEN', 'REPAIRED', 'RERUN_PENDING')`) | only the current occurrence can close |
+| resolve | reconciler | `SET resolved_run = :n, resolved_at = :t IF O AND state = 'CLOSED' AND resolved_run = null` | an unresolved close (`RERUN_INCOMPLETE`, `TASK_FAILED`) becomes resolved only by a later qualifying DONE run |
 
-*Repair (OPEN → REPAIRED).* Re-read the `index_entries` row and the
-authoritative P9 row. Subject no longer live (desired DELETE) ⇒ close with
-`SUBJECT_RETIRED` (its tasks stop, §12.3; pairs it lost while it was live
-are not recovered — §17). Otherwise re-apply the row's desired state to g
-through §12.2 (same `seq`, same ids; capacity already reserved) and confirm
-with an exact count `seq = row.seq` = `segment_count` after the `wait=true`
-write. If g is RETIRED or FAILED (SERIAL read), the repair is confirmed
-without a write — g is no longer searched. A target-role repair also
-enqueues the target's classification step (§7.3).
+**Unknown LWT outcome** (`LwtUnknownError`): the actor makes no further
+write for S (no repair, no cursor advance, no bump) until a SERIAL read of
+the row has decided it:
 
-*Run bump (REPAIRED → RERUN_PENDING), per kind k of S.* Write the
-`match_due` entry first (idempotent; a stray entry is a no-op), then SERIAL
-read `match_tasks(S, spec, k)`:
-- `obligation_runs[oid]` already present ⇒ the bump happened (a crash or
-  unknown outcome earlier); record that run number;
-- row absent ⇒ `INSERT … run = 1, obligation_runs = {oid: 1} IF NOT EXISTS`;
-- state PENDING with `run_started_at = null` (run *r* not yet claimed, so it
-  will search after now) ⇒ coalesce: `SET obligation_runs[oid] = :r IF run =
+| Transition | Applied iff the SERIAL read shows | If not applied |
+|---|---|---|
+| open (first/again) | `occurrence_id = :new` — the id is the actor's own, so this is decisive | act on what the row shows: OPEN ⇒ merge; REPAIRED/RERUN_PENDING/CLOSED ⇒ open again against the row's current `O` |
+| merge | indistinguishable from another detector's merge, so the detector does not decide it: if the row is still OPEN with the same `O`, `detections > :d` satisfies it, `detections = :d` ⇒ retry; if the row has moved past OPEN (or to another occurrence), the detector **opens again** | (a needless open costs one rerun, never a missed pair) |
+| mark, repaired, rerun pending, close, resolve | same `occurrence_id` and `state` at or past the target state (another reconciler's success is equivalent: the values are derived from durable rows) | re-read the inputs and repeat the step |
+
+**Repair (OPEN → REPAIRED).** SERIAL read of the obligation (`O`). Re-read the
+`index_entries` row and the authoritative P9 row. Subject no longer live
+(§4.2 liveness, desired DELETE) ⇒ close `SUBJECT_RETIRED` (its tasks stop,
+§12.3; pairs it lost while live are not recovered — §17). If g is RETIRED or
+FAILED (SERIAL read), the repair is confirmed without a write. Otherwise
+re-apply the row's **current** desired state to g through §12.2 — including
+its capacity reservation (the lost points were already removed from the
+audit's counts, so the repair reserves `segment_count` in g like any apply)
+— with this exception: the
+§12.2 pre-count of a repair write is satisfied by the OPEN occurrence the
+repairer holds and records no new detection. Then: SERIAL read of
+`detections` (`:d`), exact count `subject = S AND seq = row.seq` =
+`segment_count`, `repaired` LWT with `:d`. A failed condition ⇒ repeat the
+repair (idempotent ids). A target-role repair also enqueues the target's
+classification step (§7.3).
+
+**Run bump (REPAIRED → RERUN_PENDING), per task kind k of S** (the kinds of
+the table above that exist or are required by the configuration at bump
+time). Write the `match_due` entry first (idempotent; a stray entry is a
+no-op), then SERIAL read `match_tasks(S, spec, k)`:
+- `recovery_runs[:oid]` present ⇒ this occurrence's bump already happened
+  (crash or unknown outcome earlier); use that run number;
+- row absent ⇒ `INSERT … run = 1, state = 'PENDING', run_started_at = null,
+  recovery_runs = {:oid: 1} IF NOT EXISTS`;
+- state PENDING with `run_started_at = null` (run *r* not claimed, so it
+  will search after now) ⇒ coalesce: `SET recovery_runs[:oid] = :r IF run =
   :r AND run_started_at = null`;
-- state FAILED ⇒ kind closed as `TASK_FAILED` (visible; operator alert);
+- state FAILED ⇒ no bump; required run := *r* + 1 (the run an audited `match
+  retry` would create);
 - otherwise ⇒ bump: `SET run = :r+1, state = 'PENDING', run_started_at =
-  null, obligation_runs[oid] = :r+1, rerun_reason = 'index_repair' IF run = :r
-  AND state IN (<non-FAILED states>)`.
+  null, recovery_runs[:oid] = :r+1, rerun_reason = 'index_repair' IF run =
+  :r AND state IN (<non-FAILED states>)`.
 A failed condition ⇒ re-read and repeat; unknown outcome ⇒ SERIAL read
-(`obligation_runs[oid]` present ⇔ applied). The bump is
-the only atomic step and it lives on S's own row: Scylla linearizes it with
-the completion LWT of run *r* (§11.1), so a run that may have searched
-before `t_repair` cannot satisfy `required_run`.
+(`recovery_runs[:oid]` present ⇔ applied: only this occurrence writes that
+key). Then the `rerun pending` LWT records `required_run`. The bump is the
+only atomic step on the task and it lives on S's own row: Scylla linearizes
+it with the completion LWT of run *r* (§11.1), so a run that may have
+searched before the repair cannot satisfy `required_run` (S5).
 
-*Close.* For every kind, `done_run ≥ required_run[k]` (DONE ⇒ `RERUN_DONE`;
-the qualifying run INCOMPLETE ⇒ `RERUN_INCOMPLETE`, which leaves S's task
-visibly INCOMPLETE — `match retry --raise-cap` as usual). Afterwards the
-reconciler removes `obligation_runs[oid]` from the task rows (cosmetic,
-idempotent).
+**Close.** For every kind k: SERIAL read of the task row; the kind is
+satisfied when `done_run ≥ required_run[k]` (any run numbered at or after the
+required one started after the repair). The outcome of that run is
+`done_state` (§11.1): DONE ⇒ `RERUN_DONE`; INCOMPLETE ⇒ `RERUN_INCOMPLETE`.
+A task in state FAILED with `done_run < required_run[k]` (no bump was
+possible, or the required run itself failed — FAILED never sets
+`done_run`) ⇒ `TASK_FAILED`; otherwise the kind is still pending. The close reason is the
+worst over the kinds (`TASK_FAILED` > `RERUN_INCOMPLETE` > `RERUN_DONE`).
+`RERUN_INCOMPLETE` and `TASK_FAILED` are **unresolved closes**: the
+reconciler keeps checking them and records `resolve` when a later run of
+each unresolved kind with number ≥ `required_run[k]` finishes DONE (e.g.
+after `match retry --raise-cap`). Nothing about the task row has to be
+cleaned up afterwards.
 
-*Generation flag.* `suspect_since` is cleared by `SET suspect_since = null IF
-detect_count = :c` only after (i) a scan of all 64 `index_repairs` buckets of
-(spec, role) finds no non-CLOSED row for g and (ii) a complete verification
-pass of g that started after the last detection found no loss; `:c` is read
-before (i), so a concurrent detection fails the clear. "Trusted again" means
-exactly (i) + (ii). The flag gates promotion (§12.4) and retirement
-bookkeeping, never a task.
+**Concurrent and delayed actors.**
 
-**Crash, retry and duplicate handling.**
+| Situation | Outcome |
+|---|---|
+| two detectors, no row | one INSERT wins; the other reads OPEN and merges |
+| two detectors, row REPAIRED/RERUN_PENDING/CLOSED | one open-again wins (`occurrence` + 1); the other fails on `O`, reads the new OPEN occurrence and merges |
+| detector vs repair confirmation | merge before the repairer's `:d` read ⇒ the confirming count (taken later) is valid; merge after it ⇒ `repaired` fails, the repair is repeated; `repaired` first ⇒ the merge fails and the detector opens again |
+| repair worker of occurrence *o* delayed past an open-again to *o* + 1 | its `repaired` / `rerun pending` / `close` LWTs fail on `O`; it re-reads and abandons; its Qdrant writes were §12.2 re-applies of the current desired state (they cannot remove current points, S2) |
+| bump of occurrence *o* landing after *o* + 1 recorded `required_run = r` | it can only move run *r* → *r* + 1 (`IF run = r`); *o* + 1 is then satisfied by `done_run ≥ r` through run *r* + 1, which started later; at worst one extra run |
+| duplicate reconcilers | pass lease; every step conditioned on `O` and `state`; equal results |
+| loss of S in two generations (ACTIVE and DRAINING) | two rows, two occurrences, two requirements; the bumps may coalesce into one run |
+| reconciler or process restart | all state in Scylla; the `repairs` pass resumes from its bucket cursor; Redis due ZSET rebuilt from `match_due` |
+
+**Crash, retry and failure handling.**
 
 | Event | State left | Recovery |
 |---|---|---|
-| detector crashes before the obligation LWT | cursor not past S, no repair written | restart re-counts S; the loss cannot have been healed meanwhile (only pre-counted applies and obligations write) |
-| obligation LWT outcome unknown | unknown | SERIAL read; neither cursor advance nor repair until resolved |
-| crash after OPEN, before the generation mark | `gen_marked = false` | reconciler marks, then continues |
-| repair worker crashes mid-repair / before REPAIRED | OPEN | re-apply (idempotent ids) and re-confirm |
-| crash after a bump, before `required_run` recorded | task row holds `obligation_runs[oid]` | reconciler reads it, records it; never bumps twice for one `oid` |
-| duplicate verifier runs / concurrent detectors | — | `IF NOT EXISTS` / `IF occurrence`; the loser re-reads, sees OPEN, no-op |
-| duplicate reconcilers | — | pass lease; every step conditioned on `occurrence`/`state` |
-| rerun worker crash, lease expiry, duplicate delivery | run *r+1* in progress | P9 lease pattern; the same run resumes (it was numbered after `t_repair`); duplicates fail on `epoch`/`run` |
-| retry exhaustion in the rerun | run INCOMPLETE (`verification_failed`) | `RERUN_INCOMPLETE`, visible |
+| detector crashes before the open/merge LWT | cursor not past S, no repair written | restart re-counts S; the loss cannot have been healed meanwhile (only pre-counted applies and obligation repairs write) |
+| open/merge LWT outcome unknown | unknown | SERIAL read as above; neither cursor advance nor repair until decided |
+| crash after OPEN, before the mark | `gen_marked = false` | reconciler marks, then continues (`repaired` requires the mark) |
+| repair worker crashes mid-repair / before REPAIRED | OPEN | re-apply (idempotent ids), new `:d` read, re-confirm |
+| crash after a bump, before `required_run` recorded | task row holds `recovery_runs[:oid]` | the next pass reads it; never bumps twice for one `occurrence_id` |
+| rerun worker crash, lease expiry, duplicate delivery | run *r* + 1 in progress | P9 lease pattern; the same run resumes (it was numbered after the repair); duplicates fail on `epoch`/`run` |
 | step keeps failing (Scylla/Qdrant down) | row unchanged | `attempts`, `next_attempt_at` (30 s → 15 min), `last_error`; after `max_attempts` metric `index_repairs_blocked` and alert, still retried; never dropped |
-| S lost again during REPAIRED/RERUN_PENDING | new loss | detector reopens (`occurrence + 1`); the new repair is followed by a new bump |
-| g retired while obligations are open | — | repair confirmed by RETIRED; reruns follow |
-| process or service restart | all state in Scylla | the `repairs` pass resumes from its bucket cursor; Redis due ZSET rebuilt from `match_due`; nothing in memory or Redis is authoritative |
-| a searched generation cannot be audited (collection lost or unreadable before its final pass, `index drop --force-unverified`) | extent unknown | **fallback:** one obligation per `index_entries` row with `applied[g]` set (exact enumeration from Scylla); reruns rate-limited (`reconcile.rerun_per_s`), audited, visible; a whole-index loss (R-20) uses the same rule |
+| g retired while an occurrence is open | — | repair confirmed by RETIRED; reruns follow |
+| a searched generation cannot be audited (collection lost or unreadable before its final pass, `index drop --force-unverified`) | extent unknown | **fallback:** an occurrence (open or open-again, `detected_by = unauditable`) for every UPSERT row with `applied[g]` set (exact enumeration from Scylla), all durable **before** g may become RETIRED (§12.4); then each repair is confirmed by RETIRED and its reruns follow, rate-limited (`reconcile.rerun_per_s`), audited, visible; a whole-index loss (R-20) uses the same rule |
 
 **Invariant R (the corrected guarantee).** For every non-protocol loss of the
 current points of a live subject S from a generation g while g is searched
 that a detector observes:
-- R1 an `index_repairs(S, g)` obligation is durable before any write repairs
-  S in g and before the detecting pass moves past S;
-- R2 it is never deleted, and it becomes CLOSED only by a close LWT issued
-  after, for every task kind of S, a run numbered by a task-row LWT that
-  followed `t_repair` has finished (DONE or INCOMPLETE), or with the visible
-  terminal reason `TASK_FAILED` / `SUBJECT_RETIRED`;
-- R3 a run of S that may have searched before `t_repair` cannot satisfy R2
-  (S5);
+- R1 an occurrence of `index_repairs(S, g)` is open (or merged into an open
+  one) durably before any write repairs S in g and before the detecting pass
+  moves past S;
+- R2 the row is never deleted; an occurrence becomes CLOSED only by a close
+  LWT issued after, for every task kind of S, a run numbered by a task-row LWT
+  that followed the occurrence's REPAIRED transition has finished (DONE or
+  INCOMPLETE), or with the visible terminal reason `TASK_FAILED` /
+  `SUBJECT_RETIRED`; or it ends `SUPERSEDED` by a later occurrence of the same
+  row, whose requirement is strictly later;
+- R3 a run of S that may have searched before the occurrence's repair cannot
+  satisfy R2 (S5);
 - R4 a task of any other subject finishes DONE on what it observed; that DONE
   is never re-opened by the obligation and asserts nothing about index
-  integrity.
+  integrity;
+- R5 occurrence identities are unique: a run recorded for one occurrence can
+  never satisfy another, and no step of an older occurrence can change a
+  newer one (every transition is conditioned on `O`);
+- R6 REPAIRED means: a confirming count taken after the repair write found
+  S's current points complete, and no loss observation of this occurrence was
+  recorded after the repairer's `:d` read. A loss after the confirming count
+  is either merged before `repaired` (which then fails) or opens a new
+  occurrence.
 Consequence: every pair (S, X) the loss could have hidden is searched again
 by S's qualifying run with X's points visible (§6.4) — unless X's points are
 also lost, in which case X's own obligation re-runs X. As in §6.4 this is a
 *visibility* guarantee; retrieval by ANN is measured (validation §4).
 **Not guaranteed:** that no task finishes DONE during a loss (impossible
-before `t_detect`); a bound on `t_detect − t_loss` beyond one verification
-cycle for a persisting loss; recovery of undetected transient losses or of
-subjects retired before their rerun.
+before detection); a bound on detection latency beyond one verification
+cycle for a persisting loss; recovery of undetected transient losses, of
+subjects retired before their rerun, or of pairs whose qualifying rerun is
+INCOMPLETE or FAILED (those closes stay **unresolved** and keep every
+negative of the spec provisional, below).
 
 **Results and publication.**
 - A positive decision is never invalidated by an index defect: it is computed
@@ -1652,19 +1871,43 @@ subjects retired before their rerun.
   missing or stale points only remove or add candidates. Published
   `match.found` envelopes remain valid; nothing is retracted; the contract is
   unchanged.
-- P10 stores and publishes no negative result. "No match between X and Y" is
-  always **provisional**. `match status` reports, per spec, `recovery_open`
-  (non-CLOSED obligations + pending audits); a subject's "no match found" is
-  reported `settled` only when its last run is DONE (not INCOMPLETE) and the
-  spec has `recovery_open = 0`, otherwise `provisional (recovery pending)`.
+- P10 stores and publishes no negative result. "No match" is a *reported
+  status*, never an event or a row.
+- **When a "no match" is `settled` (corrected C-14).** For subject X under
+  spec s, `match status` reports `settled` only if, read in this order:
+  (1) for every task kind of X, `run = done_run` (no newer run pending) and
+  `done_state = DONE` — which by §7.5 means no candidate cap, no saturated
+  segment, no verification failure, every query segment answered by the
+  run's pinned generation within its search deadline (§11.1), and only
+  usable low-information flags excluded; (2) afterwards, for spec s (both
+  roles), `recovery_open = 0` (no row in OPEN/REPAIRED/RERUN_PENDING, no
+  pending or running generation audit) **and** `recovery_unresolved = 0` (no
+  `RERUN_INCOMPLETE`/`TASK_FAILED` close without `resolved_run`). Otherwise
+  it is `provisional` with the failing conditions listed (`incomplete:
+  <reason>`, `rerun pending`, `recovery open`, `recovery unresolved`).
+  `settled` means "no *known* uncertainty"; it is not proof of absence — an
+  undetected loss can exist (invariant R, not guaranteed). *(Corrected: C-13
+  settled on `recovery_open = 0` alone, so an obligation closed
+  `TASK_FAILED` or `RERUN_INCOMPLETE` — pairs possibly still hidden — let
+  other subjects' negatives be reported settled.)*
 - Publication is still held only for calibration (§9.1). Matches found by a
   rerun are new decisions, published like any other (idempotent `match_id`).
-- Validation gates (M3, drop/rebuild equivalence, growth, direction B) compare
-  decision sets only at `recovery_open = 0` and record the obligation counts.
+- Validation gates (M3, drop/rebuild equivalence, growth, direction B)
+  compare decision sets only at `recovery_open = 0` **and**
+  `recovery_unresolved = 0`, and record the obligation counts.
+
+*Generation flag.* `suspect_since` is cleared by `SET suspect_since = null IF
+detect_count = :c` only after (i) a scan of all 64 `index_repairs` buckets of
+(spec, role) finds no row of g in OPEN/REPAIRED/RERUN_PENDING and (ii) a
+complete verification pass of g that started after the last detection found
+no loss; `:c` is read before (i), so a concurrent detection fails the clear.
+"Trusted again" means exactly (i) + (ii). The flag gates promotion (§12.4)
+and retirement bookkeeping, never a task.
 
 **Interactions.** Mutation intents: repairs use §12.2 and never bypass
 intents or the capacity ledger. Promotion: the `detect_count` fence (§12.4).
-Retirement: the post-horizon pass; obligations outlive retirement.
+Retirement: the post-horizon pass or, for an unauditable generation, the
+fallback occurrences (§12.4); obligations outlive retirement.
 Rebuild: a new generation is built from authority and needs no obligation;
 the old generation's obligations still require their reruns. Low-information:
 §7.3. Contention: obligations exist only after losses; the bump and the
@@ -1672,8 +1915,10 @@ completion stay on the task's own row; detection marks one generation row;
 no path of normal task completion touches a shared partition.
 
 **Schema implications (P10 tables only; none exists yet, so no migration).**
-New `index_repairs`; `match_tasks` gains `run`, `run_started_at`,
-`done_run`, `obligation_runs`, `rerun_reason`; `match_candidates` gains
+New `index_repairs` (with `occurrence_id`, `detections`, `history`,
+`resolved_run` — C-14); `match_tasks` gains `run`, `run_started_at`,
+`done_run`, `done_state`, `recovery_runs` (keyed by `occurrence_id`, C-14),
+`rerun_reason`, `searched_generation`; `match_candidates` gains
 `run` in its partition key; `index_generations` gains `detect_count`,
 `validated_detect_count`, `audit_state`/`audit_cursor`, `promoted_at`,
 `drain_horizon_at`. No P8 or P9 table, code or contract changes.
@@ -1745,39 +1990,69 @@ corpus as the media role plus the 7 targets ≈ 10 k target points: steady
 ≈ 114.4 k resident; media-role rebuild admission needs 114,443 +
 ⌈1.05 × 104,443⌉ = 224,109 ≤ 250,000 − 10,000 — admitted.)
 
-**Capacity accounting (corrected C-10).**
+**Capacity accounting (corrected C-10, C-14).**
 - *What is counted:* reserved points, a conservative upper bound of resident
-  points. Ledger `index_capacity(instance).reserved`, changed only by LWT
-  `IF reserved = :r` (compare-and-set loop).
-- *When it is checked:* (1) **rebuild admission**, before CREATED: reserve
-  `projected(g) = Σ segment_count of the (spec, role)'s UPSERT rows +
+  points. Ledger `index_capacity(instance)`: static `reserved`, changed only
+  by LWT `IF reserved = :r` (compare-and-set loop), plus one clustering row
+  per admitted rebuild (`holder`, `points`).
+- *When it is checked:* (1) **rebuild admission**, before CREATED: `P =
+  projected(g) = Σ segment_count of the (spec, role)'s UPSERT rows +
   index.rebuild_headroom_points` (live growth during the build; default 5 %
-  of projected); if `reserved + projected(g) > max_points −
-  index.capacity_margin_points` the rebuild is refused with `CAPACITY_BLOCKED` (no collection created; the active
-  generation untouched) and the requirement is reported; (2) **every UPSERT
-  whose `seq` is not yet applied to a generation** (a new subject, or a new
-  intent of an indexed one — its new-`seq` points coexist with the old ones
-  until cleanup, C-12), before the Qdrant call: reserve `segment_count` (×
-  each such routed generation); a generation draws first on its own
-  `reserved_points` headroom (builder pages), then on the ledger; refused ⇒
-  row `BLOCKED: capacity`, no Qdrant write; re-applies of the same `seq`
-  reserve nothing.
-- *Release:* only after the reduction is confirmed — an UPSERT's cleanup
-  (b) confirmed for g (release the older `seq`'s points in g), a DELETE's
-  bookkeeping LWT for g (release that subject's points in g), or a collection deletion
-  confirmed for a RETIRED/FAILED generation (release its `reserved_points`).
-  A DRAINING generation stays counted until RETIRED.
+  of projected); if `reserved + P > max_points − index.capacity_margin_points`
+  the rebuild is refused with `CAPACITY_BLOCKED` (no generation row, no
+  collection; the active generation untouched) and the requirement is
+  reported; otherwise **one conditional batch on the ledger partition** sets
+  `reserved = :r + P IF reserved = :r` and inserts the holder row
+  `gen:<spec12>:<role>:<g>` with `points = P`; only then is the CREATED row
+  (with `reserved_points = P`) written. The builder's bulk-load pages draw on
+  P and write nothing to the ledger. (2) **Every live UPSERT whose `seq` is
+  not yet applied to a generation** (a new subject, or a new intent of an
+  indexed one — its new-`seq` points coexist with the old ones until
+  cleanup, C-12), before the Qdrant call: reserve `segment_count` × each such
+  routed generation in the ledger; refused ⇒ row `BLOCKED: capacity`, no
+  Qdrant write. Every apply attempt of a `seq` not yet recorded in
+  `applied[g]` reserves, and an unknown CAS outcome is retried
+  (at-least-once: a duplicate reservation only makes the ledger too high,
+  which is safe, and the next audit removes it).
+- *Release — only by the capacity audit (corrected C-14).* No mutation,
+  cleanup, DELETE or collection deletion decrements `reserved` itself. (The
+  C-10 text released after each confirmed reduction; a retry after a crash
+  or after an unknown CAS outcome could release the same points twice and
+  leave the ledger **below** the resident count — the unsafe direction —
+  until the next audit.) The audit is the single lowering path, runs every
+  `capacity_audit_s` (default 60 s) and right after cleanups, DELETE batches
+  and collection deletions, and computes, **in this order**: (a) SERIAL read
+  of `reserved = r`; (b) holder rows and generation rows; (c) for every
+  UPSERT row not in `BLOCKED: capacity` and routed generation g with
+  `applied[g] ≠ seq`, `segment_count` (a blocked row was refused before any
+  Qdrant write of that attempt, so it holds no reservation; points an
+  earlier crashed attempt did write are counted in (d)); (d) exact Qdrant
+  counts of every existing collection.
+  Bound `B = Σ_{g with a holder} max(holder points, count_g) + Σ_{other
+  existing collections} count_g + Σ (c)`. It writes `reserved = B IF reserved
+  = r` (if anything was reserved meanwhile the CAS fails and the audit
+  repeats). Why B ≥ the true need: a reservation made before (a) is either
+  a holder row (read in (b)), or belongs to a row whose `applied[g] ≠ seq`
+  until its bookkeeping — read in (c) before the counts (d), so a write that
+  lands between (c) and (d) is counted twice (safe) and a write whose
+  bookkeeping precedes (c) also precedes (d) and is counted in (d). A holder
+  row is deleted (same batch as a re-computed `reserved`) only after its
+  generation is RETIRED or FAILED with the collection deletion confirmed, or
+  — for a crashed admission with no generation row — after the build lease
+  of (spec, role) has expired. A DRAINING generation stays counted until its
+  collection is deleted.
 - *Two generations:* during a rebuild the ledger holds active + DRAINING (if
-  any) + new; nothing about a second generation bypasses it — the builder
-  reserves at admission and its bulk load draws on that reservation.
-- *Drift:* a crash between reservation and Qdrant write leaves the ledger too
-  **high** (safe). The capacity audit (§12.6) may lower it only to the bound
-  Σ Qdrant exact counts of existing collections + Σ `segment_count` × routed
-  generations of PENDING UPSERT rows; it raises it if below that bound.
-  Residual uncounted points: a stale worker re-landing older-`seq` points after
-  release — bounded by concurrent appliers × the largest subject (≤ 1,440
-  points each) — covered by `index.capacity_margin_points` (default 10,000),
-  which admission and UPSERT checks subtract from `max_points`.
+  any) + the new generation's holder; nothing about a second generation
+  bypasses it. A live write into the building generation reserves in the
+  ledger as well (counted twice until the next audit: conservative).
+- *Drift:* every residual error leaves the ledger too **high** (safe) until
+  the next audit, except points the audit cannot see yet: a stale worker
+  re-landing older-`seq` points after (d), or an obligation repair whose
+  reservation an audit removed before its write landed — each bounded by
+  concurrent appliers or repairers × the largest subject (≤ 1,440 points
+  each) — covered by
+  `index.capacity_margin_points` (default 10,000), which admission and
+  UPSERT checks subtract from `max_points`, once.
 - *Visible, not slow:* `index_capacity_reserved_points`,
   `index_capacity_limit_points`, `index_capacity_blocked_total`,
   `index_rebuild_capacity_blocked`; rows in `BLOCKED: capacity`; tasks whose
@@ -1958,7 +2233,8 @@ between hosts and the index, and real machines are **P14**.
   until the lost subject's qualifying rerun finishes (§12.10, invariant R).
   Tasks of other subjects may finish DONE during that interval — before
   detection nothing can prevent it; their DONE asserts no index integrity and
-  every "no match" is provisional until `recovery_open = 0`. Stale index
+  every "no match" is provisional until `recovery_open = 0` and
+  `recovery_unresolved = 0` (§12.10). Stale index
   operations cannot cause such losses (S2).
 - Not recovered: a transient loss that Qdrant reverts before any count
   observes it (outside the trust assumption of §12.9), and pairs of a subject
@@ -1976,6 +2252,19 @@ between hosts and the index, and real machines are **P14**.
   backstop cycle (§6.1).
 - Calibrated confidence may be unavailable with the current labelled data;
   publication then waits (§9.1).
+- "No match" is a reported status, `settled` only under the §12.10 rule
+  (own run DONE, no recovery open or unresolved in the spec) and even then
+  not a proof of absence. One obligation closed `RERUN_INCOMPLETE` or
+  `TASK_FAILED` keeps every negative of its spec provisional until resolved
+  (C-14).
+- A saturated query segment makes the run INCOMPLETE (C-14). On heavily
+  duplicated corpora this can make many direction-B runs INCOMPLETE (audit:
+  228 of 760 target segments saturated at `k_max` 512 on the 19× corpus);
+  `k_max` and the floor must be tuned so that saturation is rare at the
+  expected growth — measured in I-1/§6, not assumed.
+- The first committed decision of a `match_id` is final for its technique
+  version; a later run that would decide differently (only possible through
+  a different low-information exclusion set) is recorded, not applied (§9.3).
 
 ## 18. Rollout and increments (after approval)
 
@@ -1994,8 +2283,8 @@ unaffected. I-2 does not start until the design is approved (D1–D4, D14, D19,
 D20) **and** E-R1 has passed; I-3 does not publish until a calibrated
 technique version exists.
 
-**Status vocabulary (2026-10-17).** *Design corrected*: C-1…C-13 written.
-*Design reviewed*: reviews 1–3 done; C-13 not yet reviewed. *Decision
+**Status vocabulary (2026-10-17).** *Design corrected*: C-1…C-14 written.
+*Design reviewed*: reviews 1–3 done; C-13 and C-14 not yet reviewed. *Decision
 approved*: none. *Implementation completed*: none. *Validation passed*: none
 (no P10 test, E-R1 or I-1 measurement has run). *Permitted next*: design
 review of C-13 and the approval decisions of decisions.md §2; after the
@@ -2011,7 +2300,9 @@ only after both D-approvals and an E-R1 pass.
 | `lowinfo/v1` `lost_tp` | I-1, §3.4 | enabling lowinfo (not I-2) |
 | 1.5 GiB holds two generations at ≥ `R_req` | E-R1 | I-2 (and the `max_points` value) |
 | Qdrant 1.15.1 integer `range`/`match` filter, boundary and subject scoping semantics | R-24 (first I-2 test) | the §12.2 cleanup/DELETE protocol; if it fails, the protocol is revised before any other I-2 work |
-| Scylla 6.2.3 execution semantics of the run-fence LWTs (`IN`, `= null`) | R-26 (I-3) | I-3 exit |
+| Scylla 6.2.3 execution semantics of the run-fence and obligation LWTs (`IN`, `= null`, map-entry set, list append in an LWT) and of the capacity admission batch (static condition + clustering insert) | R-26 (I-3) for the task/obligation forms; CAP-9 (I-2) for the batch | I-3 exit; I-2 exit |
+| `Dot` collections return stored float32 vectors bit-identically | R-24 (vii) | the manifest/content digest of §12.5 (else the digest is computed from artifacts only and compared by tolerance — a protocol revision) |
+| saturation rate at the tuned `k_max` | I-1 tuning, validation §6 | practicality of direction B (INCOMPLETE rate), not correctness |
 | targets-scan completeness on populated data | H-9 | D20 / I-2 exit |
 | `exact` + `quantization.ignore` on 1.15.1 | L-14 | enabling lowinfo |
 
@@ -2037,3 +2328,35 @@ only after both D-approvals and an E-R1 pass.
 | C-11 | "the reconciler eventually fixes stale writes"; completeness proof without race list | no statement of what may be accepted as evidence while a stale point exists; routing set said `BUILDING…` while CREATED was routed; unknown intent LWT outcome not handled | §12.9 Invariants A–G with sources of truth, routing-race table; candidate acceptance only on live P9 rows + artifact vectors; authoritative coverage walk before promotion; generation numbers never reused; error classes; reconciliation table with detection/idempotency/metric/test | D19, D20 clarified | §12 text; `db.py` LWT unknown handling | R-1…R-21 | D19/D20 approval before I-2 |
 | C-12 (2026-10-17) | point ids `uuid5(subject:k)`; DELETE = delete by filter on the subject only; "stale writes are repaired within one verification cycle" | a stale DELETE (intent 11) landing after a newer UPSERT (12) was applied and recorded removes the newer points; also a stale UPSERT 10 overwrites the 12 points before a stale DELETE 11 removes them. A live subject goes missing from the index → candidate retrieval can miss a true match; a task could finish DONE meanwhile; the stale-UPSERT tests covered only the opposite direction | §4.3 ids include `seq`; §12.2 UPSERT = write ids of `u` then cleanup `seq < u`, DELETE = `seq ≤ d`; §12.9 S2 strict (a stale operation can no longer remove current points) and H (non-protocol loss: `suspect` generation, no DONE while suspect — *superseded by C-13* — re-run of the repaired subject's task, DRAINING verified before RETIRED); manifest by segment index; capacity reserves new-`seq` points; E-R1 adds a resident media collection and re-UPSERTs | **changed** D4 (point id); D19, D14 clarified | Qdrant `range` filter on an integer payload index and delete-by-filter are documented API; behaviour on 1.15.1 **not yet executed** (R-24) | R-22…R-25 (planned); E-R1 | D4/D19 approval before I-2 |
 | C-13 (2026-10-17) | (a) C-12: a task reads `suspect_since` and may finish DONE only if unset (`WAITING_INDEX(suspect)` otherwise); (b) DRAINING verified by a pass "started after promotion"; (c) lowinfo witness cosine = Qdrant float32 score; (d) E-R1 limit = phase-3 peak − margin | (a) check-then-act across `index_generations` and `match_tasks` (different partitions, no shared Paxos instance): a task paused after its read finishes DONE after the marking; and no rule at detection time can cover tasks that finished between the loss and its detection; (b) a loss after a subject was checked but before the last search of the old generation goes undetected; any repair/apply could silently heal an unrecorded gap; (c) a corrupted index vector could create a flag; (d) margin subtracted twice and phase 3 below the admission requirement ⇒ the guard would refuse the measured rebuild | §12.10: Option A (generation-health fence) evaluated and rejected; durable recovery ledger `index_repairs` keyed by the lost subject; detection durable before repair and cursor advance; apply pre-count; generation audit and unauditable fallback; run-numbered tasks with single-row run fencing (§11.1); invariant R replaces "no DONE while suspect"; promotion fenced on `detect_count`; DRAINING pass after the search horizon; results: positives never invalidated, negatives provisional until `recovery_open = 0`; §7.3 witness cosine on artifacts; §13.4 phase 3 ≥ `R_req`, limit = measured total, margin applied once | D19, D20 clarified (D19 text corrected); D8 clarified; D14 clarified | Scylla single-partition LWT/conditional-batch rules (documented); LWT condition forms prepared (not executed) on the running Scylla 6.2.3 | R-25 revised, R-26 new; R-24 expanded; E-R1 | D19/D20 approval before I-2; R-26 before I-3 exit |
+
+### 19.2 Fifth correction pass (2026-10-17, C-14: consistency and edge-case audit)
+
+Each item: the failure, the violated invariant, why the previous text failed,
+the correction, and its test. "Design" = fixed in this document; nothing is
+implemented or run.
+
+| # | Failure scenario | Invariant violated | Why the previous text failed | Correction | Test |
+|---|---|---|---|---|---|
+| C-14a | loss 1 of S in g: open, repair, bump (task map `obligation_runs[oid] = 2`), run 2 DONE, CLOSED; loss 2 re-opens the **same** `obligation_id`; the bump step finds `obligation_runs[oid]` "already present", records run 2 (already finished) and closes without a new rerun | R2/R3: an occurrence closes only after a run started after **its** repair | occurrence number changed but the identity used by the task map did not; correctness depended on a "cosmetic" cleanup of old map entries; occurrence-scoped fields were not all reset | §12.10: fresh `occurrence_id` per occurrence, changed with `occurrence` in one LWT; every transition conditioned on both; task map `recovery_runs` keyed by `occurrence_id`; all occurrence-scoped fields written at open; unknown outcomes decided by the actor's own new id; actor-interaction table | R-27 (§9a.2) |
+| C-14b | second loss while OPEN, after the repairer's confirming count but before its REPAIRED LWT: merged into OPEN, then REPAIRED; S's rerun and a later X both miss the pair | R1/R6: no unrecorded loss after a confirmation | "OPEN ⇒ no-op" merge; REPAIRED had no fence against a concurrent detection | `detections` counter: merge `IF … detections = :d`; `repaired` `IF … detections = :d` with `:d` read after the repair write; a failed merge past OPEN opens a new occurrence | R-28 |
+| C-14c | rerun of S ends INCOMPLETE (cap) or S's task is FAILED; obligation CLOSED; `recovery_open = 0`, so other subjects' "no match" is reported settled while (S, X) may still be hidden | no silent negatives | settlement read `recovery_open` only; INCOMPLETE/FAILED closes were terminal | unresolved closes (`RERUN_INCOMPLETE`, `TASK_FAILED`) counted in `recovery_unresolved` until a later DONE run resolves them; `done_state` on the task; exact `settled` rule (§12.10) | R-27 variant u1/u2; gates use both counts |
+| C-14d | one candidate's artifact is corrupt ⇒ S's task FAILED ⇒ S's obligation closes `TASK_FAILED` | task failure reflects the subject | §11.1/§11.2 did not distinguish the subject's artifact from a candidate's | candidate FAILED `artifact_corrupt`, run INCOMPLETE `verification_failed`; task FAILED only for the subject's own data | G-10 (expanded) |
+| C-14e | the same pair verified in direction A (offset modes from A's ANN votes) and in B (different votes), or before/after a rebuild: different runs, verdicts or confidence for one `match_id` | ANN only proposes; decisions reproducible from stored provenance; drop/rebuild identical decisions | `temporal/v2` took offset modes from ANN hit votes | offsets from the dense similarity of the two artifacts; verifier inputs = artifacts + params + exclusion set (recorded) | V-1 (§5), §5 exact-vs-ANN comparison |
+| C-14f | lowinfo witness retires between two runs; the second verification of a pair gives a different decision for the same `match_id` ⇒ "invariant violation" alarm; held release / republish could build a second envelope with a new event id | MatchId idempotency; one envelope per decision | "different stored decision = violation"; release and envelope writes unconditioned | first committed decision is final; divergence recorded; already-decided candidates skipped; envelope/event id `IF event_id = null`; release `IF calibration_id = null` | K-9, K-10 |
+| C-14g | a run with saturated segments ends DONE (§7.5) and its negatives look complete | INCOMPLETE when completeness is not established | §7.5 recorded saturation only, §6.3 and D6 said INCOMPLETE | INCOMPLETE `saturated_segments` in every direction; explicit stopping condition and bounds (§7.1) | G-15 |
+| C-14h | direction A: a media segment's best hit is a flagged black frame of T1; its true, lower hit on an unflagged segment of T2 is silenced | filtering never silently omits a true positive beyond the measured gate | per-segment exclusion keyed on the best hit | per-hit exclusion | L-17 |
+| C-14i | a run caches the old pointer, searches DRAINING segment by segment past `drain_horizon_at`; the post-horizon pass has already checked S; S is lost afterwards and the late queries miss it undetected | DRAINING horizon premise | `search_timeout_s` was not defined as a bound on the whole search step; a run could mix generations; a failed segment query was not defined | search step pins one generation, step deadline, `SEARCHED` only when every query answered; failed query ≠ zero hits | R-10 (expanded), G-1 |
+| C-14j | three liveness predicates ("not RETIRED", "∉ {RETIRED, PURGED}") for targets | one authoritative liveness | written separately per section | one predicate (§4.2), checked against P9 code, shown monotone | K-11 |
+| C-14k | worker applies g1 of two routed generations, sets `state = APPLIED`, crashes | R-4 expects PENDING | bookkeeping set APPLIED per generation | APPLIED only when every routed generation is applied; checks read `applied[g]` | R-4 |
+| C-14l | a cleanup is retried after a crash (or its release CAS times out) and releases the same points twice; ledger below resident count; admission over-admits | ledger is a conservative upper bound | per-operation releases are not idempotent | only the capacity audit lowers `reserved`, from durable state in a fixed read order; admission holder rows in the ledger partition (one conditional batch) | CAP-5, CAP-6, CAP-9 |
+| C-14m | ACTIVE collection lost: no legal transition (no ACTIVE→FAILED); after a rebuild the old generation is DRAINING but its required post-horizon pass cannot run ⇒ never RETIRED | every failure has a recovery path | transitions table and RETIRED rule assumed a readable collection | ACTIVE stays ACTIVE (searches fail loudly) until superseded; DRAINING→RETIRED by clean pass **or** durable unauditable-fallback occurrences | R-20, R-25(d) |
+| C-14n | `equiv/v1` "≥ 90 % of the informative segments" — media segments are never classified | defined rule | lowinfo applies to targets only | coverage over all segments; revoke via intent; no re-link of REVOKED | §8 E-SET cases |
+| C-14o | "complete generation" read as "every point present during every search" | claims match the protocol | properties not separated | P1–P4 table (§12.9 E) | — (wording) |
+| C-14p | R-26 d1 expected `detect_count` + 1 exactly; a crash between mark and `gen_marked` raises it twice | tests assert design properties only | the mark is not idempotent (two partitions) and does not need to be | expectation: `detect_count` increased ≥ 1 per occurrence | R-26 |
+| C-14q | R-22's fixture (DELETE 11 of a live subject, then UPSERT 12) is not produced by P9 paths: liveness is monotone (§4.2) | tests state what they inject | fixture described as a natural sequence | kept as an injected robustness test of S2 (S2 must not depend on monotonicity) | R-22 |
+
+Not changed by C-14, and still open: R-24 (Qdrant filter semantics), E-R1,
+H-9 (populated-data scan), L-14, R-26 execution semantics, I-1 baseline,
+calibration adequacy — design §18 "facts still unknown". No decision was
+approved; D6, D7, D8, D9, D11, D13, D14, D19, D20 texts are clarified or
+changed (decisions.md §5).

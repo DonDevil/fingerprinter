@@ -121,7 +121,7 @@ outside this one describe V1 only.
 
 ## V2 vector index and matcher (crawler2 P10)
 
-- **Status:** in design review (2026-10-17; design corrections C-1…C-13).
+- **Status:** in design review (2026-10-17; design corrections C-1…C-14).
   Audit and proposed design are written; no P10 decision is approved,
   nothing is implemented and no P10 test or E-R1 has run. M3 is not passed.
 - **Documents:** [`docs/phases/p10-vector-index-matcher/`](docs/phases/p10-vector-index-matcher/README.md)
