@@ -1,7 +1,10 @@
 # P10 Design — vector index and matcher (proposal)
 
-Status: **PROPOSED — awaiting operator design approval. Nothing is
-implemented. No decision in this document is approved.** Decisions are
+Status (2026-10-18): **APPROVED FOR IMPLEMENTATION; implementation in
+progress** (operator authorization, decisions.md §0). This document stays the
+design of record; where implementation evidence changed or settled a point,
+the text says so and cites validation.md §13 (execution record). Before
+2026-10-18: PROPOSED — awaiting operator design approval. Decisions are
 numbered P10-D1…P10-D20 and tracked in [decisions.md](decisions.md); the
 evidence is in [audit.md](audit.md) (§ references below are to the audit
 unless stated otherwise); tests and acceptance criteria are in
@@ -1760,10 +1763,15 @@ at LOCAL_SERIAL (clustering order puts the highest `occurrence` first). The
 protocol does not depend on that read being a serial slice read: the
 equivalent walk — `INSERT` occurrence 1 `IF NOT EXISTS`; a failed insert
 returns the existing row; continue with *o* + 1 until an insert succeeds or
-an existing row is the highest — uses only single-row LWTs. Whether Scylla
-6.2.3 executes the serial slice read, and returns the latest occurrence, is
-**not yet validated** (no existing test covers it; see the open requirement
-in validation §9a.4); until it is, the walk is the specified behaviour.
+an existing row is the highest — uses only single-row LWTs. **Validated
+2026-10-18 (validation §9a.4, §13.2):** on the deployed single-node Scylla
+6.2.3 the slice read executes at `LOCAL_SERIAL`, returns the highest
+occurrence after acknowledged inserts and after LWTs whose outcome was
+unknown to the client, and six concurrent detectors acting on it produced no
+duplicate, no skipped number and no merge past OPEN. The implementation
+(`fingerprinter/recovery.py`) therefore uses the slice read; the walk stays
+the documented (and tested) fallback, e.g. for a deployment where the slice
+read is not available.
 
 **Transitions — each one single-row LWT on the occurrence row** (`O` =
 `occurrence_id = :oid`; the key fixes `occurrence`):
@@ -2396,16 +2404,16 @@ only after both D-approvals and an E-R1 pass.
 | Fact | Established by | Blocks |
 |---|---|---|
 | V1 end-to-end P/R on L-PAIRS / N-SOAK | I-1 (a), validation §2.1 | threshold choice, M3 |
-| `temporal/v2` held-out P/R, calibration adequacy | I-1 (b)(c), §3 | publication, M3 |
-| `lowinfo/v1` `lost_tp` | I-1, §3.4 | enabling lowinfo (not I-2) |
+| `temporal/v2` held-out P/R, calibration adequacy | **measured 2026-10-18** (validation §13.3): offline held-out P 0.9989 / R 0.812; calibration UNAVAILABLE | publication (held), M3 (needs the live path) |
+| `lowinfo/v1` `lost_tp` | **measured 2026-10-18**: `lost_tp` = 1, 12 flagged ⇒ not enabled | enabling lowinfo (not I-2) |
 | 1.5 GiB holds two generations at ≥ `R_req` | E-R1 | I-2 (and the `max_points` value) |
-| Qdrant 1.15.1 integer `range`/`match` filter, boundary and subject scoping semantics | R-24 (first I-2 test) | the §12.2 cleanup/DELETE protocol; if it fails, the protocol is revised before any other I-2 work |
-| Scylla 6.2.3 execution semantics of the run-fence and obligation LWTs (`IN`, `= null`, map-entry set, list append in an LWT) and of the capacity admission batch (static condition + clustering insert) | R-26 (I-3) for the task/obligation forms; CAP-9 (I-2) for the batch | I-3 exit; I-2 exit |
-| Scylla 6.2.3 executes a LOCAL_SERIAL read of a clustering slice with `LIMIT 1` (latest occurrence of (S, g)) | open requirement, validation §9a.4 (no test yet) | nothing: the single-row `IF NOT EXISTS` walk is the fallback (§12.10) |
-| `Dot` collections return stored float32 vectors bit-identically | R-24 (vii) | the manifest/content digest of §12.5 (else the digest is computed from artifacts only and compared by tolerance — a protocol revision) |
+| Qdrant 1.15.1 integer `range`/`match` filter, boundary and subject scoping semantics | **established 2026-10-18: R-24 pass** (validation §13.1) | — (protocol used as designed) |
+| Scylla 6.2.3 execution semantics of the run-fence and obligation LWTs (`IN`, `= null`, map-entry set, list append in an LWT) and of the capacity admission batch (static condition + clustering insert) | **statement forms established 2026-10-18** (validation §13.2); the protocol-level R-26/CAP-9 scenarios are separate tests | I-3 exit; I-2 exit (scenarios) |
+| Scylla 6.2.3 executes a LOCAL_SERIAL read of a clustering slice with `LIMIT 1` (latest occurrence of (S, g)) | **established 2026-10-18** (validation §13.2, single node) | — |
+| `Dot` collections return stored float32 vectors bit-identically | **established 2026-10-18: R-24 (vii) pass** | — |
 | saturation rate at the tuned `k_max` | I-1 tuning, validation §6 | practicality of direction B (INCOMPLETE rate), not correctness |
 | targets-scan completeness on populated data | H-9 | D20 / I-2 exit |
-| `exact` + `quantization.ignore` on 1.15.1 | L-14 | enabling lowinfo |
+| `exact` + `quantization.ignore` on 1.15.1 | **established 2026-10-18** (L-14 Qdrant part, validation §13.1) | — |
 
 ## 19. Correction record (2026-10-15, after the first design review)
 

@@ -1,6 +1,33 @@
 # P10 — vector index and matcher (milestone M3)
 
-Status (2026-10-17): **IN DESIGN REVIEW.** Audit complete; design proposed;
+Status (2026-10-18): **IMPLEMENTATION IN PROGRESS** under the operator's
+authorization to implement P10-D1…D20 as documented (decisions.md §0).
+**M3 not passed.** Executed evidence is recorded only in
+[validation.md §13](validation.md#13-execution-record-implementation-phase-from-2026-10-18);
+the local operator guide is [`docs/p10-matcher.md`](../../p10-matcher.md).
+
+| Status | P10 today (2026-10-18) |
+|---|---|
+| decisions | D1–D20 approved for implementation; D12, D13 (b) deferred; D8 implemented but not enabled; D14 value provisional (250,000) pending E-R1 |
+| implemented and tested | `temporal/v2` verifier and `equiv/v1` (unit); `VectorIndex`/`QdrantIndex` adapter; fingerprinter-owned dev Qdrant (`deploy/qdrant/`) |
+| executed gates | R-24 (Qdrant 1.15.1 filter boundaries, bit-identical vectors) **pass**; L-14 Qdrant part **pass**; Scylla 6.2.3 LWT forms incl. CAP-9 batch, promotion batch and the §9a.4 slice read **pass**; I-1 tuning/calibration **run** (validation §13.3) |
+| I-1 outcome | held-out (pooled L-PAIRS + N-SOAK, exact candidates) P 0.9989 / R 0.812 vs V1-on-V2 P 0.9857 / R 0.449; L-PAIRS 110/150, 0 FP; calibration **UNAVAILABLE** (publication held); lowinfo **not adopted** |
+| running / next | V1 end-to-end baseline (I-1 a); then E-R1 on a dedicated container; I-2…I-5 implementation |
+| blocks M3 | V1 E2E baseline, live-path M3 run, E-R1, calibration (publication only), the I-2…I-5 exits of validation §11 |
+
+**Implementation progress (updated as increments land).**
+
+| Step | Status | Evidence | Remaining |
+|---|---|---|---|
+| I-1 (a) V1 end-to-end baseline | running (L-PAIRS) | — | result; N-SOAK cost decision |
+| I-1 (b–d) verifier, tuning, calibration, lowinfo offline | **done** | validation §13.3, `results/tune-eval.json` | — (calibration UNAVAILABLE is the measured outcome) |
+| R-24 / L-14 / Scylla LWT semantics / §9a.4 | **pass** | validation §13.1–§13.2, `results/evidence/` | — |
+| E-R1 capacity experiment | harness written, smoke-checked | — | the gate run (alone on the host) |
+| I-2 index, generations, mutations, reconciler, capacity | in progress | — | code, R-*/CAP-*/H-* tests |
+| I-3 tasks, both directions, persistence, held publication, recovery | not started | — | |
+| I-4 equivalence / I-5 failure injection, growth, M3 | not started | — | |
+
+**History of the design review.** Status (2026-10-17): **IN DESIGN REVIEW.** Audit complete; design proposed;
 no decision approved; nothing implemented; M3 not passed. P9 is complete for
 its approved scope and unchanged.
 Design corrected after the first review (design §19, C-1…C-7); ready for a
@@ -22,31 +49,6 @@ one liveness predicate, audit-only capacity release, lost ACTIVE/DRAINING
 collections, `equiv/v1` coverage); sixth pass 2026-10-17 (C-15, design
 §19.3: one `index_repairs` row per occurrence, so an unresolved occurrence
 can no longer be hidden by a later one; retired subjects resolve theirs).
-
-| Status | P10 today |
-|---|---|
-| design corrected | C-1…C-15 ([design.md §19](design.md#19-correction-record-2026-10-15-after-the-first-design-review), [§19.2](design.md#192-fifth-correction-pass-2026-10-17-c-14-consistency-and-edge-case-audit)) |
-| design reviewed | C-1…C-12 answered earlier reviews; **C-13…C-15 await review** |
-| decisions approved | **none** (P10-D1…D20 PROPOSED; [decisions.md §2](decisions.md#2-decisions-requiring-operator-approval-before-implementation)) |
-| implemented | nothing |
-| validated | nothing — every test in [validation.md](validation.md) (incl. R-22…R-29, E-R1, I-1 baseline) is planned and unrun; M3 not passed |
-| permitted next | review of C-13…C-15; operator approval decisions; then I-1 (V1 end-to-end baseline first, no Qdrant) and E-R1 (harness on a dedicated container) |
-| blocks I-2 | approval of D1–D4, D14, D19, D20; a passed E-R1. R-24 is the first I-2 test and can force a protocol revision |
-| blocks M3 | I-1 baseline and held-out P/R, calibration, I-2…I-5 exits, all of validation §11 |
-
-**Implementation readiness (2026-10-17; from design §18 and decisions.md §1–§2; no increment is authorized yet).**
-
-| Step | Needs approved | Evidence gates | Deliverables | Acceptance | Out of scope |
-|---|---|---|---|---|---|
-| I-1 (a) V1 end-to-end baseline | D17 | none | `benchmarks/p10-index/v1_e2e_baseline.py`, result JSON (validation §2.1) | reproducible report on L-PAIRS and N-SOAK, per outer fold | any P10 code path, Qdrant, threshold choice |
-| I-1 (b–d) verifier, lowinfo (offline), tuning, calibration | D7, D8 (offline evaluation only), D9, D10 | I-1 (a) report | `fingerprinter/verify.py` (`temporal/v2`, pure), offline harnesses, `verifier_params` 2.1 or "data insufficient" | V-1 unit part; validation §2.2, §3, §3.4 | publication, Qdrant, tasks |
-| E-R1 capacity experiment | authorization to run §13.4 (a harness on a dedicated container; D14's value stays unresolved until it passes) | none | `benchmarks/p10-index/capacity_e_r1.py`, result JSON | §13.4 pass rules | the dev Qdrant instance, any guard code |
-| I-2 index, generations, mutation protocol, reconciler, capacity guard | D1–D4, D14, D19, D20 (and review of C-13…C-15) | a passed E-R1; R-24 first | design §18 I-2 | R-1…R-24, CAP-*, H-*, validation §5, §9, §10 | matching tasks, publication |
-| I-3 tasks, both directions, persistence, held publication, recovery reruns | D5, D6, D11, D19 | I-1 calibration status (publication only when CALIBRATED) | design §18 I-3 | R-25…R-29, K-*, L-*, validation §4, §6, §7 | equivalence |
-| I-4 / I-5 | D13, D18 / all | prior exits | design §18 | validation §8 / §11 | real multi-host (P14) |
-
-The earliest step that can legitimately start is **I-1 (a)**, once D17 is
-approved; E-R1 can run in parallel once its run is authorized.
 
 | Document | Content |
 |---|---|

@@ -1,8 +1,10 @@
 # P10 Validation plan — test matrix, methodology, acceptance criteria, evidence
 
-Status: **PLAN.** No P10 test has been run, because nothing is implemented.
-§12 lists the only evidence that exists today: the audit measurements, which
-are inputs to the design, not results of P10 tests. Design:
+Status: **IN EXECUTION (2026-10-18).** The plan below is unchanged; what has
+actually been executed, with commands and measured outcomes, is recorded in
+**§13** (execution record) and nowhere else — a test not listed there has not
+run. §12 lists the audit measurements that preceded implementation (inputs
+to the design, not P10 tests). Design:
 [design.md](design.md); decisions: [decisions.md](decisions.md); audit:
 [audit.md](audit.md).
 
@@ -839,3 +841,125 @@ together (host `MemAvailable` floor, encoder throughput change).
 
 Not measured: V1 end to end; any P10 component; gRPC ingest; snapshots;
 latency under concurrent load; live-action material.
+
+## 13. Execution record (implementation phase, from 2026-10-18)
+
+Operator authorization (2026-10-18): implement the current design and its
+P10-D1…D20 proposals as documented, subject to every gate in this plan; no
+change to crawler2, frozen contracts, P8/P9 behaviour or V1 (decisions.md
+§0). Results below are **executed** and labelled by class; anything not
+listed here is still planned and unrun. Commands assume
+`cd ~/anti_piracy/fingerprinter`; integration commands first `. scripts/p10-env.sh`
+(keyspace `fingerprinter_it_p10`, dev Qdrant `deploy/qdrant/compose.yaml`).
+Small result JSONs are in `benchmarks/p10-index/results/` (tests write theirs
+to `results/evidence/` when `P10_EVIDENCE_DIR` is set); per-pair logs and
+samples are outside git in `~/anti_piracy/datasets/p10/runs/`.
+
+Environment: Scylla 6.2.3 single node (crawler2 compose, tablets off),
+Qdrant 1.15.1 (image `sha256:d122138f…a4c6`, 1.5 GiB hard limit, 2 CPUs),
+Redis 7.4.2, MinIO 2026-08-04, Python 3.12, numpy 2.5.2, host 15 GiB RAM,
+12 CPUs, RTX 2050 4 GiB.
+
+### 13.1 Version-specific behaviour (first I-2 tests)
+
+| ID | What | Command | Result | Measured |
+|---|---|---|---|---|
+| R-24 (i)–(v) | `seq` `lte`/`lt`/`match` filter boundaries, subject scoping, bigint `seq` ≈ 2⁴⁰, plain and indexed segments, media (`rep`) and target (`trep`) roles, production collection params | `P10_EVIDENCE_DIR=benchmarks/p10-index/results/evidence env/bin/python -m pytest tests/p10/test_r24_qdrant_semantics.py` | **PASS** (integration, Qdrant 1.15.1) | (i) S@10, S@11 deleted, S@12 and every S′ point kept; (ii) strict `<`; (iii) count = 4 = the S@12 points; identical at 2⁴⁰ and after indexing (`indexed_vectors_count` = 24); counts exact immediately after each `wait=true` write — `r24-qdrant-filters-{media,target}.json` |
+| R-24 (vi) | the same without the `seq` integer index (recorded only) | same file | recorded | identical semantics — `r24-vi-no-seq-index.json` |
+| R-24 (vii) | stored float32 vectors returned bit-identically | same file | **PASS** | 64/64 by retrieve, by scroll and after indexing — the §12.5 content digest can be computed from Qdrant points — `r24-vii-bit-identical.json` |
+| L-14 (Qdrant part) | `exact=true` + `quantization.ignore=true` + `score_threshold` | same file | **PASS** | max |score − numpy float32 cosine| = 7.1e-8; 0.9501 and 0.97 returned, 0.9499 excluded — `l14-exact-ignore-quantization.json`. The truncation/`done_rev` part of L-14 is a lowinfo-lifecycle test (§13.4) |
+
+Consequence: the §12.2 cleanup/DELETE protocol is used **as designed**; no
+revision needed.
+
+### 13.2 Scylla 6.2.3 LWT execution semantics (executed, not prepared)
+
+`env/bin/python -m pytest tests/p10/test_scylla_semantics.py` — integration,
+Scylla 6.2.3, keyspace `fingerprinter_it_p10` (tablets off). **7/7 PASS.**
+
+| Form (design ref) | Executed check | Result |
+|---|---|---|
+| run fence (§11.1, R-26 forms) | claim `IF run = ? AND run_started_at = null` (first applies, second rejected); bump `IF run = ? AND state IN ?` with `recovery_runs[timeuuid] = ?` (applies; map holds the entry; `run_started_at` cleared); stale completion `IF epoch = ? AND run = ?` after the bump rejected and returns the new `run`; coalesce on an unclaimed run; FAILED excluded by the `IN` list | PASS — `scylla-r26-task-forms.json` |
+| list append in an LWT; `= null` | `audit = audit + ?` under `IF state =`; `IF suspect_since = null` on a never-written column, then on a written one | PASS — `scylla-list-append-null.json` |
+| CAP-9 admission batch (§13.3) | static-only `INSERT … IF NOT EXISTS`; batch `reserved = r + P IF reserved = r` + holder-row insert applies together; a stale `r` applies neither | PASS — `scylla-cap9-batch.json` (the CAP-9 *audit-race* part is §13.5) |
+| promotion batch (§12.4) | static `IF active_epoch = e` + row `IF state = 'READY' AND detect_count = v` + old row `IF state = 'ACTIVE'`: fenced by a changed `detect_count` (nothing applied), then applied atomically, replay rejected | PASS — `scylla-promotion-batch.json` |
+| **§9a.4** latest occurrence by `LOCAL_SERIAL … LIMIT 1` | (1) prepared and executed at `LOCAL_SERIAL` on `index_repairs` (`occurrence DESC`); (2) returns the highest occurrence right after acknowledged `INSERT … IF NOT EXISTS` (3 inserts) and after **8 LWTs whose outcome was unknown to the client** (client timeout 0.5 ms; each decided by the slice read and confirmed by a SERIAL point read); (3) 5 rounds × 6 concurrent detectors acting on it: occurrences exactly 1…5, one opener each, 25 merges, none gave up, no merge into a row past OPEN | PASS — `scylla-9a4-slice-read.json`, `scylla-9a4-concurrent.json` |
+| §12.10 walk (fallback) | single-row `INSERT … IF NOT EXISTS` upward from occurrence 1, failed inserts return the existing row | PASS |
+
+Consequence: §9a.4 requirements 1–3 are established **on the deployed
+single-node Scylla 6.2.3**; the implementation uses the slice read
+(`recovery.Recovery.latest`) and keeps the walk documented and tested as the
+fallback. Multi-node Paxos behaviour is P14.
+
+### 13.3 I-1: verifier, tuning, calibration, lowinfo (offline evaluation)
+
+`temporal/v2` unit tests: `env/bin/python -m pytest tests/p10/test_verify.py`
+— **14/14 PASS** (unit): partial clip with offset and 2.3 s phase; unrelated
+content; identical frames at scattered offsets do not form a run; two
+identical frames < L; usable-flag exclusion neutral (neither counts nor
+breaks a run) and a forged 5-frame logo run removed by it; reordering breaks
+runs into two verified modes; repeated scenes give several runs; sparse
+matches vs `max_gap`; phase tolerance; offsets in seconds independent of
+segment numbering; empty inputs; **V-1 unit**: `verify()`'s parameters are
+exactly (media, target, params, excluded), and two processes with 1 and 8
+BLAS threads give bit-identical output on 20 noisy pairs; `equiv/v1` links a
+re-encode at another phase and rejects a 50 % sub-clip, a 30 s shift and
+other content.
+
+Nested film-grouped tuning, calibration and the lowinfo oracle comparison:
+`OMP_NUM_THREADS=1 env/bin/python benchmarks/p10-index/tune_eval.py --data
+~/anti_piracy/datasets/p9 --vectors ~/anti_piracy/datasets/p10/vectors --out
+benchmarks/p10-index/results/tune-eval.json` (203 s). Offline evaluation on
+the cached `dinov2-seg/2` vectors; candidates generated with **exact**
+search under the provisional direction-A policy (§13.6 measures the live ANN
+path). Populations: L-PAIRS (480 pairs, 150 +) and **N-SOAK** derived here
+from SOAK-1000 provenance (6,092 pairs, 929 +; relevant ≥ 30 s overlap,
+irrelevant ≥ 15 s apart, multi-film items paired only with their largest
+film; `benchmarks/p10-index/corpus.py`). 40 configurations × 2 filter
+settings (grid in the result file); selection = maximum training recall at
+zero training FP; outer 7 × inner 6 leave-one-film-out.
+
+| Held-out (outer folds pooled) | TP | FN | FP | TN | Precision | Recall |
+|---|---|---|---|---|---|---|
+| **P10 `temporal/v2` confirmed, all** | 876 | 203 | 1 | 5,492 | 0.9989 | 0.812 |
+| V1 matcher on V2 vectors, no coarse, all | 484 | 595 | 7 | 5,486 | 0.9857 | 0.449 |
+| V1 worker path (coarse 0.60), all | 443 | 636 | 3 | 5,490 | 0.9933 | 0.411 |
+| P10, L-PAIRS | 110 | 40 | **0** | 330 | 1.000 | 0.733 |
+| V1 on V2 vectors, L-PAIRS (reproduces P9: 37/113/0/330) | 37 | 113 | 0 | 330 | 1.000 | 0.247 |
+| P10, N-SOAK | 766 | 163 | 1 | 5,162 | 0.9987 | 0.825 |
+| V1 on V2 vectors, N-SOAK | 447 | 482 | 7 | 5,156 | 0.9846 | 0.481 |
+| P10, the 24 VFR SOAK items | 20 | 2 | 0 | 139 | 1.000 | 0.909 |
+
+Candidate generation (exact): 3,182 pairs proposed, 1,078 of 1,079
+positives (candidate recall 0.9991), no saturated query segment, 0
+INCOMPLETE items. The one held-out FP (fold *sintel*, whose training
+selected the looser `s_seg 0.70 / L 4 / τ_c 4.85`) is a 240p HEVC Sintel
+item matched to Elephants Dream end credits (5 segments, mean 0.81): the
+credits/look-alike risk of audit F-2, not caught by `lowinfo/v1`.
+Six of seven outer folds selected the same setting as the final one.
+
+**Final parameter set (all 7 films, the same inner procedure) =
+`dinov2-seg-temporal` 2.1:** `s_seg` 0.80, `s_mean` 0.85, `L` 2,
+`phase_tolerance_s` 2.5, `max_gap` 1, `vote_floor` 0.70, `n_offsets` 3,
+`τ_c` = `τ_p` = 1.0 (no training negative produces a qualifying run, so
+every qualifying run is `confirmed` and there is no `probable` band); params
+digest `377167ec…af`. Its expected performance is the outer-loop estimate
+above.
+
+**Calibration (§3.3): status UNAVAILABLE.** The isotonic data minimum is met
+(1,078 +, 2,104 − proposed out-of-fold pairs, 7 films, 20 negatives ≥ τ_p),
+and Brier 0.080 beats the constant predictor (0.224) and the scaled raw
+score (0.297), but **4 of 5 equal-mass bins fail the film-level bootstrap
+check** (e.g. mean predicted 0.222 vs observed 0.050). Per design §9.1 no
+probability is published: decisions of 2.1 are stored and held
+(`match publish-held` refuses). Platt is the design's fallback only when the
+isotonic minimum is *not* met, so it was not substituted.
+
+**`lowinfo/v1` (§3.4): not adopted.** 12 of 760 target segments meet the
+rule (< 20 ⇒ benefit **not established**); filtered vs unfiltered on the
+outer held-out pairs: `lost_tp` = 1, FP 1 vs 1 ⇒ the adoption rule fails.
+`matching.lowinfo_enabled` stays `false` (a valid configuration); the
+machinery is implemented and tested (§13.4) but excludes nothing.
+
+Limits: seven animated films from one reel; correlated clips; no live
+action; candidate generation exact here.

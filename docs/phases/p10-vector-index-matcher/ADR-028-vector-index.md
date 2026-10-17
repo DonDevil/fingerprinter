@@ -1,9 +1,11 @@
 # ADR-028 — The vector index is a derived, network-reachable Qdrant service with generations per spec and role; Scylla and MinIO stay authoritative
 
-Status: **Proposed** (2026-10-15, P10 design review; decisions P10-D1, D2,
+Status: **Accepted for implementation** (operator authorization 2026-10-18,
+decisions.md §0; implementation in progress — validation.md §13 records the
+executed evidence, including R-24 on Qdrant 1.15.1). Previously **Proposed** (2026-10-15, P10 design review; decisions P10-D1, D2,
 D3, D4, D14, D19, D20; corrected the same day — design §19 C-1, C-3, C-4,
 and §19.1 C-10, C-11, C-12; 2026-10-17 C-13, §19.2 C-14 and §19.3 C-15).
-Not accepted. Number taken as the next free number after
+Number taken as the next free number after
 crawler2's ADR-027; this file lives in the fingerprinter repository until the
 operator decides where P10 records belong (P10-D16) — crawler2's
 `docs/adr/README.md` does not list it yet.
