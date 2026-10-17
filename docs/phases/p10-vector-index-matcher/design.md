@@ -1761,8 +1761,9 @@ protocol does not depend on that read being a serial slice read: the
 equivalent walk — `INSERT` occurrence 1 `IF NOT EXISTS`; a failed insert
 returns the existing row; continue with *o* + 1 until an insert succeeds or
 an existing row is the highest — uses only single-row LWTs. Whether Scylla
-6.2.3 executes the serial slice read is checked by R-26 (else the walk is
-used).
+6.2.3 executes the serial slice read, and returns the latest occurrence, is
+**not yet validated** (no existing test covers it; see the open requirement
+in validation §9a.4); until it is, the walk is the specified behaviour.
 
 **Transitions — each one single-row LWT on the occurrence row** (`O` =
 `occurrence_id = :oid`; the key fixes `occurrence`):
@@ -2400,7 +2401,7 @@ only after both D-approvals and an E-R1 pass.
 | 1.5 GiB holds two generations at ≥ `R_req` | E-R1 | I-2 (and the `max_points` value) |
 | Qdrant 1.15.1 integer `range`/`match` filter, boundary and subject scoping semantics | R-24 (first I-2 test) | the §12.2 cleanup/DELETE protocol; if it fails, the protocol is revised before any other I-2 work |
 | Scylla 6.2.3 execution semantics of the run-fence and obligation LWTs (`IN`, `= null`, map-entry set, list append in an LWT) and of the capacity admission batch (static condition + clustering insert) | R-26 (I-3) for the task/obligation forms; CAP-9 (I-2) for the batch | I-3 exit; I-2 exit |
-| Scylla 6.2.3 executes a LOCAL_SERIAL read of a clustering slice with `LIMIT 1` (latest occurrence of (S, g)) | R-26 | nothing: the single-row `IF NOT EXISTS` walk is the fallback (§12.10) |
+| Scylla 6.2.3 executes a LOCAL_SERIAL read of a clustering slice with `LIMIT 1` (latest occurrence of (S, g)) | open requirement, validation §9a.4 (no test yet) | nothing: the single-row `IF NOT EXISTS` walk is the fallback (§12.10) |
 | `Dot` collections return stored float32 vectors bit-identically | R-24 (vii) | the manifest/content digest of §12.5 (else the digest is computed from artifacts only and compared by tolerance — a protocol revision) |
 | saturation rate at the tuned `k_max` | I-1 tuning, validation §6 | practicality of direction B (INCOMPLETE rate), not correctness |
 | targets-scan completeness on populated data | H-9 | D20 / I-2 exit |

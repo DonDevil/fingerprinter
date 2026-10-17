@@ -627,6 +627,26 @@ bumped, rerun, closed.
 `recovery_unresolved = 0` in v1/v2 after occurrence 2 closes — the test must
 show that difference. Class: live-stack fault injection. Planned, unrun.
 
+### 9a.4 Open requirement — serial slice read of the latest occurrence (design §12.10)
+
+Not yet a numbered test; no evidence exists. Design §12.10 reads the latest
+occurrence of (S, g) with `SELECT … WHERE spec_digest = ? AND role = ? AND
+bucket = ? AND subject_id = ? AND generation = ? LIMIT 1` at LOCAL_SERIAL on
+`index_repairs` (CK `subject_id, generation, occurrence`, clustering order
+`occurrence DESC`). Before the implementation relies on that read, a test on
+Scylla 6.2.3 (tablets off, as `db.py` configures the keyspace) must show:
+1. the statement is accepted **and executed** at LOCAL_SERIAL on that schema;
+2. it returns the row with the highest `occurrence` of (S, g), including
+   immediately after an acknowledged `INSERT … IF NOT EXISTS` of a new
+   occurrence and after an LWT whose outcome was unknown to its client;
+3. its result is sufficient for §12.10: a detector acting on it never
+   creates a second row for one occurrence number, never skips a number and
+   never merges into an occurrence past OPEN (every such step is still
+   guarded by its own single-row LWT condition).
+If any of 1–3 fails or cannot be shown, the implementation uses the
+documented walk (single-row `INSERT … IF NOT EXISTS` upward from occurrence
+1) instead. The walk itself is also untested.
+
 ### 9b. Hint reader and backstop scans (design §6.1; corrected C-4, C-8)
 
 | # | Test | Expected |
