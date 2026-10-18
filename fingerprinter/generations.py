@@ -117,7 +117,7 @@ class Generations:
         now = self.p.now()
         ix = self.p.settings.index
         boundary = now + timedelta(seconds=ix.mutation_lease_s + ix.clock_margin_s)
-        name = collection_name(spec, role, g)
+        name = collection_name(spec, role, g, self.p.settings.index.collection_prefix)
         audit = [json.dumps({"at": now.isoformat(), "to": CREATED, "by": self.p.instance})]
         try:
             res = self.db.lwt(

@@ -130,6 +130,8 @@ class IndexConfig(_Section):
     timeout_s: float = Field(default=10.0, gt=0)
     instance: str = "dev-1"
     """Key of the capacity ledger: one Qdrant instance (all specs, roles, generations)."""
+    collection_prefix: str = Field(default="fp", pattern=r"^[a-z][a-z0-9]{0,15}$")
+    """Namespace of this deployment's collections in the instance (N-14): unique per keyspace."""
     max_points: int = Field(default=250_000, gt=0)
     """Resident points per instance. Provisional 250,000 until E-R1 measures a value (P10-D14)."""
     max_points_evidence: str | None = None

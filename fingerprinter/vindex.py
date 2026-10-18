@@ -67,10 +67,13 @@ def point_id(subject: str, seq: int, segment_index: int) -> str:
     return str(uuid.uuid5(NAMESPACE, f"{subject}:{int(seq)}:{int(segment_index)}"))
 
 
-def collection_name(spec_digest: str, role: str, generation: int) -> str:
-    """``fp_<spec12>_<role>_g<n>`` (design §4.2)."""
+def collection_name(spec_digest: str, role: str, generation: int, prefix: str = "fp") -> str:
+    """``<prefix>_<spec12>_<role>_g<n>`` (design §4.2; ``prefix`` = ``index.collection_prefix``, N-14).
+
+    The prefix namespaces one deployment (keyspace) inside a Qdrant instance: two keyspaces sharing
+    an instance must never derive the same collection name."""
     hexd = spec_digest.split(":", 1)[-1]
-    return f"fp_{hexd[:12]}_{role}_g{int(generation)}"
+    return f"{prefix}_{hexd[:12]}_{role}_g{int(generation)}"
 
 
 @dataclass(frozen=True)

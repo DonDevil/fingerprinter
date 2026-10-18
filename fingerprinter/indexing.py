@@ -457,6 +457,7 @@ class Builder:
         return g
 
     def _drive(self, spec: str, role: str, g: int, epoch: int, wait_boundary: bool) -> dict[str, Any]:
+        report: dict[str, Any] = {}
         for _ in range(20):
             row = self.gens.row(spec, role, g)
             state = row["state"]
@@ -495,7 +496,7 @@ class Builder:
             else:
                 return {"state": state, "generation": g}
             self.gens.renew_lease(spec, role, epoch)
-        return {"state": "STUCK", "generation": g}
+        return {"state": "STUCK", "generation": g, "last_validation": report.get("failures")}
 
     def _bulk(self, spec: str, role: str, g: int, row: dict[str, Any], epoch: int) -> None:
         cursor = {int(k): v for k, v in (row.get("build_cursor") or {}).items()}

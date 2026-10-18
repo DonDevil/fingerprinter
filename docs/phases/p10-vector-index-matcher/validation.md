@@ -1090,3 +1090,39 @@ R-* crash variants (R-6…R-10, R-12…R-15, R-18, R-19, R-21, R-28, the c*/d*
 variants of R-26 and j*/v* of R-27/R-29), G-1…G-9, G-11…G-14, L-1…L-17
 (lowinfo not enabled), K-2…K-5, K-7, K-8, K-10, K-11, CAP-2, CAP-4…CAP-9 as
 full scenarios, §8 E-SET.
+
+### 13.7 Publication, liveness and low-information tests
+
+`env/bin/python -m pytest -p no:cacheprovider tests/p10/test_publication.py tests/p10/test_lowinfo.py`
+— **16 passed** (integration, real stack).
+
+| ID | Result | What was shown |
+|---|---|---|
+| K-8, K-10 | PASS | with a **test-only** CALIBRATED technique version (labelled, never in a real keyspace): one envelope per `match_id`, built through the frozen contract and decoded back as `match.found` 1.0; `event_id` stored once; held while no consumer group exists (nothing XADDed); two concurrent `publish-held` reuse the stored envelope; after a consumer registers, exactly one stream entry with the same `event_id`; `published_at` set |
+| publication rule | PASS | `publish-held` for 2.1 (UNAVAILABLE) is refused |
+| K-11 | PASS | the one liveness predicate over binding × target states (READY binding of a REGISTERING / BUILD_FAILED target is live; RETIRED / PURGED / PENDING are not) |
+| L-1 | PASS | classification flags equal an exhaustive numpy reference over the authoritative set; witnesses confirmed on artifacts |
+| L-17 (C-14h) | PASS | per-hit exclusion: hits on usable-flag segments do not vote, the lower hits on an unflagged target still make it a candidate |
+| L-4 / L-12 | PASS | witness retired in P9 with no refresh ⇒ the flag is not usable (fail-closed) |
+| L-13, L-6 | PASS | PARTIAL record excludes nothing; a stale writer of an older revision is rejected |
+| L-16 | PASS | witness read failure propagates (the task retries); nothing is excluded on an unknown |
+
+The lowinfo tests enable `matching.lowinfo_enabled` in their test
+configuration only; production keeps it disabled (§13.3).
+
+Isolation defect found while running these concurrently with the M3 run:
+see design §20 N-14 (collection names collided across keyspaces); fixed
+with `index.collection_prefix`; the contaminated first M3 attempt was
+discarded and repeated from a dropped keyspace.
+
+### 13.8 Matcher failure injection (§9 G-*)
+
+`env/bin/python -m pytest -p no:cacheprovider tests/p10/test_failures.py` — **5 passed** (integration).
+
+| ID | Result | What was shown |
+|---|---|---|
+| G-1 | PASS | index unreachable from the matcher (connection refused): task `WAITING_INDEX(unavailable)`, no decision, no fallback; after the index returns the run resumes to DONE with exactly one decision |
+| G-1 (one query) | PASS | exactly one failed segment query of a search step fails the whole step: no `SEARCHED`, no candidate list from partial results, never "zero hits"; retried to DONE |
+| G-9 | PASS | Scylla failure right after the commit intent: the intent survives, the task waits/retries, the reconciler's intents pass and the rerun converge to exactly one `matches` row |
+| G-11 | PASS | a worker killed after a verification page (uncatchable exception): task left VERIFYING under its lease; after lease expiry (shifted clock) another claim resumes the same run (run 1) to DONE, one decision |
+| G-14 (simulated two-host) | PASS | two matcher instances (separate instance ids, one Qdrant, one keyspace) drain the same queue concurrently: every task DONE once, one row per `match_id` |

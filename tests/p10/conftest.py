@@ -139,7 +139,8 @@ def p10_settings(tag: str, **matching: Any):
 
     base = make_settings(tag)
     return base.model_copy(update={
-        "index": base.index.model_copy(update={"active_ttl_s": 0.2, "mutation_lease_s": 1.0, "clock_margin_s": 0.0,
+        "index": base.index.model_copy(update={"collection_prefix": "t" + tag[:8], "active_ttl_s": 0.2,
+                                               "mutation_lease_s": 1.0, "clock_margin_s": 0.0,
                                                "drain_grace_s": 12.0, "build_lease_s": 30.0}),
         "matching": base.matching.model_copy(update={"task_lease_s": 10.0, "backoff_base_s": 0.2, "backoff_max_s": 1.0,
                                                      "search_timeout_s": 2.0,
