@@ -1162,7 +1162,7 @@ minimum verifiable duration under 2.1 is 10 s).
 
 Live equivalence (media↔media tasks writing `equivalence_links`): §13.11.
 
-### 13.10 M3 through the live system: L-PAIRS (I-5)
+### 13.10 M3 through the live system: L-PAIRS (I-5) — superseded by §13.16 (pre-fix run)
 
 `benchmarks/p10-index/m3_live.py --drop-rebuild` in keyspace
 `fingerprinter_m3` (collection prefix `m3`): 7 films registered through
