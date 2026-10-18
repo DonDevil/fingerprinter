@@ -40,6 +40,8 @@ def add_parsers(tools: Any) -> None:
             x.add_argument("--generation", type=int)
     x = ix.add_parser("drop")
     x.add_argument("--spec", required=True)
+    x.add_argument("--role", choices=("media", "target"))
+    x.add_argument("--generation", type=int, help="delete one FAILED generation's collection (design §12.4)")
 
     mt = tools.add_parser("match").add_subparsers(dest="cmd", required=True)
     x = mt.add_parser("params-register")
@@ -132,6 +134,12 @@ def dispatch(args: argparse.Namespace, svc: Any, actor: str) -> int:
             svc.store.audit(actor, "index-audit", vars(args))
             return 0
         if c == "drop":
+            if args.generation is not None:
+                if not args.role:
+                    print("refused: --generation needs --role")
+                    return 2
+                _out(s.drop_failed_generation(args.spec, args.role, args.generation, actor=actor))
+                return 0
             _out(s.drop_spec(args.spec, actor=actor))
             return 0
     if t == "match":

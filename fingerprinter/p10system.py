@@ -112,6 +112,18 @@ class P10System:
         self.capacity.audit()
         return out
 
+    def drop_failed_generation(self, spec: str, role: str, g: int, *, actor: str) -> dict[str, Any]:
+        """``index drop --generation``: delete a FAILED generation's collection (kept for inspection until
+        now); the next capacity audit then releases its holder row and points (design §12.4, §13.3)."""
+        row = self.gens.row(spec, role, g)
+        if row is None or row["state"] != "FAILED":
+            raise ValueError(f"generation {g} is {None if row is None else row['state']}: only FAILED can be dropped")
+        deleted = self.p.index.delete_collection(row["collection"])
+        self.p.store.audit(actor, "index-drop-generation", {"spec": spec, "role": role, "generation": g})
+        audit = self.capacity.audit()
+        return {"collection_deleted": deleted, "ledger_before": audit.reserved_before, "ledger_after": audit.bound,
+                "holders_released": audit.holders_removed}
+
     def rebuild(self, spec: str, role: str, *, promote: bool, wait_boundary: bool = True) -> dict[str, Any]:
         res = self.builder.build(spec, role, wait_boundary=wait_boundary)
         if promote and res.get("state") == READY:
