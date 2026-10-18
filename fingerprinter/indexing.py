@@ -108,13 +108,19 @@ class ApplyResult:
 
 def payload_for(s: Subject, k: int, t: float, seq: int | None, lowinfo: tuple[bool, int] | None) -> dict[str, Any]:
     p: dict[str, Any] = {"rep": s.representation_id, "cid": s.content_id, "spec": s.spec_digest, "k": int(k),
-                         "t": float(t)}
+                         "t": round(float(t), 6)}
     if s.role == TARGET:
         p.update({"trep": s.subject_id, "tid": s.target_id, "tver": s.target_version,
                   "lowinfo": bool(lowinfo[0]) if lowinfo else False, "lowinfo_rev": int(lowinfo[1]) if lowinfo else 0})
     if seq is not None:
         p["seq"] = int(seq)
     return p
+
+
+def _canon(v: Any) -> Any:
+    """Payload floats canonicalised to 1e-6 for the digest: Qdrant's JSON round trip of an f64 payload
+    value is not bit-exact (observed 105.04166666666667 -> 105.04166666666669; N-17). Vectors are exact."""
+    return f"{v:.6f}" if isinstance(v, float) else v
 
 
 def subject_digest(segment_index: list[int], vectors: list[bytes], payloads: list[dict[str, Any]]) -> str:
@@ -124,7 +130,8 @@ def subject_digest(segment_index: list[int], vectors: list[bytes], payloads: lis
     for k, v, p in sorted(zip(segment_index, vectors, payloads), key=lambda x: x[0]):
         h.update(int(k).to_bytes(8, "big", signed=True))
         h.update(v)
-        h.update(json.dumps({x: y for x, y in p.items() if x != "seq"}, sort_keys=True, separators=(",", ":")).encode())
+        h.update(json.dumps({x: _canon(y) for x, y in p.items() if x != "seq"}, sort_keys=True,
+                            separators=(",", ":")).encode())
     return h.hexdigest()
 
 
