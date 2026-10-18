@@ -1,7 +1,8 @@
 # P10 Design — vector index and matcher (proposal)
 
-Status (2026-10-18): **APPROVED FOR IMPLEMENTATION; implementation in
-progress** (operator authorization, decisions.md §0). This document stays the
+Status (2026-10-18): **APPROVED FOR IMPLEMENTATION; IMPLEMENTED; M3 not
+passed** (operator authorization, decisions.md §0; validation §11, §13;
+implementation notes and test-driven corrections N-1…N-17 in §20). This document stays the
 design of record; where implementation evidence changed or settled a point,
 the text says so and cites validation.md §13 (execution record). Before
 2026-10-18: PROPOSED — awaiting operator design approval. Decisions are

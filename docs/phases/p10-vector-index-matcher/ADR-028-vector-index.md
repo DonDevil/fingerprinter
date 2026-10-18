@@ -90,6 +90,14 @@ ordering argument needs (design §6.4).
   check-then-act); their "no match" is provisional until no obligation is
   open or closed unresolved (C-14); positive matches are never invalidated
   (artifact-verified).
+- Measured during implementation (validation §13.5, §13.14): on the HDD
+  dev host under the 1.5 GiB limit, rescoring from on-disk originals makes
+  query latency disk-bound (E-R1 failed: p95 154 ms steady and 5.1 s during
+  a rebuild at 104 k points; 23 s at 626 k); at 105 k points with the stack
+  otherwise idle, batched/100-NN queries take ≈ 3 ms but some response sizes
+  hit a ≈ 40 ms TCP plateau. Collection names carry a per-deployment prefix
+  (design §20 N-14) and the capacity ledger assumes one deployment per
+  instance.
 - REST ingest measured at ≈ 310–500 points/s (lower bound): a full rebuild at
   base 1-year volume is hours to a day until faster ingest is measured.
 - Qdrant upgrades are handled like runtime changes: a new generation built

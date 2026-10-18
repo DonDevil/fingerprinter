@@ -7,7 +7,7 @@ mutation/recovery protocol and the P10 reconciler. The design of record and
 all evidence are in [`phases/p10-vector-index-matcher/`](phases/p10-vector-index-matcher/README.md);
 executed results are only in its `validation.md` §13.
 
-**Status (2026-10-18): implementation in progress; M3 not passed.**
+**Status (2026-10-18): implemented; 75 integration/unit tests pass on the real stack; M3 not passed** (gates and evidence: `validation.md` §11, §13).
 
 ## 1. Boundaries
 
@@ -56,8 +56,11 @@ P10_EVIDENCE_DIR=benchmarks/p10-index/results/evidence env/bin/python -m pytest 
 ```
 
 `scripts/p10-env.sh` uses keyspace `fingerprinter_it_p10`, Redis prefix
-`fpit10:` and buckets `fp-it10-*`; every test wipes that keyspace and
-deletes the Qdrant collections it created.
+`fpit10:` and buckets `fp-it10-*`; every test wipes that keyspace, uses its
+own collection prefix (`index.collection_prefix`) and deletes the Qdrant
+collections it created. Several deployments may share one Qdrant instance
+only with distinct `FINGERPRINTER_INDEX__COLLECTION_PREFIX` values (design
+§20 N-14); the capacity ledger assumes one deployment per instance.
 
 ## 5. Benchmarks
 
@@ -67,6 +70,9 @@ deletes the Qdrant collections it created.
 | `benchmarks/p10-index/tune_eval.py` | I-1 (b–d): nested film-grouped tuning, calibration, lowinfo oracle comparison |
 | `benchmarks/p10-index/capacity_e_r1.py` | E-R1: capacity boundary on a dedicated `qdrant-e-r1` container (isolated venv) |
 | `benchmarks/p10-index/corpus.py` | L-PAIRS / N-SOAK populations, film folds, Wilson intervals |
+| `benchmarks/p10-index/m3_live.py` | I-5: ingest through P9, index, production matcher, nested evaluation on live candidates, `--drop-rebuild`, `--soak [--soak-limit N]`, `--rerun-targets`, `--rerun-all` (dedicated `*_m3` keyspace) |
+| `benchmarks/p10-index/ann_recall.py` | §4: segment recall@k and direction-B candidate recall, ANN vs exact, latency |
+| `benchmarks/p10-index/make_eset.py`, `eset_eval.py`, `p8_set.py` | §8: E-SET build, offline/live `equiv/v1`, P8's 6 s set |
 
 Exact command lines are in `validation.md` §13. Vector caches, per-pair logs
 and per-second samples stay outside git in `~/anti_piracy/datasets/p10/`.

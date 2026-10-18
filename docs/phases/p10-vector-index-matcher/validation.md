@@ -49,18 +49,18 @@ per occurrence; **R-29 new** (§9a.3: unresolved occurrences survive later
 occurrences, v1–v13 incl. retired subject); R-27 revised to the
 per-occurrence rows. Planned and unrun.
 
-**Test classes and run status.** Nothing below has been executed.
+**Test classes and run status** (updated 2026-10-18; details and commands in §13).
 
 | Group | Class | Environment | Run |
 |---|---|---|---|
-| V-1 (unit part), verifier determinism | unit | CPU, fixtures | no |
-| §2, §3 (I-1 baseline, tuning, calibration, lowinfo oracle) | offline evaluation | vector cache, V1 handler | no |
-| §4 ANN recall | benchmark | dev Qdrant | no |
-| §5–§8 | live-stack integration | test keyspace, dev Qdrant, MinIO, Redis | no |
-| G-*, R-1…R-29, H-1…H-9, L-1…L-17, K-1…K-11, CAP-1…CAP-9 | live-stack fault injection / integration (hooks are test-build only) | as above; H-9 on populated Scylla 6.2.3 | no |
-| R-24 | version-specific behaviour test | Qdrant 1.15.1 pinned image, test collection | no |
-| E-R1 | capacity benchmark | dedicated `qdrant-e-r1` container | no |
-| G-14 | simulated two-host (two processes, one host) | dev host | no |
+| V-1 (unit part), verifier determinism | unit | CPU, fixtures | **yes** — pass (§13.3) |
+| §2, §3 (I-1 baseline, tuning, calibration, lowinfo oracle) | offline evaluation | vector cache, V1 handler | **yes** — §13.3, §13.4 |
+| §4 ANN recall | benchmark | dev Qdrant | **yes** — §13.14 (partly fails) |
+| §5–§8 | live-stack integration | test keyspaces, dev Qdrant, MinIO, Redis | **yes** — §13.6, §13.9–§13.15 |
+| G-*, R-1…R-29, H-1…H-9, L-1…L-17, K-1…K-11, CAP-1…CAP-9 | live-stack fault injection / integration | as above; H-9 on populated Scylla 6.2.3 | **partly** — 75 tests pass (§13.6–§13.8, §13.12); unrun items listed in §11 |
+| R-24 | version-specific behaviour test | Qdrant 1.15.1 pinned image, test collection | **yes** — pass (§13.1) |
+| E-R1 | capacity benchmark | dedicated `qdrant-e-r1` container | **yes** — **fail** (§13.5) |
+| G-14 | simulated two-host (two processes, one host) | dev host | **yes** — pass (two matcher instances in one process, §13.8) |
 | real multi-host, network partitions between hosts | external | P14 | not in P10 |
 
 Rules carried from P9: a result counts for a gate only on the gate's approved
@@ -788,23 +788,29 @@ extrapolation to the §8 scenarios (labelled extrapolated); verification time
 per candidate by duration; contention: matcher + Qdrant + encoder + stack
 together (host `MemAvailable` floor, encoder throughput change).
 
-## 11. M3 exit checklist (to be filled after implementation)
+## 11. M3 exit checklist (filled 2026-10-18 from §13)
 
-| Item | Criterion | Status |
-|---|---|---|
-| M3-1 | P/R ≥ V1 (stronger baseline), held-out, zero FP (§2) | not run |
-| M3-2 | new target matched against historical media without re-encoding (§7) | not run |
-| P10-T1 | ANN recall@k (§4) | not run |
-| P10-T2 | drop-and-rebuild identical decisions (§5) | not run |
-| P10-T3 | growth bounds + effectiveness (§6) | not run |
-| P10-T4 | level-5 linking (§8) | not run |
-| P10-T5 | failures (§9) | not run |
-| P10-T6 | resources (§10) | not run |
-| P10-T7 | V1 end-to-end baseline reproducible (§2.1) — prerequisite of M3-1 | not run |
-| P10-T8 | calibration status and reliability (§3.3) — prerequisite of publication | not run |
-| P10-T9 | lowinfo vs unfiltered oracle, `lost_tp = 0` (§3.4) — prerequisite of enabling lowinfo | not run |
-| P10-T10 | E-R1 capacity (design §13.4) — prerequisite of I-2 | not run |
-| P10-T11 | mutation/rebuild crashes R-1…R-29 (R-26 = task-completion/detection race, §9a.1; R-27 = repeated-loss occurrence identity, §9a.2; R-28 = detection vs repair confirmation; R-29 = unresolved occurrences survive later ones, §9a.3), reader/scan H-1…H-9, lowinfo L-1…L-17, identity K-1…K-11, capacity CAP-1…CAP-9, V-1, G-15 (§5, §9–§9e) | not run |
+| Item | Criterion | Status | Evidence |
+|---|---|---|---|
+| M3-1 | P/R ≥ V1 (stronger baseline), held-out, zero FP (§2) | **PASS** on the measured populations | live candidate path, nested held-out: L-PAIRS P 1.000 / R 0.733, **0 FP** vs V1 R 0.247 (§13.10); pooled with N-SOAK P 0.9989 / R 0.812 vs V1-on-V2 P 0.9857 / R 0.449 (§13.13); the V1 *end-to-end* baseline exists for L-PAIRS only (§13.4) |
+| M3-2 | new target matched against historical media without re-encoding (§7) | **PASS** (with a caveat) | `test_flow` (0 new encode claims); live 19x direction-B candidate recall vs provenance 0.997; caveat: direction-B runs end INCOMPLETE (saturated) at 10x/19x, and release of envelopes is shown only with a test-only calibrated version (2.1 is held) |
+| P10-T1 | ANN recall@k (§4) | **FAIL** | segment recall@100 0.981–0.999 (pass); single-query p95 latency size-dependent, 40 ms plateau (fail); direction-B media-level candidate recall vs exact 0.74–0.99 while saturated (fail) — §13.14 |
+| P10-T2 | drop-and-rebuild identical decisions (§5) | **PASS for the executed scope** | equal manifest digests, identical decisions, all re-proposed (§13.6, §13.10/§13.16); **not run:** the exact-search decision configuration and the +200 SOAK corpus of §5 |
+| P10-T3 | growth bounds + effectiveness (§6) | **PASS (bounds, recall), with direction B INCOMPLETE** | §13.15 |
+| P10-T4 | level-5 linking (§8) | **FAIL** (recall target) | 228/300 linked (target 1.0), 0 false links, revocation durable — §13.9, §13.11 |
+| P10-T5 | failures (§9) | **PARTIAL** | G-1, G-1b, G-4, G-9, G-10, G-11, G-12, G-14, G-15 pass; G-2 via §5; **not run:** G-3, G-5…G-8, G-13 |
+| P10-T6 | resources (§10) | **FAIL** | E-R1 failed (latency) — §13.5 |
+| P10-T7 | V1 end-to-end baseline reproducible (§2.1) | **PASS (L-PAIRS)**; N-SOAK not run (cost) | §13.4 |
+| P10-T8 | calibration status and reliability (§3.3) | **run → UNAVAILABLE** (reliability check fails) | §13.3; publication held |
+| P10-T9 | lowinfo vs unfiltered oracle, `lost_tp = 0` (§3.4) | **FAIL** (`lost_tp` = 1; 12 flagged) → not enabled | §13.3 |
+| P10-T10 | E-R1 capacity (design §13.4) | **FAIL** | §13.5 |
+| P10-T11 | mutation/rebuild crashes R-1…R-29, reader/scan H-1…H-9, lowinfo L-1…L-17, identity K-1…K-11, capacity CAP-1…CAP-9, V-1, G-15 | **PARTIAL** | passed: R-2…R-6, R-11…R-13, R-16, R-17, R-20, R-22, R-23, R-25 a, R-26 a/b, R-27, R-28, R-29 u1/v2, H-1…H-5, H-9, L-1, L-4, L-6, L-12, L-13, L-16, L-17, K-1, K-2, K-6, K-8…K-11, CAP-1, CAP-3, CAP-5 (live), V-1 unit, G-15, §9a.4; **not run:** R-1, R-7…R-10, R-14, R-15, R-18, R-19, R-21, the c*/d*/j*/v* variants, H-6…H-8, L-2, L-3, L-5, L-7…L-11, L-14 (lifecycle part), L-15, K-3…K-5, K-7, CAP-2, CAP-4, CAP-6…CAP-9 scenarios, V-1 integration across two hosts |
+
+**M3: NOT PASSED.** Gates that failed on measurement: P10-T1 (latency and
+saturated direction-B candidate recall), P10-T4 (equivalence recall),
+P10-T6/T10 (E-R1), P10-T9 (lowinfo not adoptable); P10-T8 leaves
+publication held; P10-T5/T11 are partly unrun. M3-1 and M3-2 hold on the
+measured populations. Real multi-machine validation remains P14.
 
 ### 11a. Issue → test matrix (corrections C-1…C-15, design §19)
 
@@ -1292,3 +1298,14 @@ intents. `results/e-set.json`.
 | `equivalence revoke` | both orientations REVOKED, evidence kept; after re-running both subjects' tasks the pair stays REVOKED (`IF NOT EXISTS` keeps it) — met |
 | no record merged | met (links are a separate relation; no ContentId, representation or observation changed) |
 | tasks | 160 DONE (no saturation, no cap) |
+
+### 13.16 L-PAIRS live run repeated with the corrected code
+
+The §13.10 run preceded the `foreign_point` fix (§13.13); it was repeated
+from a dropped keyspace (`m3_live.py --drop-rebuild`,
+`results/m3-live-lpairs.json`, superseding the earlier file): 194 tasks
+DONE; live candidate recall 1.000; **deployed 2.1 = nested held-out = TP
+110 / FN 40 / FP 0 / TN 330** (the earlier deployed 100 was the defect);
+110 decisions stored and held. §5 procedure: tasks `WAITING_INDEX` while the
+index was deleted; rebuild 28 s; manifest digests equal for both roles;
+**decisions identical (110 / 110)**, every one re-proposed; recovery 0/0.

@@ -34,7 +34,10 @@ here:
   remains an operator action;
 - P10-D14's value stays the provisional 250,000 resident points until E-R1
   produces a measured passing total (§13.4 of the design; CAP-8 enforced at
-  start-up);
+  start-up). **E-R1 was run and failed** on the query-latency rule at 6 and
+  1 copies (validation §13.5); per §13.4 no value is derived and dev-host
+  indexing at these settings needs a separate operator decision (index host,
+  memory limit or latency criterion);
 - P10-D8 is implemented but **not enabled**: its I-1 adoption gate did not
   pass (validation §13.3);
 - P10-D9: technique 2.1 has calibration status UNAVAILABLE (validation

@@ -1,31 +1,34 @@
 # P10 — vector index and matcher (milestone M3)
 
-Status (2026-10-18): **IMPLEMENTATION IN PROGRESS** under the operator's
-authorization to implement P10-D1…D20 as documented (decisions.md §0).
-**M3 not passed.** Executed evidence is recorded only in
+Status (2026-10-18): **IMPLEMENTATION COMPLETE FOR THE APPROVED DESIGN; M3 NOT
+PASSED.** Implemented under the operator's authorization (decisions.md §0).
+Executed evidence is recorded only in
 [validation.md §13](validation.md#13-execution-record-implementation-phase-from-2026-10-18);
-the local operator guide is [`docs/p10-matcher.md`](../../p10-matcher.md).
+the M3 checklist is [validation.md §11](validation.md#11-m3-exit-checklist-filled-2026-10-18-from-13);
+the local operator guide is [`docs/p10-matcher.md`](../../p10-matcher.md);
+implementation notes and design corrections found by testing are design §20.
 
-| Status | P10 today (2026-10-18) |
+| Status | P10 (2026-10-18) |
 |---|---|
-| decisions | D1–D20 approved for implementation; D12, D13 (b) deferred; D8 implemented but not enabled; D14 value provisional (250,000) pending E-R1 |
-| implemented and tested | `temporal/v2` verifier and `equiv/v1` (unit); `VectorIndex`/`QdrantIndex` adapter; fingerprinter-owned dev Qdrant (`deploy/qdrant/`) |
-| executed gates | R-24 (Qdrant 1.15.1 filter boundaries, bit-identical vectors) **pass**; L-14 Qdrant part **pass**; Scylla 6.2.3 LWT forms incl. CAP-9 batch, promotion batch and the §9a.4 slice read **pass**; I-1 tuning/calibration **run** (validation §13.3) |
-| I-1 outcome | held-out (pooled L-PAIRS + N-SOAK, exact candidates) P 0.9989 / R 0.812 vs V1-on-V2 P 0.9857 / R 0.449; L-PAIRS 110/150, 0 FP; calibration **UNAVAILABLE** (publication held); lowinfo **not adopted** |
-| running / next | V1 end-to-end baseline (I-1 a); then E-R1 on a dedicated container; I-2…I-5 implementation |
-| blocks M3 | V1 E2E baseline, live-path M3 run, E-R1, calibration (publication only), the I-2…I-5 exits of validation §11 |
+| decisions | D1–D20 approved for implementation; D12, D13 (b) deferred; D8 implemented, not enabled (gate failed); D9: technique 2.1 calibration UNAVAILABLE (held); D14 provisional 250,000 — E-R1 **failed** |
+| implemented | vector index adapter + dev service, generations, mutation protocol, builder/validation/promotion, capacity ledger, recovery protocol, reconciler, discovery, run-fenced tasks in both directions + media↔media, verifier `temporal/v2`, `equiv/v1`, technique registry, held `match.found` 1.0, CLI |
+| tests | 75 integration/unit tests pass on the real Scylla 6.2.3, Qdrant 1.15.1, MinIO, Redis; P9 unit suite unchanged (100 pass) |
+| passes | R-24; Scylla LWT forms incl. §9a.4; M3-1 (live, held-out: L-PAIRS P 1.000 / R 0.733, 0 FP vs V1 R 0.247; pooled P 0.9989 / R 0.812 vs V1 P 0.9857 / R 0.449); M3-2; drop/rebuild (executed scope); growth bounds; segment recall@100 ≥ 0.97 |
+| fails | E-R1 (query latency on the HDD dev host under 1.5 GiB); single-query latency criterion; direction-B ANN-vs-exact candidate recall while saturated; E-SET equivalence recall 0.76 (target 1.0); calibration reliability; lowinfo adoption |
+| known limits | direction B saturates at `k_max` 512 from 10x (runs INCOMPLETE); 7 animated films from one reel; V1 end-to-end not run on N-SOAK; single-node Scylla; real multi-host is P14 |
 
-**Implementation progress (updated as increments land).**
+**Implementation and validation status per step.**
 
 | Step | Status | Evidence | Remaining |
 |---|---|---|---|
 | I-1 (a) V1 end-to-end baseline | **done** (L-PAIRS): TP 34, FP 0, R 0.227 | validation §13.4 | N-SOAK not run (cost; limitation recorded) |
-| I-1 (b–d) verifier, tuning, calibration, lowinfo offline | **done** | validation §13.3, `results/tune-eval.json` | — (calibration UNAVAILABLE is the measured outcome) |
-| R-24 / L-14 / Scylla LWT semantics / §9a.4 | **pass** | validation §13.1–§13.2, `results/evidence/` | — |
-| E-R1 capacity experiment | **FAILED** (latency) at 6 and 1 copies | validation §13.5 | operator decision (host/limits) |
-| I-2 index, generations, mutations, reconciler, capacity | **implemented**; core tests pass | validation §13.6 | remaining R-/CAP- variants; E-R1 FAILED (§13.5) |
-| I-3 tasks, both directions, persistence, held publication, recovery | **implemented**; core tests pass | validation §13.6 | live M3 run |
-| I-4 equivalence / I-5 failure injection, growth, M3 | not started | — | |
+| I-1 (b–d) verifier, tuning, calibration, lowinfo offline | **done** | §13.3, `results/tune-eval.json` | calibration UNAVAILABLE, lowinfo not adopted (measured outcomes) |
+| R-24 / L-14 / Scylla LWT semantics / §9a.4 | **pass** | §13.1–§13.2 | — |
+| E-R1 capacity experiment | **FAILED** (latency) at 6 and 1 copies | §13.5 | operator decision (index host, memory limit or latency criterion) |
+| I-2 index, generations, mutations, reconciler, capacity | **implemented, tested** | §13.6, §13.12 | unrun R-/CAP- variants (§11) |
+| I-3 tasks, both directions, persistence, held publication, recovery | **implemented, tested** | §13.6–§13.8 | calibration for publication |
+| I-4 equivalence | **implemented, tested**; recall target not met | §13.9, §13.11 | equivalence-specific parameters (a new technique version) |
+| I-5 failure injection, growth, M3 | **run**; M3 not passed | §11, §13.10, §13.13–§13.15 | the failed and unrun items of §11 |
 
 **History of the design review.** Status (2026-10-17): **IN DESIGN REVIEW.** Audit complete; design proposed;
 no decision approved; nothing implemented; M3 not passed. P9 is complete for
