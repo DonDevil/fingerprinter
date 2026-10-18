@@ -1247,3 +1247,48 @@ exact = the same collection with `exact=true` + `quantization.ignore=true`
 | per-segment query p95 ≤ 10 ms (single-query REST requests) | limit 100: **p95 3.1 ms**; limit 10 in the harness (with payload): p95 43.9 ms; probe: limit 10 0.9 ms, **limit 32 42.6 ms**, limit 100 1.5 ms | **FAIL (size-dependent)**: a ≈ 40 ms plateau for some response sizes — the TCP delayed-ACK/Nagle interaction with Qdrant's HTTP server (same with `bytes` bodies); the matcher batches up to 64 queries per request, which amortises it; not resolved (gRPC or transport tuning is follow-up work) |
 | media-level candidate recall with ANN ≥ exact − 0.005 (direction B policy) | per film 0.740–0.991 (mean 0.876) | **FAIL**: at 19x every target has saturated segments (§13.13), so the two top-512 neighbour sets — and the grouped candidates derived from them — differ between ANN and exact; against provenance the live direction-B candidate recall is 0.997 and the direction-A live candidate recall equals the exact emulation (0.9991). The comparison is not meaningful while saturated; it needs the direction-B `k_max`/floor retuning first |
 | memory within the 1.5 GiB limit | dev Qdrant at 105 k + 760 points: no OOM during the M3 runs | observed (not a gate measurement; E-R1 §13.5 governs) |
+
+### 13.15 Verification workload and growth (§6): base, 10x, 19x
+
+Same harness, three keyspaces: base = L-PAIRS only (6,220 media points,
+§13.10), 10x = L-PAIRS + the first 500 SOAK items (`--soak-limit 500`,
+**55,945** points, keyspace `fingerprinter_g10_m3`, `results/m3-live-g10.json`),
+19x = L-PAIRS + all SOAK-1000 (**105,203** points, §13.13).
+
+| Scale | Pairs | Nested held-out TP / FN / FP | L-PAIRS recall (nested) | Live candidate recall | Dir. B recall vs provenance | Dir. B runs | Max stored candidates per B run |
+|---|---|---|---|---|---|---|---|
+| base | 480 | 110 / 40 / 0 | 0.733 | 1.000 | 1.000 | 7 DONE | — (all candidates verified) |
+| 10x | 3,519 | 504 / 114 / 0 | 0.733 | 1.000 | 0.998 | 1 DONE, **6 INCOMPLETE** (1–19 saturated segments) | 313 |
+| 19x | 6,572 | 876 / 203 / 1 | 0.733 | 0.9991 | 0.997 | **7 INCOMPLETE** (2–38 saturated segments) | 504 |
+
+**Bounds (acceptance, all scales): met** — hits per segment ≤ `k_max`;
+direction-A candidates ≤ `cap_A` (50, never truncated); stored direction-B
+candidates ≤ `cap_B_total` (5,000; max 504); verification in pages of
+`page_B` (200); every saturation recorded on the task. **Effectiveness:**
+direction B recall vs provenance at 19x 0.997 ≥ 0.99 — met; direction A
+recall at every scale (0.733 on L-PAIRS) ≥ the held-out recall of §2 —
+met; precision: 0 FP on L-PAIRS at every scale; the single pooled FP at 19x
+is an N-SOAK pair that exists only in the 19x corpus (the credits case,
+§13.3), not a growth effect. **Not met as a workload property:** direction
+B saturates from 10x on (INCOMPLETE), so its negatives are provisional;
+`k_max_b`/`floor_b` retuning is required before direction B can finish DONE
+on duplicated corpora (design §17 anticipated this).
+
+### 13.11 Live level-5 equivalence (§8, I-4)
+
+`FINGERPRINTER_MATCHING__EQUIVALENCE_ENABLED=true eset_eval.py --live`,
+keyspace `fingerprinter_eq_m3` (prefix `m3e`): the 160 E-SET items ingested
+through P9's commit protocol, media role built and promoted, 160
+`media_vs_media` tasks run by the production matcher (adaptive k, floor
+0.70, cap 2,000; verification `equiv/v1` on artifacts), links committed via
+intents. `results/e-set.json`.
+
+| Check (§8 acceptance) | Result |
+|---|---|
+| variants have pairwise distinct `ContentId`s (P8 level 3) | **yes** (160 distinct) |
+| every pair of variants `LINKED` (target recall 1.0) | **228 / 300 = 0.760** — target **not met** (identical to offline; misses as in §13.9) |
+| zero links between negatives (other excerpts, 30 s shift, 50 % sub-clip) | **0 / 12,420** — met |
+| links written in both orientations | yes, every link |
+| `equivalence revoke` | both orientations REVOKED, evidence kept; after re-running both subjects' tasks the pair stays REVOKED (`IF NOT EXISTS` keeps it) — met |
+| no record merged | met (links are a separate relation; no ContentId, representation or observation changed) |
+| tasks | 160 DONE (no saturation, no cap) |
