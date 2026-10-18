@@ -1,6 +1,7 @@
 # P10 Validation plan — test matrix, methodology, acceptance criteria, evidence
 
-Status: **IN EXECUTION (2026-10-18).** The plan below is unchanged; what has
+Status: **IN EXECUTION (2026-10-18); M3 NOT PASSED** — gate table §11, exit-gate
+completion pass §13.17–§13.25. The plan below is unchanged; what has
 actually been executed, with commands and measured outcomes, is recorded in
 **§13** (execution record) and nowhere else — a test not listed there has not
 run. §12 lists the audit measurements that preceded implementation (inputs
@@ -55,11 +56,11 @@ per-occurrence rows. Planned and unrun.
 |---|---|---|---|
 | V-1 (unit part), verifier determinism | unit | CPU, fixtures | **yes** — pass (§13.3) |
 | §2, §3 (I-1 baseline, tuning, calibration, lowinfo oracle) | offline evaluation | vector cache, V1 handler | **yes** — §13.3, §13.4 |
-| §4 ANN recall | benchmark | dev Qdrant | **yes** — §13.14 (partly fails) |
+| §4 ANN recall | benchmark | dev Qdrant | **yes** — §13.14 (partly failed), re-run §13.17–§13.18: **pass** |
 | §5–§8 | live-stack integration | test keyspaces, dev Qdrant, MinIO, Redis | **yes** — §13.6, §13.9–§13.15 |
-| G-*, R-1…R-29, H-1…H-9, L-1…L-17, K-1…K-11, CAP-1…CAP-9 | live-stack fault injection / integration | as above; H-9 on populated Scylla 6.2.3 | **partly** — 75 tests pass (§13.6–§13.8, §13.12); unrun items listed in §11 |
+| G-*, R-1…R-29, H-1…H-9, L-1…L-17, K-1…K-11, CAP-1…CAP-9 | live-stack fault injection / integration | as above; H-9 on populated Scylla 6.2.3 | **partly** — §13.6–§13.8, §13.12, §13.21 (all G-* pass); unrun items listed in §11 |
 | R-24 | version-specific behaviour test | Qdrant 1.15.1 pinned image, test collection | **yes** — pass (§13.1) |
-| E-R1 | capacity benchmark | dedicated `qdrant-e-r1` container | **yes** — **fail** (§13.5) |
+| E-R1 | capacity benchmark | dedicated `qdrant-e-r1` container | **yes** — **fail** (§13.5); cause measured §13.20 (`qdrant-e-r1d`) |
 | G-14 | simulated two-host (two processes, one host) | dev host | **yes** — pass (two matcher instances in one process, §13.8) |
 | real multi-host, network partitions between hosts | external | P14 | not in P10 |
 
@@ -788,35 +789,44 @@ extrapolation to the §8 scenarios (labelled extrapolated); verification time
 per candidate by duration; contention: matcher + Qdrant + encoder + stack
 together (host `MemAvailable` floor, encoder throughput change).
 
-## 11. M3 exit checklist (filled 2026-10-18 from §13)
+## 11. M3 exit checklist (updated 2026-10-18 after the exit-gate pass, §13.17–§13.25)
 
-| Item | Criterion | Status | Evidence |
-|---|---|---|---|
-| M3-1 | P/R ≥ V1 (stronger baseline), held-out, zero FP (§2) | **PASS** on the measured populations | live candidate path, nested held-out: L-PAIRS P 1.000 / R 0.733, **0 FP** vs V1 R 0.247 (§13.10); pooled with N-SOAK P 0.9989 / R 0.812 vs V1-on-V2 P 0.9857 / R 0.449 (§13.13); the V1 *end-to-end* baseline exists for L-PAIRS only (§13.4) |
-| M3-2 | new target matched against historical media without re-encoding (§7) | **PASS** (with a caveat) | `test_flow` (0 new encode claims); live 19x direction-B candidate recall vs provenance 0.997; caveat: direction-B runs end INCOMPLETE (saturated) at 10x/19x, and release of envelopes is shown only with a test-only calibrated version (2.1 is held) |
-| P10-T1 | ANN recall@k (§4) | **FAIL** | segment recall@100 0.981–0.999 (pass); single-query p95 latency size-dependent, 40 ms plateau (fail); direction-B media-level candidate recall vs exact 0.74–0.99 while saturated (fail) — §13.14 |
-| P10-T2 | drop-and-rebuild identical decisions (§5) | **PASS for the executed scope** | equal manifest digests, identical decisions, all re-proposed (§13.6, §13.10/§13.16); **not run:** the exact-search decision configuration and the +200 SOAK corpus of §5 |
-| P10-T3 | growth bounds + effectiveness (§6) | **PASS (bounds, recall), with direction B INCOMPLETE** | §13.15 |
-| P10-T4 | level-5 linking (§8) | **FAIL** (recall target) | 228/300 linked (target 1.0), 0 false links, revocation durable — §13.9, §13.11 |
-| P10-T5 | failures (§9) | **PARTIAL** | G-1, G-1b, G-4, G-9, G-10, G-11, G-12, G-14, G-15 pass; G-2 via §5; **not run:** G-3, G-5…G-8, G-13 |
-| P10-T6 | resources (§10) | **FAIL** | E-R1 failed (latency) — §13.5 |
-| P10-T7 | V1 end-to-end baseline reproducible (§2.1) | **PASS (L-PAIRS)**; N-SOAK not run (cost) | §13.4 |
-| P10-T8 | calibration status and reliability (§3.3) | **run → UNAVAILABLE** (reliability check fails) | §13.3; publication held |
-| P10-T9 | lowinfo vs unfiltered oracle, `lost_tp = 0` (§3.4) | **FAIL** (`lost_tp` = 1; 12 flagged) → not enabled | §13.3 |
-| P10-T10 | E-R1 capacity (design §13.4) | **FAIL** | §13.5 |
-| P10-T11 | mutation/rebuild crashes R-1…R-29, reader/scan H-1…H-9, lowinfo L-1…L-17, identity K-1…K-11, capacity CAP-1…CAP-9, V-1, G-15 | **PARTIAL** | passed: R-2…R-6, R-11…R-13, R-16, R-17, R-20, R-22, R-23, R-25 a, R-26 a/b, R-27, R-28, R-29 u1/v2, H-1…H-5, H-9, L-1, L-4, L-6, L-12, L-13, L-16, L-17, K-1, K-2, K-6, K-8…K-11, CAP-1, CAP-3, CAP-5 (live), V-1 unit, G-15, §9a.4; **not run:** R-1, R-7…R-10, R-14, R-15, R-18, R-19, R-21, the c*/d*/j*/v* variants, H-6…H-8, L-2, L-3, L-5, L-7…L-11, L-14 (lifecycle part), L-15, K-3…K-5, K-7, CAP-2, CAP-4, CAP-6…CAP-9 scenarios, V-1 integration across two hosts |
+Authority: crawler2 `docs/v2-phase-plan.md` §P10 (exit gate and named tests)
+as elaborated by §2–§10 of this plan (§13.24). Status words: **PASS**,
+**FAIL** (measured, criterion not met), **BLOCKED** (needs data, hardware or
+an owner decision — decisions.md §6), **NOT RUN**.
 
-**M3: NOT PASSED.** Gates that failed on measurement: P10-T1 (latency and
-saturated direction-B candidate recall), P10-T4 (equivalence recall),
-P10-T6/T10 (E-R1), P10-T9 (lowinfo not adoptable); P10-T8 leaves
-publication held; P10-T5/T11 are partly unrun. M3-1 and M3-2 hold on the
-measured populations. Real multi-machine validation remains P14.
+| Item | Criterion | Status | Measured (current code) | Evidence | Remaining |
+|---|---|---|---|---|---|
+| M3-1 | P/R ≥ V1 (stronger baseline) on identical held-out pairs, zero FP (§2) | **PASS** on the measured populations | L-PAIRS 110/40/**0**/330 (P 1.000, R 0.733) vs V1 on V2 vectors 37/113/0/330 (R 0.247) and V1 end to end 34/116/0/330 (R 0.227); pooled with N-SOAK 876/203/1/5,492 (P 0.9989, R 0.812) vs V1 on V2 vectors P 0.9857, R 0.449 — unchanged at 10x/19x with the final code | §13.4, §13.23 | V1 end-to-end on N-SOAK not run (O-4); 7 animated films, one reel |
+| M3-2 | new target matched against historical media without re-encoding (§7) | **PASS** | `test_flow` (0 new encode claims); direction-B runs **DONE** at base, 10x and 19x (were INCOMPLETE), B candidate recall vs provenance 0.9972 at 19x; release of envelopes only with a test-only calibrated version (2.1 held) | §13.18, §13.23 | publication held (P10-T8) |
+| P10-T1 | ANN recall@k (§4): segment recall@100 ≥ 0.97; media-level ANN ≥ exact − 0.005 in **both** directions; per-segment p95 ≤ 10 ms; ≤ 1.5 GiB | **PASS** | segment recall@100 0.9999 / 0.9949; media-level B: ANN = exact for every film, A: 0.9991 = 0.9991 (identical candidate sets); p95 2.72–3.39 ms; no OOM | §13.17, §13.18 | — |
+| P10-T2 | drop-and-rebuild: equal manifests; identical decisions with production ANN **and** exact search (§5) | **PASS** | L-PAIRS 110/110 (§13.16); L-PAIRS + 200 SOAK 403/403, manifests equal, exact-search rerun identical (0 new, 0 divergences); tasks `WAITING_INDEX` while lost | §13.16, §13.23 | — |
+| P10-T3 | growth bounds + effectiveness (§6) | **PASS** | bounds hold at every scale; B recall vs provenance 0.9972 at 19x (≥ 0.99); A recall at every scale = held-out; 0 FP on L-PAIRS at every scale; direction B DONE at every scale | §13.18, §13.23 | saturation returns above 4,096 copies of one segment (honestly INCOMPLETE) |
+| P10-T4 | level-5 linking: recall 1.0 on E-SET, zero false links, sub-clip/shift not linked, revocation durable (§8) | **FAIL** (recall) | `equiv/v2` 280/300 (0.933) live and offline, `equiv/v1` 228/300; **0/12,420 false links** in both; shift/sub-clip not linked; revocation durable; P8's 6 s set 10/10 linked | §13.9, §13.19, §13.23 | owner decision O-2 |
+| P10-T5 | failures G-1…G-15 (§9) | **PASS** (single host) | G-1, G-1b, G-2 (§5), G-3, G-4, G-5, G-6, G-7, G-8, G-9, G-10, G-11, G-12, G-13, G-14 (simulated two hosts), G-15 | §13.8, §13.12, §13.21 | real multi-host: P14 |
+| P10-T6 | resources (§10) | **FAIL → BLOCKED** | E-R1 latency failure attributed: random reads of on-disk originals on the HDD once they exceed the page cache (1-copy reproduction p95 6 ms → 2,993 ms; int8 only 2.5 ms) | §13.5, §13.20 | O-1 (SSD host or memory/D2 decision), then E-R1 rerun |
+| P10-T7 | V1 end-to-end baseline reproducible (§2.1) | **PASS (L-PAIRS)**; N-SOAK **NOT RUN** | 480 pairs, 45 min, gate-eligible | §13.4 | O-4 |
+| P10-T8 | calibration status and reliability (§3.3) | **BLOCKED** (labelled data) — publication held | reproduced exactly: UNAVAILABLE (4/5 bins fail); confirmed-only diagnostic also fails (876/877 true) | §13.3, §13.22 | O-3; publication gate verified closed |
+| P10-T9 | lowinfo vs unfiltered oracle, `lost_tp = 0` (§3.4) — **adoption gate of the filter, not an M3 gate** (§3.4, §11a, D8; §13.24) | **not adopted — filter disabled** (a valid configuration) | 12/760 flagged (< 20), `lost_tp` 1; disabled ⇒ excludes nothing (code + L-tests); fail-closed witness checks | §13.3, §13.7, §13.21 | future adoption: ≥ 5 more works with shared idents |
+| P10-T10 | E-R1 capacity (design §13.4) | **FAIL → BLOCKED** | as P10-T6; `max_points` stays 250,000 (provisional); CAP-8 now needs a passing E-R1 report | §13.5, §13.20 | O-1 |
+| P10-T11 | mutation/rebuild crashes, reader/scan, lowinfo, identity, capacity, V-1, G-15 | **PARTIAL** | passed: R-1…R-6, R-7 (b), R-8, R-9, R-11…R-20, R-22, R-23, R-25 a, R-26 a/b, R-27, R-28, R-29 u1/v2, H-1…H-9, L-1, L-4…L-6, L-11…L-13, L-15…L-17, K-1…K-3, K-5…K-11, CAP-1…CAP-3, CAP-5…CAP-8, V-1 unit, G-15, §9a.4 | §13.6, §13.7, §13.12, §13.21 | **NOT RUN:** R-7 (a), R-10, R-21, c*/d*/j*/v* variants of R-26/R-27/R-29, L-2, L-3, L-7…L-10, L-14 (lifecycle), K-4, CAP-4, CAP-9 (race), V-1 across two hosts |
+
+**M3: NOT PASSED.** Measured failures: P10-T4 (equivalence recall 0.933 <
+1.0) and P10-T6/P10-T10 (E-R1 on the HDD dev host). Blocked: P10-T8
+(calibration data; publication held), P10-T11 (unrun cases listed above),
+and the N-SOAK V1 end-to-end comparison. Passing since the first
+evaluation: P10-T1 (latency, both-direction ANN recall), P10-T2 (both
+configurations, §5 corpus), P10-T3 and M3-2 without INCOMPLETE runs,
+P10-T5. The single most important blocker is O-1 (E-R1 needs SSD-class
+index storage or a memory/D2 decision). Real multi-machine validation is P14
+and not required by M3 (§13.24).
 
 ### 11a. Issue → test matrix (corrections C-1…C-15, design §19)
 
 | Issue | Tests / measurements | Pass criterion | Blocks |
 |---|---|---|---|
-| C-1 resources | E-R1; §10 | no OOM, anon peak ≤ 1.35 GiB, p95 ≤ 10 ms | I-2; base target scenario on dev |
+| C-1 resources | E-R1; §10 | no OOM, anon peak ≤ 1.35 GiB, p95 ≤ 10 ms | base target scenario on dev; M3 via P10-T6/T10 (§11) |
 | C-2 lowinfo freshness | L-1…L-10; §3.4 | exhaustive-check equality; `lost_tp = 0` | enabling lowinfo (matching works without it) |
 | C-3 mutation/rebuild | R-1…R-15; §5 | 0 stale/orphan/missing; equal manifests; identical decisions | I-2 exit |
 | C-4 reconciliation ownership | H-1…H-8 | every item discovered within one backstop cycle; no cursor-before-work loss | I-3 exit |
@@ -1241,6 +1251,8 @@ for direction B is open (design §17).
 
 ### 13.14 ANN recall against the exact oracle, live index (§4)
 
+*Superseded by §13.17–§13.18 (latency cause fixed, `search_ef` 384, the §4 media-level metric measured as defined, direction B unsaturated); kept as the pre-fix record.*
+
 `ann_recall.py` against the 19x ACTIVE media generation (105,203 points,
 int8 HNSW m=32, rescoring, oversampling 2, `hnsw_ef = max(k, search_ef)`),
 exact = the same collection with `exact=true` + `quantization.ignore=true`
@@ -1255,6 +1267,8 @@ exact = the same collection with `exact=true` + `quantization.ignore=true`
 | memory within the 1.5 GiB limit | dev Qdrant at 105 k + 760 points: no OOM during the M3 runs | observed (not a gate measurement; E-R1 §13.5 governs) |
 
 ### 13.15 Verification workload and growth (§6): base, 10x, 19x
+
+*Superseded by §13.18 and §13.23 (`k_max_b` 4096: direction B DONE at every scale); kept as the pre-fix record.*
 
 Same harness, three keyspaces: base = L-PAIRS only (6,220 media points,
 §13.10), 10x = L-PAIRS + the first 500 SOAK items (`--soak-limit 500`,
@@ -1309,3 +1323,402 @@ DONE; live candidate recall 1.000; **deployed 2.1 = nested held-out = TP
 110 decisions stored and held. §5 procedure: tasks `WAITING_INDEX` while the
 index was deleted; rebuild 28 s; manifest digests equal for both roles;
 **decisions identical (110 / 110)**, every one re-proposed; recovery 0/0.
+
+---
+
+## Exit-gate completion pass (2026-10-18, second half)
+
+Sections §13.17–§13.25 record the pass that reproduced each failed or unrun
+M3 item on the current code, fixed root causes where the evidence allowed,
+and re-measured. Branch `p10-impl`; the commits are listed in the README.
+Environment as in §13 (Scylla 6.2.3, Qdrant 1.15.1 digest `d122138f…`,
+MinIO 2026-08-04, Redis 7.4.2, host 15 GiB / 12 CPUs, root and Docker
+storage on a **5400 rpm USB HDD** `sda` WDC WD5000LPVT; the machine's NVMe
+holds the owner's Windows partitions and was not used). Baseline I/O
+pressure of the idle crawler2 services during the benchmarks: ≈ 9 %
+(`/proc/pressure/io` avg10). Raw logs and per-run JSONs outside git:
+`~/anti_piracy/datasets/p10/runs/gate/`.
+
+**Reproduction first.** The 19x keyspace (`fingerprinter_soak_m3`, prefix
+`m3s`, 1,187 media subjects / 105,203 media points, 760 target points) was
+rebuilt from scratch with the **unchanged** code (`fe2ca46`):
+`m3_live.py --soak` (ingest 654 s, build + validation 883 s, matching
+544 s). Result identical to §13.13: all 7 direction-B runs INCOMPLETE
+`saturated_segments` (2–38 segments), nested held-out 876/203/1/5,492,
+L-PAIRS 110/40/0/330, recovery 0/0 (`runs/gate/m3-soak-repro.json`).
+
+### 13.17 ANN query latency and segment recall (P10-T1, §4) — PASS
+
+*Latency.* Reproduced on a scratch 8,829-point collection through the real
+`QdrantIndex`: single limit-10…24 queries p50 42–43 ms, limit ≥ 48 ≈ 1.6 ms.
+Isolation: the same requests on a raw socket answer in 0.3–0.7 ms for every
+limit (one or two `send`s, with or without `TCP_QUICKACK`), so Qdrant and
+the network were not the cause. `requests` sends `Accept-Encoding: gzip,
+deflate`; Qdrant 1.15.1 then gzips the response, and small compressed
+responses stall ≈ 40 ms. With `Accept-Encoding: identity`: p50 0.8 ms,
+p95 1.2 ms (limit 10). The earlier attribution (delayed-ACK/Nagle, §13.14)
+had the mechanism but not the trigger. **Fix:** the adapter sends
+`accept-encoding: identity` (loopback/backend link; decoded results are
+identical). Regression tests `test_adapter_requests_identity_encoding_unit`
+and `test_small_search_responses_uncompressed_and_fast`
+(`tests/p10/test_r24_qdrant_semantics.py`) fail on the old adapter and pass.
+
+*Segment recall.* On the freshly rebuilt 19x index the same harness then
+measured clip-segment recall@100 **0.938** (min 0.0) where §13.14 had 0.981
+on the earlier build — a real ANN miss, not a tie artefact (exact top score
+1.0 = the clip's own point, ANN best 0.33–0.99). Quantization ruled out
+(identical with `quantization.ignore`); the cause is HNSW reachability:
+with `hnsw_ef = k` (the old default `index.search_ef = None`) the greedy
+search does not enter the dense near-duplicate clusters SOAK-1000's
+re-encodes create, and the outcome varies between builds. Sweep (k = 10 /
+100, single queries, `runs/gate/`): ef 256 → 0.973 / 0.977; **ef 384 →
+0.992 / 0.995**; 512 and 768 add nothing; p95 at ef 384 ≤ 2.9 ms. **Fix:**
+`index.search_ef` default 384 (effective ef = max(k, 384)).
+
+*Acceptance run* (`ann_recall.py`, keyspace `fingerprinter_soak_m3`, ACTIVE
+media generation 105,203 points, int8 HNSW m=32, rescoring, oversampling 2,
+search_ef 384, run alone):
+`FINGERPRINTER_SCYLLA__KEYSPACE=fingerprinter_soak_m3 FINGERPRINTER_INDEX__COLLECTION_PREFIX=m3s env/bin/python benchmarks/p10-index/ann_recall.py --vectors ~/anti_piracy/datasets/p10/vectors --data ~/anti_piracy/datasets/p9 --out benchmarks/p10-index/results/ann-recall-live.json`
+
+| §4 criterion | Before (§13.14) | Now | Result |
+|---|---|---|---|
+| segment recall@100 ≥ 0.97 (760 film / 180 clip segments) | 0.999 / 0.981 | **0.9999 / 0.9949** (@10: 0.9995 / 0.9922) | PASS |
+| per-segment query p95 ≤ 10 ms (single REST requests, k = 10 and 100) | 43.9 ms (k = 10) | **2.72–3.39 ms** (p99 ≤ 3.71 ms) | PASS |
+| exact oracle vs numpy | — | max |Δscore| 1.5e-7 | — |
+
+Latency of the larger adaptive-k rounds (reported, not the criterion):
+p95 k=256 4.4 ms, 512 6.3 ms, 1024 10.7 ms, 2048 17.3 ms (exact brute force
+p50 ≈ 17 ms at k ≤ 100). Memory: no OOM on the dev instance (E-R1 governs
+capacity, §13.20).
+
+### 13.18 Direction B completion and ANN-vs-exact media recall in both directions (P10-T1, P10-T3, M3-2) — PASS
+
+*Why direction B saturated* (`direction_b_neighbours.py` →
+`results/direction-b-neighbours.json`, exact): SOAK-1000 re-samples the same
+7 films, so a target segment has many true copies. Media segments with
+cosine ≥ 0.70 per target segment:
+
+| Scale | media segments | p50 | p99 | max | segments > 512 | > 2048 | > 4096 |
+|---|---|---|---|---|---|---|---|
+| base | 5,460 | 6 | 99 | 131 | 0 | 0 | 0 |
+| 10x | 55,945 | 68 | 1,202 | 1,658 | 80 | 0 | 0 |
+| 19x | 104,443 | 127 | 2,309 | 3,208 | 135 | 18 | 0 |
+
+`k_max_b` 512 therefore *had* to saturate (the INCOMPLETE outcome was
+correct); this is a data property, not an ANN defect. Two bounded
+corrections were measured on the live 19x system (`m3_live.py --soak
+--rerun-targets`):
+
+| Policy | B runs | candidate recall vs provenance (B) | stored per run | hits per run | s per run | 2.1 decisions |
+|---|---|---|---|---|---|---|
+| `floor_b` 0.70, `k_max_b` 512 (old) | 7 INCOMPLETE | 0.9972 | 297–516 | — | — | as below |
+| `floor_b` 0.80 (= s_seg), `k_max_b` 2048 | 7 DONE | **0.9648** (< 0.99, §6 fails) | 192–501 | ≤ 48,832 | ≤ 1.5 | identical |
+| **`floor_b` 0.70, `k_max_b` 4096 (adopted)** | **7 DONE**, 0 saturated, 0 truncated | **0.9972** | 409–609 | ≤ 88,608 | ≤ 2.1 | identical |
+
+Raising the floor to `s_seg` loses **no** 2.1 confirmation (exact, all 7
+films: confirmed sets identical) but drops candidates the literal §6
+criterion counts, so it was not adopted; `k_max_b` 4096 covers the measured
+requirement (max 3,208) with floor and every other bound unchanged.
+**Guard added:** a candidate floor above the technique's `s_seg` would drop
+hits that can be part of a qualifying run (with the sintel fold's
+`s_seg` 0.70, floor 0.80 loses 3 confirmations): `matcher run` refuses to
+start with such a configuration and every search step re-checks it
+(`test_candidate_floor_above_s_seg_is_refused`). Bounds at 19x with the
+shipped defaults (`runs/gate/m3-soak-final.json`): hits ≤ segments × `k_max`,
+stored ≤ 609 ≪ `cap_B_total` 5,000, verification in pages of 200; no
+fallback, no exact search in the production path.
+
+*The §4 media-level metric was mis-measured.* `ann_recall.py` reported
+`|ANN ∩ exact| / |exact|` over **all** grouped candidates (relevant or not),
+for direction B only, under the saturating policy; §4 defines media-level
+candidate recall over **provenance-relevant** subjects, in both directions.
+The harness now measures the §4 definition and keeps the strict overlap as a
+diagnostic. Result (same run as §13.17):
+
+| Direction | Population | ANN recall vs provenance | exact recall vs provenance | ANN − exact | saturated (ANN / exact) |
+|---|---|---|---|---|---|
+| B (7 films, 1,079 relevant pairs) | 19x | 0.9972 pooled; per film 0.979–1.000 | 0.9972; per film identical | **0.000 for every film** | 0 / 0 |
+| A (1,079 labelled media items) | 760 target points | 0.9991 | 0.9991 | **0.000**; candidate sets identical for all 1,079 items | 0 / 0 |
+
+Criterion "ANN ≥ exact − 0.005 in both directions": **PASS**. The strict
+overlap of the *full* B candidate sets is 0.79–1.00 per film — ANN returns
+fewer **irrelevant** near-floor candidates than brute force; recorded, not
+a criterion. Direction-A live candidate recall 0.9991 also equals the
+exact-search emulation of §13.3.
+
+### 13.19 Level-5 equivalence (P10-T4, §8) — FAIL (recall 0.933 < 1.0), safe
+
+*Miss classification of `equiv/v1` on E-SET* (no tuning on E-SET): all 72
+misses are `coverage < 0.90`; 63 involve the H.264 400 kb/s or the VP9
+variant; 4 are pairs of **stream copies of one bitstream** (fMP4 vs MKV
+remux / 3 Mb/s) — the fMP4 container shifts timestamps by 0.083 s (2
+frames), the 5 s sampler picks other frames, and two segments at scene cuts
+fall to 0.68/0.73, so the run covers 17/19 = 0.895. Per film 0–22 of 45
+missed; per duration 37/150 (60–89 s), 31/135 (90–119 s), 4/15 (120 s).
+Cause: equivalence used 2.1's **matching** `s_seg` 0.80.
+
+*Separate tuning set.* `make_eset.py --avoid` (new option) builds **E-TUNE**
+(seed 9, prefix `t`): no excerpt overlaps any E-SET excerpt (or its 30 s
+shift) in source time; Coffee Run and Hero have no free time left after
+E-SET and were skipped, so E-TUNE = 20 excerpts × 8 items over 5 films
+(160 items, encoded with P9's production pipeline, CUDA FP32):
+`~/anti_piracy/datasets/p10/{e-tune,vectors/e-tune}`.
+
+*Versioned rule.* `EquivParams` gained an optional `segment` override used
+only by the equivalence run search; coverage ≥ 0.90, duration and offset
+rules are unchanged; `equiv/v1`'s digest is unchanged (test). Grid on
+E-TUNE only (`equiv_tune.py`, `s_seg` 0.80…0.55 × `max_gap` 1,2 × phase
+2.5/5 s, `vote_floor = s_seg − 0.10`, `s_mean = s_seg`); selection =
+maximum E-TUNE recall at zero E-TUNE false links, most conservative of the
+plateau → **`equiv/v2`: s_seg 0.65, vote_floor 0.55, max_gap 1, phase 2.5 s**
+(digest `e8c9d0bb…`). Then evaluated **once** on E-SET:
+
+| Set | Rule | Linked / equivalent pairs | Recall (Wilson 95 %) | False links / negatives |
+|---|---|---|---|---|
+| E-TUNE (selection) | v1 | 263 / 300 | 0.877 | 0 / 12,420 |
+| E-TUNE (selection) | **v2** | 292 / 300 (plateau from s_seg 0.65 down) | 0.973 | 0 / 12,420 |
+| **E-SET (held out)** | v1 | 228 / 300 | 0.760 | 0 / 12,420 |
+| **E-SET (held out)** | **v2** | **280 / 300** | **0.933 (0.899–0.956)** | **0 / 12,420** (120 shifted copies, 120 sub-clips, 12,160 other excerpts, 20 negative–negative) |
+
+The 20 remaining misses all pair a heavily compressed variant (400 kb/s or
+VP9) with another variant (coverage 0.85 in 15, 0.39 for one Sintel excerpt
+whose 400 kb/s copy is badly degraded); lower thresholds do not recover them
+(the plateau): the limit is the single-frame 5 s sampling under heavy
+compression (audit F-1), not a threshold. The closest negative under v2
+(`e06-hero-shift30` vs `e13-hero-fmp4-1s`, coverage 0.895/0.850) is two
+E-SET excerpts of the short film Hero that **overlap by 83 s at a 9.9 s
+offset** (true overlap 0.865/0.892) — a labelling-boundary case of the
+E-SET construction, correctly not linked by the ≥ 0.90 rule. Live path with
+`equiv/v2`: §13.23. **Outcome:** P10-T4 recall target 1.0 not met; zero false
+links is preserved. `matching.equivalence_rule` stays `equiv/v1` (the
+approved D13 (a) rule) until the owner decides; v2 is registered and
+selectable. Owner options: adopt v2 (0.933, 0 false links on this
+population), accept a documented compression class as out of scope, change
+the 0.90 coverage rule, or a denser-sampling spec (a P9-style decision). The
+claim is limited to 5 animated films (tuning) / 7 (held-out) of one reel.
+
+### 13.20 E-R1 diagnosis (P10-T6, P10-T10) — FAIL stands; blocked on hardware or an owner decision
+
+`e_r1_diag.py` (new; dedicated container `qdrant-e-r1d`, same image, 2 CPUs,
+no swap, fresh volume, removed afterwards): the 104,443 real vectors as
+target-role points (§13.3 collection configuration: int8 `always_ram`,
+on-disk float32 originals and payload, m=32), built under 1.5 GiB (168 s,
+volume 0.63 GB), then the cap lowered with `docker update`; per mode 300
+sequential single queries (limit 100, oversampling 2) after 50 warm-up, and
+the block-device reads per query (`/proc/diskstats` of `sda`):
+`~/anti_piracy/datasets/p10/venv/bin/python -I benchmarks/p10-index/e_r1_diag.py --vectors ~/anti_piracy/datasets/p10/vectors --device sda --caps 1536m,640m --out benchmarks/p10-index/results/e-r1-diag.json`
+(then `--caps 1536m,384m,256m`, stopped after the 384m modes:
+`results/e-r1-diag-evict.json`).
+
+| Cap (cgroup memory) | rescore + payload | rescore, no payload | no rescore, payload | no rescore, no payload |
+|---|---|---|---|---|
+| 1,536 MiB (anon 141, file 426 MiB) | p95 6.2 ms, 0.3 reads | 2.7 ms, 0.1 | 6.0 ms, 0.3 | 2.5 ms, 0.1 |
+| 640 MiB (anon 129, file 427 MiB — still fits) | 6.0 ms, 0.3 | 2.7 ms, 0.1 | 6.3 ms, 0.3 | 2.6 ms, 0.1 |
+| **384 MiB** (anon 126, file 249 MiB — working set evicted) | **p50 2,075 ms, p95 2,993 ms, 203 reads (900 KiB)** | p50 1,624, p95 2,408 ms, 160 reads | p50 5.5, p95 134 ms, 3.2 reads | **p95 2.5 ms, 0.1 reads** |
+
+Measured attribution: once the on-disk float32 originals no longer fit in
+the container's page cache (the 6-copy E-R1 state: ≈ 1.9 GB of originals vs
+≈ 0.8 GiB of cache), **rescoring's random reads of the originals dominate**
+(≈ 80 % of the reads), on-disk payload adds the tail, and int8 + HNSW alone
+stays at 2.5 ms; the device (≈ 100 random reads/s) is the limit. Not memory
+pressure on anon (no OOM, anon ≤ 0.15 GiB at 1 copy), not the index
+configuration, not an implementation defect. The 1-copy E-R1 *steady* phase
+(p95 154 ms, §13.5) is **not** explained by this: in isolation the same
+configuration gives 6.2 ms; its phase 5 followed the deletion of g1 and a
+rebuild with ≈ 7,700 re-UPSERTs, and optimizer/vacuum I/O on the same HDD is
+the likely cause — **not verified**. Rebuild-under-load (5.1 s p95) is the
+same disk contention.
+
+**Outcome:** E-R1 FAIL stands (no new full run: it cannot pass on this
+device); `index.max_points` stays the provisional **250,000**; no
+host-independent capacity claim. What is required, each an owner decision
+(D2/D3/D14): (1) an SSD/NVMe-backed index volume — the expected need is
+≈ 200 random 4 KiB reads per query at p95 ≤ 10 ms, i.e. ≥ 20,000 random
+reads/s, which any NVMe provides — then rerun `capacity_e_r1.py` at 6
+copies; or (2) a memory limit that holds the originals in page cache (≥ anon
++ originals + payload ≈ 3 GiB at 6 copies); or (3) originals in RAM / payload
+in RAM (D2 change, same memory need); or (4) rescoring off (int8 scores:
+changes ANN scores and candidate floors, needs its own recall measurement).
+No SSD-backed host was available in this session.
+
+### 13.21 Failure, recovery and consistency matrix (P10-T5, P10-T11)
+
+New real-stack tests (`tests/p10/test_matrix.py`, `test_lowinfo.py`
+additions; hooks and direct Qdrant calls as in §13.6), all **PASS** after the
+fixes below:
+
+| ID | What was shown |
+|---|---|
+| R-1 | nothing before the intent; the backstop writes it; with the intent LWT applied but its outcome unknown, the SERIAL re-read decides (one intent, `seq` 1) and **no Qdrant write precedes the row** (wrapper assertion on every upsert) |
+| R-7 (b) | target retired during its rebuild (DELETE s+1 to every routed generation) and the stale pass lands T's seq-s points in the new generation: the generation is never ACTIVE with T present; no match with T |
+| R-8 | builder killed during validation: generation stays VALIDATING, promotion refused; the next build adopts it, validates in full and promotes once |
+| R-9 | READY not promoted (crash before the LWT); live writes reach it; a validation older than `revalidate_after_s` is **not** promoted (back to VALIDATING, re-validated); two promotion attempts → exactly one, `active_epoch` +1 once — **found a defect**: `revalidate_after_s` was configured but never used (fixed) |
+| R-14 / R-19 | T retired, DELETE s+1 applied, stale UPSERT of seq s landed afterwards: a media task hitting T drops every candidate `subject_not_live`, no match; one verification removes the points; the DELETE row keeps `applied[g] = s+1` |
+| R-15 | response of an applied UPSERT dropped: retried, no duplicate points, `attempts` 1; a permanent 400 ⇒ `BLOCKED: permanent` with the error, no write |
+| R-18 | the stale seq-s write lands as separate points and never touches the seq s+1 points (count stays `segment_count`); the Redis lease does not fence it; verification leaves only s+1 |
+| G-3 | 5 points of a target deleted and one payload altered: verification opens an occurrence; the altered point's candidate is dropped `foreign_point`; after repair the pair is found, recovery 0/0 |
+| G-5 | every `representation.ready` hint replayed twice and a duplicate target observation: one task per (subject, kind), run 1, one decision per `match_id` |
+| G-6 | two concurrent `match retry`: DONE, the decision unchanged (one row) |
+| G-7 | two concurrent indexers of one subject: one point set, `seq` 1 |
+| G-8 | target retired, search before the DELETE applies: candidates dropped `subject_not_live`, no match; points removed afterwards |
+| G-13 | verification timeout on every candidate: each FAILED `verification_timeout` after `verify_retries`, run INCOMPLETE `verification_failed=n`, no decision, `match status` provisional — **found a defect**: in directions A/B a timed-out candidate stayed PENDING and the run could end **DONE** without verifying it (fixed: PENDING candidates are retried within the run; one still unverified counts as failed) |
+| K-3 | one content against two versions of a target: two rows, two MatchIds |
+| K-5 | a new technique version: a new row with a new MatchId; the old row unchanged |
+| K-7 | crash after the `matches` row (reverse rows absent at the crash point): the intents pass completes `matches_by_id`/`matches_by_target`, no duplicate, no intent left |
+| CAP-2 / CAP-6 | a FAILED generation with its collection is counted (holder kept); after `index drop --generation` the audit releases it; promotion leaves the ledger unchanged; retirement alone does not lower it; the next audit does, never below Σ exact counts |
+| CAP-7 | a subject BLOCKED on capacity is applied once capacity is released — **finding (not changed):** per design §13.3 an admitted generation stays counted at `max(holder, count)` until RETIRED, so retiring a target *inside* it frees nothing; release happens through generation turnover (rebuild → old generation retired → audit), which the test exercises. Reclaiming freed points of a live generation would change the approved ledger semantics: an owner/design decision |
+| CAP-8 (unit) | **found a defect**: any non-empty `max_points_evidence` string unlocked a non-provisional limit; now it must be a readable, passing, gate-eligible E-R1 report whose measured total ≥ `max_points` |
+| H-6 | 150 rows, one row per page: the scan interrupted mid-cycle with cursors persisted; a fresh scanner is refused while the old lease lives, takes over after expiry, resumes from the cursors and the cycle visits every row (visit log) |
+| H-7 | targets registered/retired with no stream event reaching P10: found by the targets scan; `target_set_rev` +1 per change, not per scan |
+| H-8 | hint reader stopped: all 200 READY items get an index entry and a task within the first backstop cycle |
+| L-5 | repeated observation of an unchanged target set does not bump the revision; one change bumps once |
+| L-11 | a target sharing the ident registered but unobserved: no flag names it, no new exclusion |
+| L-15 | payload `lowinfo` true with no record flag ⇒ eligible; payload false with a flagged record ⇒ eligible (the record decides; a payload never excludes) |
+| floor guard | `floor_b` 0.85 > `s_seg` 0.80: `matcher run` refuses to start, the per-step check refuses, no candidate rows; with the floor at 0.80 the same tasks finish DONE |
+
+Also found while running them: a task that crashes on every claim kept
+`matcher_loop(until_idle=True)` spinning (a crash counted as progress) —
+fixed (only harness/test draining used it).
+
+**Still not run** (each needs new fault hooks or a second host): R-7 (a) (kill the catch-up pass itself), R-10 (proxy
+delaying a search step past its deadline), R-21 (reconciler killed mid
+verification pass), the c*/d* variants of R-26 and j*/v* of R-27/R-29
+beyond those of §13.6, L-2, L-3, L-7…L-10, L-14 (lifecycle part), K-4,
+CAP-4 (bypass attempts), CAP-9 (continuous-audit race), V-1 across two
+hosts. These are **NOT RUN**, not passed.
+
+### 13.22 Calibration (P10-T8, §3.3) — reproduced; UNAVAILABLE stands (labelled-data blocker)
+
+`tune_eval.py` re-run on the same inputs (`runs/gate/tune-eval-repro.json`,
+`OMP_NUM_THREADS=1`): the parameter digest, the held-out confusion and the
+outer reliability are **identical** to `results/tune-eval.json`; status
+UNAVAILABLE. The check implements §3.3 literally (equal-mass bins, film-level
+bootstrap of the mean predicted probability, ≥ 10 per bin); no leakage was
+found (calibration maps are fitted on inner out-of-fold scores of the six
+training films only). Diagnostic added (not a status input): the same check
+restricted to the **confirmed** held-out decisions — the only ones whose
+confidence would ever be published — 877 decisions, 876 true: calibrated
+Brier 0.0088 vs constant predictor 0.0011; lowest bin predicted 0.82,
+observed 1.00 (under-confident). Neither reading passes. Cause: the labelled
+population contains almost no false confirmations (1 of 877) and only 7
+films, so there is no signal to calibrate confirmed-decision confidence; the
+map fitted over all proposed pairs mis-states the low bins (predicted 0.11–
+0.27 vs observed 0.05–0.09). **Not fixable without new labelled data**
+(hard negatives that reach confirmation, more films, live action); the
+publication gate stays closed: technique 2.1 UNAVAILABLE, `publish-held`
+refuses (K-8/K-10 tests), no CLI flag or fallback publishes an uncalibrated
+confidence. Owner decision also needed on the meaning of "proposed,
+verified match" (all verified candidates vs confirmed decisions, D9).
+
+### 13.23 Final live runs with the shipped defaults (P10-T2, P10-T3, M3-1, M3-2, P10-T4 live)
+
+Code of commit `2c62405` with the harness changes committed afterwards in `cfe5137` (the runs used that working tree); each in a fresh
+`*_m3` keyspace with its own collection prefix; `m3_live.py --data
+~/anti_piracy/datasets/p9 --vectors ~/anti_piracy/datasets/p10/vectors …`.
+
+| Run | Corpus (media points) | Tasks | Direction-B runs | Nested held-out TP / FN / FP / TN (P, R) | B candidate recall vs provenance | Other | File |
+|---|---|---|---|---|---|---|---|
+| 19x (`--soak --rerun-targets`, keyspace `fingerprinter_soak_m3`) | 1,187 subjects, 105,203 | 1,187 A DONE, 7 B DONE | 0 saturated, 0 truncated, stored 409–609, hits ≤ 88,608, ≤ 2.1 s | L-PAIRS 110 / 40 / **0** / 330 (1.000, 0.733); pooled 876 / 203 / 1 / 5,492 (0.9989, 0.812) | 0.9972 | 1,574 decisions held, 0 events; recovery 0/0; ledger 111,262 ≥ 105,963 resident | `results/m3-live-soak-final.json` |
+| 10x (`--soak --soak-limit 500`, `fingerprinter_g10_m3`) | 687 subjects, 55,945 | 687 A DONE, 7 B DONE | 0 saturated, stored 239–347, ≤ 1.7 s | L-PAIRS 110 / 40 / 0 / 330; pooled 504 / 114 / 0 / 2,901 (1.000, 0.816) | 0.9984 | ingest 124 s, build 273 s, match 209 s | `results/m3-live-g10-final.json` |
+| §5 corpus (`--soak --soak-limit 200 --drop-rebuild --exact-rerun`, `fingerprinter_s5_m3`) | L-PAIRS + 200 SOAK, 24,377 | 387 A + 7 B DONE | DONE | L-PAIRS 110 / 40 / 0 / 330; pooled 276 / 62 / 0 / 1,372 | 1.000 (A ∪ B) | see below | `results/m3-live-s5-drop-rebuild-exact.json` |
+
+Base scale is covered by the L-PAIRS rows (and §13.16: 7 B runs DONE).
+Before this pass the 10x run had 6 of 7 and the 19x run 7 of 7 direction-B
+runs INCOMPLETE (§13.15).
+
+**§5 drop and rebuild on the plan's corpus (L-PAIRS + 200 SOAK): PASS.**
+Collections deleted ⇒ the probe task `WAITING_INDEX` (no decision, no
+fallback; the verification pass failed loudly with typed 404s); rebuild of
+both roles 83 s, validated and promoted; **manifest digests equal** for both
+roles; **403 / 403 decisions identical**, every one re-proposed; recovery
+0/0. **Exact-search configuration** (`--exact-rerun`: every task re-run with
+every search forced `exact` + `quantization.ignore`, a harness wrapper — no
+production flag): 394 tasks DONE, decisions identical, 0 new decisions, 0
+recorded divergences, 100 % re-proposed. Together with §13.16 (L-PAIRS,
+110/110) this completes §5 (a) and (b) in both configurations.
+
+**Live equivalence with `equiv/v2`** (`FINGERPRINTER_MATCHING__EQUIVALENCE_ENABLED=true
+FINGERPRINTER_MATCHING__EQUIVALENCE_RULE=equiv/v2 eset_eval.py --live`,
+keyspace `fingerprinter_eq_m3`): 160 tasks DONE; **280 / 300 linked, 0 /
+12,420 false links** — identical to offline; every link in both orientations
+under link version `2.1+equiv/v2` with the rule digest in its evidence;
+revocation REVOKED in both orientations and stays so after re-running both
+subjects, evidence kept (`results/e-set-live-v2.json`).
+
+### 13.24 Gate interpretation: low-information filter, multi-host, V1 baseline scope, rebuild integrity
+
+*Authoritative sources.* The M3 exit gate of record is crawler2
+`docs/v2-phase-plan.md` §P10 (read only): **"precision/recall ≥ V1
+fingerprinter on the labeled set; new target matched against historical media
+without re-encoding"**, with the tests it names (labelled set vs V1, ANN
+recall@k vs brute force, drop-and-rebuild identical results, verification
+workload bounded at 10×, P8's different-encoding set linked). This plan
+(§2–§10) elaborates them; §11 lists them as P10-T1…T11.
+
+*Low-information filter (P10-T9).* §3.4: "Otherwise the filter is not enabled
+(`lowinfo` off is a valid configuration)"; §11a C-2/C-9: blocks "enabling
+lowinfo (matching works without it)"; decisions P10-D8: "enabled only if the
+offline oracle comparison shows `lost_tp = 0`". The adoption gate is therefore
+a gate on **enabling** the filter, not on M3. The earlier §11 listed it among
+"gates that failed" for M3 — that was the inconsistency; it is corrected in
+§11 (status: *not adopted — filter disabled, a valid configuration*). Verified:
+with `matching.lowinfo_enabled = false` (production default) `usable_flags`
+returns the empty set and `hit_excluded` excludes nothing (code path checked;
+every L-test enables the filter only in its test configuration); unknown,
+partial, stale or failed witness checks fail closed (L-4, L-12, L-13, L-15,
+L-16). Measured effect unchanged: 12 of 760 target segments flagged (< 20,
+benefit not established), `lost_tp` = 1. A future adoption attempt needs ≥ 5
+further openly licensed works with shared idents/credits (§3.4), then the
+`tune_eval.py` comparison with `lost_tp = 0`.
+
+*Multi-host.* The plan requires multi-host **accessibility** of the index
+("a requirement, not a tiebreaker" — met by design: a network service,
+Scylla-authoritative state, epoch/LWT fencing; G-14 simulated two hosts in one
+machine). Real multi-host validation and network partitions are listed as P14
+in this plan's test classes and in design §16; M3 does not require them. Not
+claimed.
+
+*V1 baseline scope (P10-T7, M3-1).* Unchanged and verified against the result
+files: the V1 **end-to-end** worker ran on L-PAIRS only (TP 34 / FN 116 / FP 0
+/ TN 330, `results/v1-e2e-l-pairs.json`); V1 matcher on V2 vectors on
+L-PAIRS 37/113/0/330 and on N-SOAK 447/482/7/5,156 (`results/tune-eval.json`).
+P10 nested held-out L-PAIRS 110/40/0/330 (live 19x run, this pass, identical
+to §13.16), pooled 876/203/1/5,492. A V1 end-to-end N-SOAK run is still
+infeasible on this host (≈ 137 h of video decoded per target × 7); the plan's
+§2.1 asks for it on N-SOAK too, so M3-1's N-SOAK comparison is against V1 on
+V2 vectors only — recorded limitation, not a pass, and an owner scoping
+question. The population is 7 animated films of one reel: no claim about
+live action or a production corpus.
+
+*Rebuild and integrity (P10-T2, §5).* Verified in code and tests: decisions
+are made by `verify()` on SHA-verified artifacts loaded from the object store
+(V-1), never on Qdrant vectors or scores; every candidate is checked against
+authoritative P9 liveness before verification (`subject_not_live`, R-14, G-8)
+and against its point identity (`foreign_point`, G-3); a dropped index makes
+tasks wait (`WAITING_INDEX`, no decision, no fallback — R-20, §13.16, G-1);
+a rebuilt generation is not searched before validation and the single
+promotion LWT (R-8, R-9); manifest digests are computed from canonical
+payloads (N-17) and equal the artifact-only digest. Executed: §13.23.
+
+### 13.25 Final test runs and cleanup
+
+- `. scripts/p10-env.sh && env/bin/python -m pytest -p no:cacheprovider tests/p10 -q -rf`
+  — **105 passed, 0 failed** (29 min 14 s; integration on the real Scylla
+  6.2.3, Qdrant 1.15.1, MinIO, Redis): the 75 of §13.6–§13.12 plus 30 new
+  (§13.17 latency regression ×2, §13.18 floor guard, §13.19 equivalence
+  versioning ×2, §13.21 matrix ×22, L-5/L-11/L-15). Log:
+  `runs/gate/suite-p10.log`.
+- P9 unit suite unchanged: `env/bin/python -m pytest -p no:cacheprovider tests/v2 -q`
+  (integration environment not set, as in §13.6) — **100 passed**, 118
+  skipped. No file under P9's modules, `tests/v2`, V1 (`matching/`,
+  `worker/`, `old/`) or the contract package changed; crawler2's working
+  tree is clean (last commit 2026-10-15).
+- Cleanup (only what this pass created, each checked before deletion):
+  Qdrant collections `m3s_*`, `m3g_*`, `m3f_*`, `m3e_*` and the leftovers of
+  three test runs stopped mid-way; keyspaces `fingerprinter_soak_m3`,
+  `fingerprinter_g10_m3`, `fingerprinter_s5_m3`, `fingerprinter_eq_m3`,
+  `fingerprinter_it_p10`; buckets `fp-it10-*` and three `fp-it-<tag>-*`
+  pairs; containers/volumes `qdrant-e-r1d` (removed by the harness, or by
+  hand after the stopped second diagnosis). The dev Qdrant container is
+  running and empty. Datasets built here stay outside git:
+  `~/anti_piracy/datasets/p10/{e-tune,vectors/e-tune,runs/gate}`.

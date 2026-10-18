@@ -43,6 +43,26 @@ here:
 - P10-D9: technique 2.1 has calibration status UNAVAILABLE (validation
   §13.3), so its decisions are stored and held, never published.
 
+Exit-gate completion pass (2026-10-18, validation §13.17–§13.25), within the
+authorization (provisional values tuned by measurement; nothing frozen
+touched; no threshold of an acceptance criterion changed):
+
+- P10-D6: `k_max_b` 512 → **4096** (measured requirement 3,208 at 19x;
+  floor 0.70 unchanged) and `index.search_ef` → 384 (D2 search parameter);
+  a candidate floor may never exceed the technique's `s_seg` (start-up and
+  per-step check). Direction B completes at 19x; §4 and §6 pass.
+- P10-D13 (a): `equiv/v1` unchanged and still the default; **`equiv/v2`**
+  (equivalence-only segment parameters, tuned on the disjoint E-TUNE) is
+  registered as an immutable rule version; adopting it is an owner decision
+  (§6 below). E-SET recall 0.933 with v2, 0.760 with v1; 1.0 not met.
+- P10-D14: E-R1 FAIL stands; diagnosis attributes it to random reads of
+  on-disk originals on the HDD (validation §13.20); `max_points` stays
+  250,000; CAP-8 now requires a passing E-R1 report file as evidence.
+- P10-D9: calibration evaluation reproduced exactly; UNAVAILABLE stands
+  (labelled-data blocker, §13.22).
+- P10-D8: unchanged — not enabled; the adoption gate blocks enabling the
+  filter, not M3 (validation §3.4, §11a; §13.24).
+
 ## 1. Decision register
 
 | ID | Decision (proposed) | Alternatives considered | Basis | Status |
@@ -154,3 +174,18 @@ outstanding work, gate) is design §19. Decision impact:
 
 No decision was approved by any correction; no new decision was needed
 for C-8…C-15 (each changes or clarifies an existing one).
+
+## 6. Owner decisions required after the exit-gate pass (2026-10-18)
+
+Each is needed for a gate that cannot pass on the evidence available in
+this environment; none was taken here (validation §11, §13.17–§13.25).
+
+| # | Decision | Blocks | Options (measured basis) |
+|---|---|---|---|
+| O-1 | Index storage / memory for E-R1 (D3, D14, D2) | P10-T6, P10-T10 (M3 per §11) | SSD/NVMe-backed index volume (≥ ≈ 20,000 random reads/s) and rerun E-R1 at 6 copies; or a memory limit holding the originals (≈ 3 GiB at 6 copies); or originals/payload in RAM; or rescoring off (needs its own recall run); or a different latency criterion. §13.20 |
+| O-2 | Level-5 equivalence recall target (D13) | P10-T4 | adopt `equiv/v2` (0.933, 0 false links) and accept the measured compression class as a documented limit; change the 0.90 coverage rule; a denser-sampling spec (P9-style); or keep 1.0 and leave P10-T4 failing. §13.19 |
+| O-3 | Calibration data and the meaning of "proposed, verified match" (D9) | publication of `match.found` (P10-T8) | label hard negatives that reach confirmation, more films, live action; decide whether confidence is calibrated over all verified candidates or over confirmed decisions. Publication stays held until then. §13.22 |
+| O-4 | V1 end-to-end baseline on N-SOAK (D17) | full M3-1 scope | fund the ≈ 137 h × 7 targets run, or formally scope M3-1's N-SOAK comparison to V1-on-V2-vectors. §13.24 |
+| O-5 | Capacity release inside a live generation (§13.3) | none (efficiency) | keep (freed points released at generation turnover) or redesign the audit bound for ACTIVE generations. §13.21 CAP-7 |
+| O-6 | P9 `publisher republish --stream <other>` re-emits target.retired envelopes into the named stream (observed, P9 code, not changed) | none for P10 (P10 publication is separate and gated) | fix in a P9 change |
+

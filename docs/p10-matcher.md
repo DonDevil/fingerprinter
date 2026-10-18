@@ -7,7 +7,7 @@ mutation/recovery protocol and the P10 reconciler. The design of record and
 all evidence are in [`phases/p10-vector-index-matcher/`](phases/p10-vector-index-matcher/README.md);
 executed results are only in its `validation.md` §13.
 
-**Status (2026-10-18): implemented; 75 integration/unit tests pass on the real stack; M3 not passed** (gates and evidence: `validation.md` §11, §13).
+**Status (2026-10-18, after the exit-gate pass): implemented; 105 integration/unit tests pass on the real stack; M3 not passed** (gates and evidence: `validation.md` §11, §13; owner decisions: `decisions.md` §6).
 
 ## 1. Boundaries
 
@@ -42,8 +42,23 @@ P10 sections: `index` (Qdrant URL/key, capacity ledger, generation timing),
 `matching` (candidate policy, verification, tasks, publication) and
 `matcher_reconcile` (backstop scans, repairs, audits). Start-up refuses
 inconsistent bounds (e.g. `index.max_points` other than the provisional
-250,000 without `index.max_points_evidence`, `drain_grace_s` below
-`2 × active_ttl_s + task_lease_s`, `k0 > k_max`).
+250,000 unless `index.max_points_evidence` is the path of a **passing,
+gate-eligible E-R1 report** whose measured total is ≥ the value (CAP-8),
+`drain_grace_s` below `2 × active_ttl_s + task_lease_s`, `k0 > k_max`, an
+unknown `matching.equivalence_rule`). `matcher run` also refuses to start
+when a candidate floor exceeds the configured technique's `s_seg` (a floor
+above `s_seg` would drop confirmable pairs).
+
+Values changed by the 2026-10-18 exit-gate pass (validation §13.17–§13.19):
+`index.search_ef` 384 (minimum HNSW ef; with ef = k, queries inside dense
+near-duplicate clusters missed their own neighbourhood), `matching.k_max_b`
+4096 (a target segment of a much-copied film has up to 3,208 true
+neighbours ≥ 0.70 at 19x; 512 saturated every direction-B run), and the
+adapter requests uncompressed responses (`accept-encoding: identity`;
+gzip made small searches take ≈ 40 ms). `matching.equivalence_rule`
+selects an immutable equivalence rule version (`equiv/v1` default,
+`equiv/v2` registered; links of a non-v1 rule are keyed
+`<technique>+<rule>`).
 
 ## 4. Tests
 
@@ -70,9 +85,12 @@ only with distinct `FINGERPRINTER_INDEX__COLLECTION_PREFIX` values (design
 | `benchmarks/p10-index/tune_eval.py` | I-1 (b–d): nested film-grouped tuning, calibration, lowinfo oracle comparison |
 | `benchmarks/p10-index/capacity_e_r1.py` | E-R1: capacity boundary on a dedicated `qdrant-e-r1` container (isolated venv) |
 | `benchmarks/p10-index/corpus.py` | L-PAIRS / N-SOAK populations, film folds, Wilson intervals |
-| `benchmarks/p10-index/m3_live.py` | I-5: ingest through P9, index, production matcher, nested evaluation on live candidates, `--drop-rebuild`, `--soak [--soak-limit N]`, `--rerun-targets`, `--rerun-all` (dedicated `*_m3` keyspace) |
-| `benchmarks/p10-index/ann_recall.py` | §4: segment recall@k and direction-B candidate recall, ANN vs exact, latency |
-| `benchmarks/p10-index/make_eset.py`, `eset_eval.py`, `p8_set.py` | §8: E-SET build, offline/live `equiv/v1`, P8's 6 s set |
+| `benchmarks/p10-index/m3_live.py` | I-5: ingest through P9, index, production matcher, nested evaluation on live candidates, `--drop-rebuild` (`--exact-rerun`: every task re-run with brute-force search, harness-only), `--soak [--soak-limit N]`, `--rerun-targets`, `--rerun-all` (dedicated `*_m3` keyspace) |
+| `benchmarks/p10-index/ann_recall.py` | §4: segment recall@k, per-query latency, media-level candidate recall in both directions (ANN vs exact, provenance-relevant subjects) |
+| `benchmarks/p10-index/direction_b_neighbours.py` | §6/§13.18: exact neighbour counts per target segment at base/10x/19x; floor comparison with 2.1 |
+| `benchmarks/p10-index/e_r1_diag.py` | §13.20: which reads make a query slow (rescore × payload at lowered memory caps), dedicated `qdrant-e-r1d` container |
+| `benchmarks/p10-index/make_eset.py`, `eset_eval.py`, `p8_set.py` | §8: E-SET (and the disjoint E-TUNE with `--avoid`), offline/live equivalence (configured rule), P8's 6 s set |
+| `benchmarks/p10-index/equiv_tune.py` | §13.19: equivalence-only segment parameters tuned on E-TUNE, evaluated once on E-SET |
 
 Exact command lines are in `validation.md` §13. Vector caches, per-pair logs
 and per-second samples stay outside git in `~/anti_piracy/datasets/p10/`.

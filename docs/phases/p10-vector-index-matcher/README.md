@@ -1,34 +1,45 @@
 # P10 — vector index and matcher (milestone M3)
 
-Status (2026-10-18): **IMPLEMENTATION COMPLETE FOR THE APPROVED DESIGN; M3 NOT
-PASSED.** Implemented under the operator's authorization (decisions.md §0).
-Executed evidence is recorded only in
-[validation.md §13](validation.md#13-execution-record-implementation-phase-from-2026-10-18);
-the M3 checklist is [validation.md §11](validation.md#11-m3-exit-checklist-filled-2026-10-18-from-13);
-the local operator guide is [`docs/p10-matcher.md`](../../p10-matcher.md);
-implementation notes and design corrections found by testing are design §20.
+Status (2026-10-18, after the exit-gate completion pass): **IMPLEMENTATION
+COMPLETE; M3 NOT PASSED** — two gates fail on measurement (level-5
+equivalence recall; E-R1 on the HDD dev host) and the rest is blocked on
+owner decisions, labelled data or unrun cases. Implemented under the
+operator's authorization (decisions.md §0). Executed evidence only in
+[validation.md §13](validation.md#13-execution-record-implementation-phase-from-2026-10-18)
+(this pass: §13.17–§13.25); the gate table is
+[validation.md §11](validation.md#11-m3-exit-checklist-updated-2026-10-18-after-the-exit-gate-pass-1317-1325);
+owner decisions needed: [decisions.md §6](decisions.md#6-owner-decisions-required-after-the-exit-gate-pass-2026-10-18);
+local operator guide [`docs/p10-matcher.md`](../../p10-matcher.md);
+implementation notes design §20 (N-1…N-24).
+
+| Gate (validation §11) | Status | Key measurement |
+|---|---|---|
+| M3-1 P/R ≥ V1, zero FP | **PASS** (measured populations) | L-PAIRS 110/40/0/330 (R 0.733) vs V1 R 0.247 / 0.227; pooled P 0.9989 / R 0.812 vs V1-on-V2 P 0.9857 / R 0.449 |
+| M3-2 new target vs history, no re-encode | **PASS** | direction B DONE at base/10x/19x (was INCOMPLETE); B candidate recall 0.9972 |
+| P10-T1 ANN recall + latency | **PASS** | segment recall@100 0.9999 (film) / 0.9949 (clip); media-level ANN = exact in both directions; p95 ≤ 3.4 ms (was 43.9 ms) |
+| P10-T2 drop/rebuild | **PASS** | manifests equal; decisions identical with ANN and exact search (403/403, 110/110) |
+| P10-T3 growth bounds | **PASS** | bounds hold; no saturation up to 19x (`k_max_b` 4096) |
+| P10-T4 equivalence | **FAIL** | `equiv/v2` 280/300 (0.933), `equiv/v1` 228/300; 0/12,420 false links |
+| P10-T5 failures G-* | **PASS** (single host) | all G-1…G-15; real multi-host is P14 |
+| P10-T6 / T10 E-R1 | **FAIL → BLOCKED** (O-1) | disk-bound rescoring on the HDD, reproduced at 1 copy (6 ms → 2,993 ms p95); `max_points` stays 250,000 |
+| P10-T7 V1 end to end | PASS (L-PAIRS); N-SOAK NOT RUN (O-4) | TP 34, FP 0 |
+| P10-T8 calibration | **BLOCKED** (data, O-3); publication held | reproduced exactly: UNAVAILABLE |
+| P10-T9 lowinfo adoption | not adopted — filter disabled (valid; not an M3 gate) | 12 flagged, `lost_tp` 1 |
+| P10-T11 crash/scan/identity/capacity | **PARTIAL** | unrun: R-7 (a), R-10, R-21, R-26/27/29 variants, L-2/3/7…10/14, K-4, CAP-4, CAP-9 |
 
 | Status | P10 (2026-10-18) |
 |---|---|
-| decisions | D1–D20 approved for implementation; D12, D13 (b) deferred; D8 implemented, not enabled (gate failed); D9: technique 2.1 calibration UNAVAILABLE (held); D14 provisional 250,000 — E-R1 **failed** |
-| implemented | vector index adapter + dev service, generations, mutation protocol, builder/validation/promotion, capacity ledger, recovery protocol, reconciler, discovery, run-fenced tasks in both directions + media↔media, verifier `temporal/v2`, `equiv/v1`, technique registry, held `match.found` 1.0, CLI |
-| tests | 75 integration/unit tests pass on the real Scylla 6.2.3, Qdrant 1.15.1, MinIO, Redis; P9 unit suite unchanged (100 pass) |
-| passes | R-24; Scylla LWT forms incl. §9a.4; M3-1 (live, held-out: L-PAIRS P 1.000 / R 0.733, 0 FP vs V1 R 0.247; pooled P 0.9989 / R 0.812 vs V1 P 0.9857 / R 0.449); M3-2; drop/rebuild (executed scope); growth bounds; segment recall@100 ≥ 0.97 |
-| fails | E-R1 (query latency on the HDD dev host under 1.5 GiB); single-query latency criterion; direction-B ANN-vs-exact candidate recall while saturated; E-SET equivalence recall 0.76 (target 1.0); calibration reliability; lowinfo adoption |
-| known limits | direction B saturates at `k_max` 512 from 10x (runs INCOMPLETE); 7 animated films from one reel; V1 end-to-end not run on N-SOAK; single-node Scylla; real multi-host is P14 |
+| decisions | D1–D20 approved for implementation; D12, D13 (b) deferred; D6 values re-tuned by measurement (`k_max_b` 4096, `search_ef` 384); D8 implemented, not enabled; D9: technique 2.1 UNAVAILABLE (held); D13 (a): `equiv/v1` default, `equiv/v2` registered (owner decision); D14 provisional 250,000 — E-R1 **failed** |
+| implemented | vector index adapter + dev service, generations, mutation protocol, builder/validation/promotion (with revalidation), capacity ledger (CAP-8 evidence check), recovery protocol, reconciler, discovery, run-fenced tasks in both directions + media↔media, verifier `temporal/v2`, versioned `equiv/v1`/`equiv/v2`, technique registry, held `match.found` 1.0, CLI |
+| tests | 105 integration/unit tests pass on the real Scylla 6.2.3, Qdrant 1.15.1, MinIO, Redis (validation §13.25); P9 unit suite unchanged (100 pass) |
+| known limits | 7 animated films from one reel (equivalence tuning: 5); V1 end-to-end not run on N-SOAK; single-node Scylla; HDD dev host; real multi-host is P14 |
 
-**Implementation and validation status per step.**
-
-| Step | Status | Evidence | Remaining |
-|---|---|---|---|
-| I-1 (a) V1 end-to-end baseline | **done** (L-PAIRS): TP 34, FP 0, R 0.227 | validation §13.4 | N-SOAK not run (cost; limitation recorded) |
-| I-1 (b–d) verifier, tuning, calibration, lowinfo offline | **done** | §13.3, `results/tune-eval.json` | calibration UNAVAILABLE, lowinfo not adopted (measured outcomes) |
-| R-24 / L-14 / Scylla LWT semantics / §9a.4 | **pass** | §13.1–§13.2 | — |
-| E-R1 capacity experiment | **FAILED** (latency) at 6 and 1 copies | §13.5 | operator decision (index host, memory limit or latency criterion) |
-| I-2 index, generations, mutations, reconciler, capacity | **implemented, tested** | §13.6, §13.12 | unrun R-/CAP- variants (§11) |
-| I-3 tasks, both directions, persistence, held publication, recovery | **implemented, tested** | §13.6–§13.8 | calibration for publication |
-| I-4 equivalence | **implemented, tested**; recall target not met | §13.9, §13.11 | equivalence-specific parameters (a new technique version) |
-| I-5 failure injection, growth, M3 | **run**; M3 not passed | §11, §13.10, §13.13–§13.15 | the failed and unrun items of §11 |
+Exit-gate completion pass commits (local branch `p10-impl`, not pushed):
+`3e52357` ANN latency and segment recall; `1142b04` direction B completes
+(`k_max_b` 4096, floor guard); `8792515` failure-matrix tests and the three
+defects they found (G-13, R-9, CAP-8); `2c62405` versioned equivalence rule
+`equiv/v2`; `cfe5137` benchmark harnesses and evidence; followed by the
+documentation commit that adds this paragraph.
 
 **History of the design review.** Status (2026-10-17): **IN DESIGN REVIEW.** Audit complete; design proposed;
 no decision approved; nothing implemented; M3 not passed. P9 is complete for

@@ -2366,7 +2366,24 @@ between hosts and the index, and real machines are **P14**.
   duplicated corpora this can make many direction-B runs INCOMPLETE (audit:
   228 of 760 target segments saturated at `k_max` 512 on the 19× corpus);
   `k_max` and the floor must be tuned so that saturation is rare at the
-  expected growth — measured in I-1/§6, not assumed.
+  expected growth — measured in I-1/§6, not assumed. *Measured (validation
+  §13.18):* exact neighbours ≥ 0.70 per target segment reach 3,208 at 19×;
+  `k_max_b` is 4096, so direction B completes at 19× and saturation returns
+  (honestly INCOMPLETE) once a target segment has > 4,096 copies — the
+  bound grows with the number of copies of one film, not with the corpus.
+- Level-5 equivalence misses heavily compressed variants (H.264 400 kb/s,
+  VP9 at 480p) whose sampled frames fall below the run threshold at scene
+  cuts: `equiv/v2` 280/300 on the held-out E-SET, 0 false links
+  (validation §13.19); 1.0 would need denser sampling (audit F-1) or a
+  coverage-rule change — owner decisions.
+- Capacity freed inside a live generation (a retired subject's points) is
+  released only when that generation is retired: the audit counts a
+  generation with an admission holder at `max(holder, count)` (§13.3);
+  found by CAP-7 (validation §13.21), not changed.
+- On a rotating disk, rescoring's random reads of the on-disk originals
+  bound query latency once the originals no longer fit the page cache
+  (validation §13.20): the index volume needs SSD-class random-read rates
+  (≥ ≈ 20,000 random reads/s) or memory for the originals.
 - The first committed decision of a `match_id` is final for its technique
   version; a later run that would decide differently (only possible through
   a different low-information exclusion set) is recorded, not applied (§9.3).
@@ -2513,3 +2530,11 @@ reviewer should know, it is listed here (none weakens an invariant):
 | N-15 | a lost DRAINING collection | writes routed to it wait (`WAITING_INDEX(missing)`) until the reconciler retires it (search horizon + `drain_grace_s`, after the durable unauditable-fallback occurrences) — "not found" is a no-op only once Scylla says RETIRED/FAILED (§12.2) | observed in the M3 drop/rebuild: new subjects waited up to ≈ 17 min (default grace 900 s); conservative by design, an availability cost after a whole-index loss, recorded as a known limitation |
 | N-16 | validation capacity check (§12.5) | **corrected**: "exact count of g ≤ `reserved_points`" fails a correctly accounted generation that grew during its build, because live writes reserve their own points in the ledger (§13.3); the failing condition is now "ledger `reserved` ≥ Σ exact counts of every non-RETIRED collection", and an overflow of the admission holder is reported as a validation warning | found by R-12 (34 points > admission 31 with the ledger covering them); the safety property (no point resident without a reservation) is unchanged |
 | N-17 | content digest of payload floats (§12.5) | **corrected**: payload floats enter the digest at 1e-6 precision and `t` is written rounded to 1e-6 | found by the 19x M3 build: 2 of 1,187 subjects failed validation because Qdrant 1.15.1 returned the payload float `t` one ulp off (105.04166666666667 → 105.04166666666669); R-24 (vii) had verified vectors only. Vectors stay compared bit for bit; `t` is provenance (matching reads `pts_s` from artifacts) |
+| N-18 | adapter `accept-encoding` | **corrected**: `identity` (requests asks for gzip; Qdrant 1.15.1 gzips search responses and small ones stall ≈ 40 ms) | found by the §4 latency reproduction (validation §13.17): the earlier "40 ms plateau" (§13.14) was this; results unchanged |
+| N-19 | `index.search_ef` | **changed**: default 384 (ef = max(k, 384)); with ef = k clip-segment recall@10 was 0.932 on a rebuilt 19x index (dense near-duplicate clusters) | validation §13.17; p95 ≤ 3.4 ms at k ≤ 100 |
+| N-20 | direction-B `k_max_b` and the floor guard | **changed**: 4096 (from the measured maximum 3,208 true neighbours ≥ 0.70 at 19x); a candidate floor above the technique's `s_seg` is refused at `matcher run` start and per search step | validation §13.18; floor 0.80 was measured and not adopted (candidate recall 0.9648 < §6's 0.99) |
+| N-21 | verification timeout in directions A/B | **corrected**: a PENDING (retryable) candidate is retried within the run up to `verify_retries`; one still unverified counts as failed ⇒ INCOMPLETE | found by G-13 (validation §13.21): the run could end DONE without verifying it |
+| N-22 | `index.revalidate_after_s` | **corrected**: promotion of a READY generation validated longer ago sends it back to VALIDATING (the next build re-validates) | found by R-9: the setting was never read |
+| N-23 | CAP-8 evidence | **corrected**: `index.max_points_evidence` must be a readable, passing, gate-eligible E-R1 report with measured total ≥ `max_points` | found by CAP-8: any non-empty string was accepted |
+| N-24 | equivalence rule versions (§10, D13) | `EquivParams.segment` overrides only the run search of equivalence; `EQUIV_RULES` (`equiv/v1` unchanged, `equiv/v2` tuned on E-TUNE); `matching.equivalence_rule` (default v1); a non-v1 link is keyed `<technique version>+<rule>` | validation §13.19; links stay reversible and unpublished (D13 (b) deferred) |
+
