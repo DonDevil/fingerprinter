@@ -71,6 +71,9 @@ def main() -> None:
                     help="before matching, re-run every existing task (re-verify with the current code)")
     ap.add_argument("--rerun-targets", action="store_true",
                     help="after matching, re-run every target_vs_media task (direction B at the grown corpus)")
+    ap.add_argument("--exact-rerun", action="store_true",
+                    help="after --drop-rebuild: re-run every task with every search forced exact (the §5 exact-"
+                         "search decision configuration; harness-only wrapper, no production flag)")
     ap.add_argument("--out", type=Path, required=True)
     a = ap.parse_args()
 
@@ -349,6 +352,48 @@ def main() -> None:
                                   "not_reproposed": sorted(set(before) - reproposed)[:20],
                                   "recovery": dict(zip(("open", "unresolved"), s.recovery.counters(digest),
                                                        strict=True))}
+    if a.exact_rerun:
+        # §5 (b), exact configuration: the same tasks with brute-force search (offline oracle). With the
+        # first decision final (C-14f) a different exact result would show as a new matches row, a
+        # decision not re-proposed, or a recorded divergence — each fails the check.
+        from fingerprinter.p10ctx import Subject as TaskSubject
+        from fingerprinter.metrics import P10_DIVERGENCE
+
+        before = {r["match_id"]: (r["verdict"], r["score"], r["alignment"])
+                  for r in svc.db.stream("SELECT * FROM {ks}.matches")}
+        div0 = P10_DIVERGENCE._value.get()
+        real = s.p.index.search_batch
+
+        def exact_batch(name, reqs, **kw):
+            for r in reqs:
+                r.exact, r.ignore_quantization = True, True
+            return real(name, reqs, **{**kw, "hnsw_ef": None})
+
+        s.p.index.search_batch = exact_batch
+        try:
+            t4 = time.time()
+            for t in s.tasks.all():
+                s.tasks.rerun(TaskSubject.from_meta(t["subject"]), t["kind"], reason="exact-check", actor="m3")
+            drive()
+        finally:
+            s.p.index.search_batch = real
+        after = {r["match_id"]: (r["verdict"], r["score"], r["alignment"])
+                 for r in svc.db.stream("SELECT * FROM {ks}.matches")}
+        reproposed: set[str] = set()
+        states: dict[str, int] = defaultdict(int)
+        for t in s.tasks.all():
+            states[f"{t['kind']}:{t['state']}"] += 1
+            for c in svc.db.rows("SELECT match_id, reason FROM {ks}.match_candidates WHERE subject_id = ? AND "
+                                 "spec_digest = ? AND kind = ? AND generation = ? AND run = ?", t["subject_id"],
+                                 digest, t["kind"], t["searched_generation"], t["searched_run"]):
+                if c.get("reason") == "already_decided":
+                    reproposed.add(c["match_id"])   # proposed by an exact-search run (the current run)
+        report["exact_rerun"] = {"decisions_identical": after == before, "decisions": len(after),
+                                 "new_decisions": len(set(after) - set(before)),
+                                 "reproposed_fraction": round(len(set(before) & reproposed) / max(len(before), 1), 4),
+                                 "divergences": P10_DIVERGENCE._value.get() - div0, "task_states": dict(states),
+                                 "seconds": round(time.time() - t4)}
+        print(json.dumps(report["exact_rerun"]), flush=True)
     report["wall_seconds"] = round(time.time() - t0)
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text(json.dumps(report, indent=1, sort_keys=True, default=str))

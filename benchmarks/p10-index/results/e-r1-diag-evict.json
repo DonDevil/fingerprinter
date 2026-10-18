@@ -1,0 +1,79 @@
+{
+ "benchmark": "P10-E-R1-DIAG",
+ "caps": {
+  "1536m": {
+   "rescore=False,payload=False": {
+    "disk_reads_per_query": 0.2,
+    "kib_read_per_query": 1.6,
+    "p50_ms": 1.97,
+    "p95_ms": 2.48,
+    "p99_ms": 2.8,
+    "queries": 300
+   },
+   "rescore=False,payload=True": {
+    "disk_reads_per_query": 0.3,
+    "kib_read_per_query": 2.7,
+    "p50_ms": 5.09,
+    "p95_ms": 5.79,
+    "p99_ms": 6.11,
+    "queries": 300
+   },
+   "rescore=True,payload=False": {
+    "disk_reads_per_query": 0.1,
+    "kib_read_per_query": 1.2,
+    "p50_ms": 2.12,
+    "p95_ms": 2.58,
+    "p99_ms": 2.68,
+    "queries": 300
+   },
+   "rescore=True,payload=True": {
+    "disk_reads_per_query": 0.5,
+    "kib_read_per_query": 4.8,
+    "p50_ms": 5.28,
+    "p95_ms": 6.02,
+    "p99_ms": 6.59,
+    "queries": 300
+   }
+  },
+  "384m": {
+   "rescore=False,payload=False": {
+    "disk_reads_per_query": 0.1,
+    "kib_read_per_query": 0.5,
+    "p50_ms": 2.01,
+    "p95_ms": 2.46,
+    "p99_ms": 3.02,
+    "queries": 300
+   },
+   "rescore=False,payload=True": {
+    "disk_reads_per_query": 3.2,
+    "kib_read_per_query": 15.5,
+    "p50_ms": 5.54,
+    "p95_ms": 133.92,
+    "p99_ms": 205.35,
+    "queries": 300
+   },
+   "rescore=True,payload=False": {
+    "disk_reads_per_query": 159.7,
+    "kib_read_per_query": 696.2,
+    "p50_ms": 1623.72,
+    "p95_ms": 2408.13,
+    "p99_ms": 2686.76,
+    "queries": 300
+   },
+   "rescore=True,payload=True": {
+    "disk_reads_per_query": 203.1,
+    "kib_read_per_query": 899.9,
+    "p50_ms": 2074.9,
+    "p95_ms": 2992.5,
+    "p99_ms": 3488.13,
+    "queries": 300
+   }
+  }
+ },
+ "command": "e_r1_diag.py --vectors ~/anti_piracy/datasets/p10/vectors --device sda --caps 1536m,384m,256m",
+ "device_info": "NAME ROTA MODEL                  TRAN\nsda     1 WDC WD5000LPVT-08G33T1 usb",
+ "first_run_1536m_640m": "benchmarks/p10-index/results/e-r1-diag.json (640m did not evict: anon 129 + file 427 MiB fit)",
+ "image": "qdrant/qdrant@sha256:d122138f76868edba68d36cb0833139c1d1761f00f09e48e61f8314196e6a4c6",
+ "note": "recorded from the run log: run stopped by the operator session after the 384m modes (the 256m modes add nothing once the regime is reproduced), container and volume removed; memory at 384m measured live during the run: anon 126 MiB, file 249 MiB, memory.max 384 MiB",
+ "points": 104443
+}

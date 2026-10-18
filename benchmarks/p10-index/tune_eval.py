@@ -399,7 +399,7 @@ def main() -> None:
                 "inner_oof": confusion(list(zip(labels[train].tolist(), oof_dec[train].tolist())))}
 
     outer = {}
-    pooled_pred, pooled_y, pooled_raw, pooled_f = [], [], [], []
+    pooled_pred, pooled_y, pooled_raw, pooled_f, pooled_dec = [], [], [], [], []
     held_dec = np.zeros(len(pairs), dtype=bool)
     held_dec_f = np.zeros(len(pairs), dtype=bool)
     held_dec_prob = np.zeros(len(pairs), dtype=bool)
@@ -420,6 +420,7 @@ def main() -> None:
         pooled_y.append(labels[popm])
         pooled_raw.append(S_u[proc["cfg_index"]][popm])
         pooled_f.append(folds[popm])
+        pooled_dec.append(dec[popm[sel]])
         outer[f] = {"selected": proc["cfg"], "tau_c": proc["tau_c"], "tau_p": proc["tau_p"],
                     "calibration_method": proc["calibration"]["method"],
                     "calibration_data": {k: v for k, v in proc["calibration"].items() if k not in ("model",)},
@@ -457,6 +458,11 @@ def main() -> None:
     final = procedure(films, S_u)
     rel = reliability(np.concatenate(pooled_pred), np.concatenate(pooled_y), np.concatenate(pooled_raw),
                       np.concatenate(pooled_f))
+    # diagnostic only (validation §13.22), not the §3.3 status: the same check restricted to the pairs the
+    # held-out procedure confirmed — the only pairs whose confidence would ever be published
+    cdec = np.concatenate(pooled_dec)
+    rel_confirmed = reliability(np.concatenate(pooled_pred)[cdec], np.concatenate(pooled_y)[cdec],
+                                np.concatenate(pooled_raw)[cdec], np.concatenate(pooled_f)[cdec])
     fitted = final["calibration"]["method"] in ("isotonic", "platt")
     status = "CALIBRATED" if fitted and rel.get("pass") else "UNAVAILABLE"
     fc = final["cfg"]
@@ -490,7 +496,8 @@ def main() -> None:
         "calibration": {"final_method": final["calibration"]["method"],
                         "final_data": {k: v for k, v in final["calibration"].items() if k != "model"},
                         "final_model": final["calibration"].get("model"),
-                        "outer_reliability": rel, "status": status},
+                        "outer_reliability": rel, "status": status,
+                        "diagnostic_reliability_confirmed_only": rel_confirmed},
         "final_parameter_set": {"technique": "dinov2-seg-temporal", "version": "2.1", "params": params.document(),
                                 "params_digest": params.digest(), "selected_cfg": fc,
                                 "inner_oof_all_films": final["inner_oof"]},

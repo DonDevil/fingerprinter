@@ -1,81 +1,183 @@
 {
  "acceptance": {
-  "media_candidate_recall_ge_exact_minus_0_005": false,
-  "query_p95_le_10ms": false,
+  "media_candidate_recall_a_ge_exact_minus_0_005": true,
+  "media_candidate_recall_b_ge_exact_minus_0_005": true,
+  "no_saturation": true,
+  "query_p95_le_10ms": true,
   "segment_recall_at_100_ge_0_97": true
  },
  "benchmark": "P10-ANN-RECALL-LIVE",
- "collection": "m3s_a4df3d192528_media_g2",
- "direction_b_media_candidate_recall_vs_exact": {
-  "mean": 0.8762,
-  "min": 0.7404,
-  "per_film": {
-   "targets__Coffee_Run_-_Blender_Open_Movie-full_movie.webm.npz": {
-    "ann_candidates": 334,
-    "ann_recall_vs_exact": 0.7404,
-    "exact_candidates": 285
-   },
-   "targets__HERO_-_Blender_Open_Movie-full_movie.webm.npz": {
-    "ann_candidates": 301,
-    "ann_recall_vs_exact": 0.8931,
-    "exact_candidates": 290
-   },
-   "targets__Sintel.2010.1080p.mkv.npz": {
-    "ann_candidates": 472,
-    "ann_recall_vs_exact": 0.8234,
-    "exact_candidates": 470
-   },
-   "targets__Spring_-_Blender_Open_Movie.webm.npz": {
-    "ann_candidates": 335,
-    "ann_recall_vs_exact": 0.9911,
-    "exact_candidates": 338
-   },
-   "targets__Sprite_Fright_-_Blender_Open_Movie-full_movie.webm.npz": {
-    "ann_candidates": 500,
-    "ann_recall_vs_exact": 0.8723,
-    "exact_candidates": 501
-   },
-   "targets__Tears_of_Steel_in_4k_-_Official_Blender_Foundation_release.webm.npz": {
-    "ann_candidates": 501,
-    "ann_recall_vs_exact": 0.8629,
-    "exact_candidates": 518
-   },
-   "targets__elephantsdream-720-h264-st-aac.mov.npz": {
-    "ann_candidates": 452,
-    "ann_recall_vs_exact": 0.9503,
-    "exact_candidates": 463
-   }
-  }
- },
+ "collection": "m3s_a4df3d192528_media_g1",
  "exact_oracle_vs_numpy": {
   "max_abs_score_diff": 1.4826965333281095e-07,
   "queries": 5
  },
  "keyspace": "fingerprinter_soak_m3",
+ "latency_by_limit_ms": {
+  "1024": {
+   "p50": 9.03,
+   "p95": 10.65,
+   "p99": 12.79
+  },
+  "128": {
+   "p50": 2.34,
+   "p95": 3.02,
+   "p99": 3.35
+  },
+  "2048": {
+   "p50": 15.67,
+   "p95": 17.29,
+   "p99": 39.31
+  },
+  "256": {
+   "p50": 3.38,
+   "p95": 4.36,
+   "p99": 5.13
+  },
+  "32": {
+   "p50": 1.87,
+   "p95": 2.63,
+   "p99": 2.85
+  },
+  "512": {
+   "p50": 5.31,
+   "p95": 6.25,
+   "p99": 6.94
+  },
+  "64": {
+   "p50": 2.03,
+   "p95": 2.6,
+   "p99": 3.09
+  }
+ },
  "latency_ms": {
   "clip_segments@10": {
-   "ann_p50": 42.96,
-   "ann_p95": 43.92,
-   "ann_p99": 44.03,
-   "exact_p50": 57.16
+   "ann_p50": 2.23,
+   "ann_p95": 2.72,
+   "ann_p99": 3.03,
+   "exact_p50": 17.08
   },
   "clip_segments@100": {
-   "ann_p50": 2.61,
-   "ann_p95": 3.05,
-   "ann_p99": 3.32,
-   "exact_p50": 17.49
+   "ann_p50": 2.74,
+   "ann_p95": 3.39,
+   "ann_p99": 3.71,
+   "exact_p50": 17.81
   },
   "film_segments@10": {
-   "ann_p50": 42.95,
-   "ann_p95": 43.93,
-   "ann_p99": 44.1,
-   "exact_p50": 57.13
+   "ann_p50": 2.2,
+   "ann_p95": 2.79,
+   "ann_p99": 3.07,
+   "exact_p50": 17.12
   },
   "film_segments@100": {
-   "ann_p50": 2.62,
-   "ann_p95": 3.07,
-   "ann_p99": 3.37,
-   "exact_p50": 17.53
+   "ann_p50": 2.67,
+   "ann_p95": 3.24,
+   "ann_p99": 3.54,
+   "exact_p50": 17.6
+  }
+ },
+ "media_candidate_recall": {
+  "definition": "validation \u00a74: provenance-relevant subjects returned by the full candidate policy, ANN vs exact search (same population, same policy); criterion ANN >= exact - 0.005",
+  "direction_a": {
+   "ann_recall_vs_provenance": 0.9991,
+   "exact_recall_vs_provenance": 0.9991,
+   "items": 1079,
+   "items_with_identical_candidate_sets": 1079,
+   "relevant_pairs": 1079,
+   "saturated_segments_ann": 0,
+   "saturated_segments_exact": 0
+  },
+  "direction_b": {
+   "min_difference": 0.0,
+   "per_film": {
+    "coffee-run": {
+     "ann_candidates": 418,
+     "ann_recall_vs_provenance": 1.0,
+     "difference": 0.0,
+     "exact_candidates": 525,
+     "exact_recall_vs_provenance": 1.0,
+     "relevant": 58,
+     "saturated_ann": 0,
+     "saturated_exact": 0,
+     "strict_overlap_all_candidates": 0.7962
+    },
+    "elephants-dream": {
+     "ann_candidates": 604,
+     "ann_recall_vs_provenance": 1.0,
+     "difference": 0.0,
+     "exact_candidates": 657,
+     "exact_recall_vs_provenance": 1.0,
+     "relevant": 172,
+     "saturated_ann": 0,
+     "saturated_exact": 0,
+     "strict_overlap_all_candidates": 0.9193
+    },
+    "hero": {
+     "ann_candidates": 405,
+     "ann_recall_vs_provenance": 0.9787,
+     "difference": 0.0,
+     "exact_candidates": 514,
+     "exact_recall_vs_provenance": 0.9787,
+     "relevant": 47,
+     "saturated_ann": 0,
+     "saturated_exact": 0,
+     "strict_overlap_all_candidates": 0.7879
+    },
+    "sintel": {
+     "ann_candidates": 584,
+     "ann_recall_vs_provenance": 1.0,
+     "difference": 0.0,
+     "exact_candidates": 665,
+     "exact_recall_vs_provenance": 1.0,
+     "relevant": 215,
+     "saturated_ann": 0,
+     "saturated_exact": 0,
+     "strict_overlap_all_candidates": 0.8782
+    },
+    "spring": {
+     "ann_candidates": 444,
+     "ann_recall_vs_provenance": 0.9914,
+     "difference": 0.0,
+     "exact_candidates": 444,
+     "exact_recall_vs_provenance": 0.9914,
+     "relevant": 116,
+     "saturated_ann": 0,
+     "saturated_exact": 0,
+     "strict_overlap_all_candidates": 1.0
+    },
+    "sprite-fright": {
+     "ann_candidates": 596,
+     "ann_recall_vs_provenance": 1.0,
+     "difference": 0.0,
+     "exact_candidates": 678,
+     "exact_recall_vs_provenance": 1.0,
+     "relevant": 183,
+     "saturated_ann": 0,
+     "saturated_exact": 0,
+     "strict_overlap_all_candidates": 0.8791
+    },
+    "tears-of-steel": {
+     "ann_candidates": 569,
+     "ann_recall_vs_provenance": 0.9965,
+     "difference": 0.0,
+     "exact_candidates": 654,
+     "exact_recall_vs_provenance": 0.9965,
+     "relevant": 288,
+     "saturated_ann": 0,
+     "saturated_exact": 0,
+     "strict_overlap_all_candidates": 0.87
+    }
+   },
+   "pooled_ann": 0.9972,
+   "pooled_exact": 0.9972
+  },
+  "policy": {
+   "floor_a": 0.6,
+   "floor_b": 0.7,
+   "k0": 32,
+   "k_max_a": 256,
+   "k_max_b": 4096,
+   "min_hits": 2
   }
  },
  "params": {
@@ -83,29 +185,29 @@
   "oversampling": 2.0,
   "quantization": "int8",
   "rescore": true,
-  "search_ef": null
+  "search_ef": 384
  },
  "points": 105203,
  "qdrant_version": "1.15.1",
  "segment_recall": {
   "clip_segments@10": {
-   "mean": 0.9833,
-   "min": 0.0,
+   "mean": 0.9922,
+   "min": 0.3,
    "queries": 180
   },
   "clip_segments@100": {
-   "mean": 0.9808,
-   "min": 0.67,
+   "mean": 0.9949,
+   "min": 0.78,
    "queries": 180
   },
   "film_segments@10": {
-   "mean": 0.998,
-   "min": 0.0,
+   "mean": 0.9995,
+   "min": 0.8,
    "queries": 760
   },
   "film_segments@100": {
-   "mean": 0.9989,
-   "min": 0.86,
+   "mean": 0.9999,
+   "min": 0.98,
    "queries": 760
   }
  }

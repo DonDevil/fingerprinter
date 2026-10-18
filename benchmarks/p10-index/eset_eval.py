@@ -150,7 +150,12 @@ def live(a, items, vec, label, by) -> dict:
             time.sleep(5)
 
     drive()
-    links = {(r["content_id"], r["other_content_id"]): r for r in svc.db.stream("SELECT * FROM {ks}.equivalence_links")}
+    from fingerprinter.verify import EQUIV_RULES, equiv_link_version
+
+    rule = settings.matching.equivalence_rule
+    ver = equiv_link_version("2.1", rule)   # the link key of the configured rule (v1: "2.1")
+    links = {(r["content_id"], r["other_content_id"]): r for r in svc.db.stream("SELECT * FROM {ks}.equivalence_links")
+             if r["technique_version"] == ver}
     file_of = {v: k for k, v in cid.items()}
     rows = []
     for x, y in itertools.combinations(sorted(vec), 2):
@@ -160,7 +165,8 @@ def live(a, items, vec, label, by) -> dict:
         both = bool(lx) == bool(ly)
         rows.append((label(x, y), linked, both))
     eq_tasks = [t for t in s.tasks.all() if t["kind"] == KIND_EQ]
-    out = {"summary": confusion([(lab, lk) for lab, lk, _ in rows]),
+    out = {"rule": rule, "rule_digest": EQUIV_RULES[rule].digest(), "link_version": ver,
+           "summary": confusion([(lab, lk) for lab, lk, _ in rows]),
            "both_orientations": all(b for _, _, b in rows), "distinct_content_ids": distinct,
            "tasks": {st: sum(1 for t in eq_tasks if t["state"] == st) for st in {t["state"] for t in eq_tasks}},
            "incomplete_reasons": sorted({t.get("incomplete_reason") or "" for t in eq_tasks} - {""})}
@@ -168,15 +174,15 @@ def live(a, items, vec, label, by) -> dict:
     pos = next(((x, y) for (x, y), r in links.items() if r["state"] == "LINKED"), None)
     if pos:
         x, y = pos
-        n = s.committer.revoke(x, y, digest, "2.1", reason="eset revocation test", actor="eset")
+        n = s.committer.revoke(x, y, digest, ver, reason="eset revocation test", actor="eset")
         for c in (x, y):
             t = next(t for t in eq_tasks if json.loads(t["subject"])["content_id"] == c)
             s.tasks.rerun(Subject.from_meta(t["subject"]), KIND_EQ, reason="revocation-check", actor="eset")
         drive()
         after = [svc.db.one("SELECT * FROM {ks}.equivalence_links WHERE content_id = ? AND other_content_id = ? "
                             "AND spec_digest = ? AND technique_name = 'dinov2-seg-temporal' "
-                            "AND technique_version = '2.1'",
-                            u, v, digest) for u, v in ((x, y), (y, x))]
+                            "AND technique_version = ?",
+                            u, v, digest, ver) for u, v in ((x, y), (y, x))]
         out["revocation"] = {"pair": [file_of.get(x), file_of.get(y)], "revoked_rows": n,
                              "states_after_rerun": [r["state"] for r in after],
                              "evidence_kept": all(bool(r["evidence"]) for r in after)}
