@@ -761,8 +761,9 @@ class Matcher:
         role = OPPOSITE[kind]
         sid_field = "trep" if role == TARGET else "rep"
         # (i) the point is what its payload says (else foreign/orphan)
-        if other.get("point_id") != point_id(other.get(sid_field) or "", int(other.get("seq") or -1),
-                                             int(other.get("k") or -1)) or other.get("spec") != spec:
+        seq_k = (other.get("seq"), other.get("k"))
+        if None in seq_k or other.get("spec") != spec or \
+                other.get("point_id") != point_id(other.get(sid_field) or "", int(seq_k[0]), int(seq_k[1])):
             self._cand_state(row, c, "DROPPED", reason="foreign_point")
             metrics.P10_INDEX_STALE.labels(role=role).inc()
             return

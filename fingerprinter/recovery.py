@@ -409,7 +409,7 @@ class Recovery:
             if t is None:
                 reasons.append(f"{kind}: no task")
                 continue
-            if int(t.get("run") or 0) != int(t.get("done_run") or -1):
+            if t.get("done_run") is None or int(t["run"]) != int(t["done_run"]):
                 reasons.append(f"{kind}: rerun pending")
             elif t.get("done_state") != "DONE":
                 reasons.append(f"{kind}: incomplete: {t.get('incomplete_reason') or t.get('state')}")

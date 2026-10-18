@@ -67,6 +67,8 @@ def main() -> None:
     ap.add_argument("--soak", action="store_true", help="also ingest SOAK-1000 (N-SOAK, 19x growth)")
     ap.add_argument("--soak-limit", type=int, help="first N SOAK items only (the 10x scale)")
     ap.add_argument("--drop-rebuild", action="store_true")
+    ap.add_argument("--rerun-all", action="store_true",
+                    help="before matching, re-run every existing task (re-verify with the current code)")
     ap.add_argument("--rerun-targets", action="store_true",
                     help="after matching, re-run every target_vs_media task (direction B at the grown corpus)")
     ap.add_argument("--out", type=Path, required=True)
@@ -187,6 +189,11 @@ def main() -> None:
         return dict(counts)
 
     t2 = time.time()
+    if a.rerun_all:
+        from fingerprinter.p10ctx import Subject as TaskSubject
+
+        for t in s.tasks.all():
+            s.tasks.rerun(TaskSubject.from_meta(t["subject"]), t["kind"], reason="m3-rerun-all", actor="m3")
     run_counts = drive()
     if a.rerun_targets:
         from fingerprinter.p10ctx import Subject as TaskSubject

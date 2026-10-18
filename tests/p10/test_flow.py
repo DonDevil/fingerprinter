@@ -84,3 +84,6 @@ def test_both_directions_held_and_no_reencode(p10) -> None:
     assert ta["state"] == "DONE"
     st = p10.sys.recovery.settled(p10.media(neg).subject_id, p10.spec, [KIND_A])
     assert st["status"] == "settled", st
+    # regression (k = 0 sample hits were dropped as "foreign"): no candidate of a real point is foreign
+    reasons = [c["reason"] for c in p10.s.db.rows("SELECT reason FROM {ks}.match_candidates")]
+    assert "foreign_point" not in reasons, reasons
