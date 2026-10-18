@@ -188,6 +188,10 @@ class QdrantIndex:
         if api_key:
             self._session.headers["api-key"] = api_key
         self._session.headers["content-type"] = "application/json"
+        # requests asks for gzip by default; Qdrant 1.15.1 then compresses search responses and the
+        # small ones stall ≈ 40 ms each (validation §13.17: limit 10-24 at p50 42 ms, 0.8 ms with
+        # identity). The index runs on loopback / a backend network, so compression buys nothing.
+        self._session.headers["accept-encoding"] = "identity"
 
     # --- transport ------------------------------------------------------------
 

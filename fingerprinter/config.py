@@ -139,7 +139,10 @@ class IndexConfig(_Section):
     capacity_margin_points: int = Field(default=10_000, ge=0)
     rebuild_headroom: float = Field(default=0.05, ge=0, le=1)
     active_ttl_s: float = Field(default=5.0, gt=0)
-    search_ef: int | None = Field(default=None, ge=1)
+    # minimum HNSW ef of a search (ef = max(k, search_ef)). With ef = k, queries inside the dense
+    # near-duplicate clusters of a much-copied corpus miss their own neighbourhood (19x: clip-segment
+    # recall@10 0.932); 384 is the measured knee (0.992, p95 2.2 ms) — validation §13.17
+    search_ef: int | None = Field(default=384, ge=1)
     oversampling: float = Field(default=2.0, ge=1)
     upsert_batch: int = Field(default=256, ge=1, le=4096)
     mutation_lease_s: float = Field(default=120.0, gt=0)

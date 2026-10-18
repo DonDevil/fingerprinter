@@ -200,3 +200,33 @@ def test_l14_exact_ignore_quantization(qdrant) -> None:
     assert max(diffs) <= 1e-5
     assert all(float(exp[by_id[h.id]]) >= 0.95 for h in hits)
     assert len(hits) == int((exp >= 0.95).sum()) == 2  # 0.9501 and 0.97; 0.9499 excluded
+
+
+def test_adapter_requests_identity_encoding_unit() -> None:
+    """§4 latency defect (validation §13.17): the adapter must not ask Qdrant for compressed bodies."""
+    from fingerprinter.vindex import QdrantIndex
+
+    assert QdrantIndex("http://127.0.0.1:1", None)._session.headers["accept-encoding"] == "identity"
+
+
+def test_small_search_responses_uncompressed_and_fast(qdrant) -> None:
+    """Regression: with requests' default ``gzip`` Qdrant 1.15.1 compressed search responses and a
+    single limit-10 query took ≈ 42 ms (p50) instead of ≈ 1 ms; through the adapter it must not."""
+    import time
+
+    name = make(qdrant, MEDIA, optimize=True)
+    vec = unit(2000)
+    pts = [Point(point_id(f"S{i}", 1, 0), vec[i], {"rep": f"S{i}", "seq": 1, "k": 0, "spec": "t"})
+           for i in range(len(vec))]
+    for i in range(0, len(pts), 250):
+        qdrant.upsert(name, pts[i:i + 250])
+    wait_indexed(qdrant, name, len(vec))
+    raw = qdrant._session.post(f"{qdrant.url}/collections/{name}/points/search",
+                               json={"vector": vec[0].tolist(), "limit": 10, "with_payload": True})
+    assert raw.status_code == 200 and "content-encoding" not in {k.lower() for k in raw.headers}
+    lat = []
+    for q in vec[:60]:
+        t0 = time.perf_counter()
+        qdrant.search_batch(name, [SearchRequest(vector=q, limit=10)], hnsw_ef=10, oversampling=2.0)
+        lat.append(1000 * (time.perf_counter() - t0))
+    assert float(np.median(lat[10:])) < 20.0, lat
