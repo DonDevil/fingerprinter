@@ -1191,3 +1191,59 @@ the live candidate path.
 | R-13 | PASS | a second builder cannot take a valid build lease; after expiry it gets epoch + 1; the stale builder's transition conditioned on its old `build_epoch` is rejected |
 | R-28 (C-14b) | PASS | T's points deleted again after the repairer's confirming count (hook P7) with a detector merging before `repaired`: `detections` raised, the REPAIRED LWT does not hide the second loss; the repair is repeated, every occurrence of T closes and T's qualifying run is at or after every requirement |
 | K-2 | PASS | the same content and target version under `dinov2-seg/1` and `/2` give two distinct MatchIds (two `matches` keys, C-6) |
+
+### 13.13 M3 through the live system: L-PAIRS + SOAK-1000 (19x growth)
+
+`m3_live.py --soak --rerun-targets` then `--soak --rerun-all` (after the fix
+below) in keyspace `fingerprinter_soak_m3` (prefix `m3s`):
+`results/m3-live-soak.json`. Corpus: 7 films, 180 L-PAIRS clips, 1,000
+SOAK-1000 items — **105,203 media points** (19.1x the L-PAIRS media), 760
+target points. Ingest 53 min, media build + validation 12 min (first attempt
+failed validation: N-17, fixed), matching 6.5 min per full pass.
+
+| Result (pooled L-PAIRS + N-SOAK, 6,572 pairs, 1,079 +) | TP | FN | FP | TN | P | R |
+|---|---|---|---|---|---|---|
+| **nested held-out (M3-1 figure)** | 876 | 203 | 1 | 5,492 | 0.9989 | 0.812 |
+| deployed 2.1 (in-sample) | 867 | 212 | 0 | 5,493 | 1.000 | 0.804 |
+| L-PAIRS only, nested | 110 | 40 | 0 | 330 | 1.000 | 0.733 |
+| N-SOAK only, nested | 766 | 163 | 1 | 5,162 | 0.9987 | 0.825 |
+| V1 on V2 vectors, same pairs (§13.3) | 484 | 595 | 7 | 5,486 | 0.9857 | 0.449 |
+
+| Live path | Value |
+|---|---|
+| live ANN candidate recall vs provenance (A ∪ B) | **0.9991** (= the exact-search emulation, §13.3) |
+| direction B (targets → historical media) candidate recall vs provenance | **0.9972** (criterion §6: ≥ 0.99 at 19x — met) |
+| direction A tasks | 1,187 DONE, no saturation; ≤ 50 candidates each (cap never hit) |
+| **direction B tasks at 19x** | **all 7 INCOMPLETE `saturated_segments`** (2–38 query segments per target ended at `k_max` 512 with the k-th score ≥ floor 0.70); stored candidates 301–504 per target (≤ `cap_B_total` 5,000); 83–577 queries per target |
+| bounds | hits ≤ segments × `k_max`; candidates ≤ caps; every bound hit recorded on the task (`ann_stats`) |
+| decisions | 1,574 stored, all held (calibration UNAVAILABLE), 0 events; recovery 0/0; ledger 111,262 reserved for 105,963 resident points |
+
+Defect found by this run and fixed (commit `2d11056`): candidates whose
+sample hit was segment 0 were dropped as `foreign_point` (`int(k or -1)`),
+≈ 30 % of direction-A candidates in the first pass; deployed recall rose
+from 0.797 to 0.804 after re-running every task; the nested figure was not
+affected (it scores every proposed candidate). Regression assertion added
+to `test_flow.py` (shown to fail on the old code).
+
+Consequences for M3: precision ≥ V1 and recall ≥ V1 on identical held-out
+pairs hold on both populations through the live candidate path (the one
+held-out FP is the credits case of §13.3; V1 itself has 7 FPs on N-SOAK). On
+the strict L-PAIRS reading (V1 precision 1.000 ⇒ zero FP) P10 has 0 FP.
+Direction B's saturation at 19x makes every target run INCOMPLETE, so
+direction-B negatives at that scale are provisional; `k_max`/floor tuning
+for direction B is open (design §17).
+
+### 13.14 ANN recall against the exact oracle, live index (§4)
+
+`ann_recall.py` against the 19x ACTIVE media generation (105,203 points,
+int8 HNSW m=32, rescoring, oversampling 2, `hnsw_ef = max(k, search_ef)`),
+exact = the same collection with `exact=true` + `quantization.ignore=true`
+(agrees with numpy on stored vectors to float precision):
+`results/ann-recall-live.json`. Run alone on the host.
+
+| Criterion (§4) | Measured | Result |
+|---|---|---|
+| segment recall@100 ≥ 0.97 | **0.9989** (760 film segments), **0.9808** (180 clip segments); @10: 0.998 / 0.983 | **PASS** |
+| per-segment query p95 ≤ 10 ms (single-query REST requests) | limit 100: **p95 3.1 ms**; limit 10 in the harness (with payload): p95 43.9 ms; probe: limit 10 0.9 ms, **limit 32 42.6 ms**, limit 100 1.5 ms | **FAIL (size-dependent)**: a ≈ 40 ms plateau for some response sizes — the TCP delayed-ACK/Nagle interaction with Qdrant's HTTP server (same with `bytes` bodies); the matcher batches up to 64 queries per request, which amortises it; not resolved (gRPC or transport tuning is follow-up work) |
+| media-level candidate recall with ANN ≥ exact − 0.005 (direction B policy) | per film 0.740–0.991 (mean 0.876) | **FAIL**: at 19x every target has saturated segments (§13.13), so the two top-512 neighbour sets — and the grouped candidates derived from them — differ between ANN and exact; against provenance the live direction-B candidate recall is 0.997 and the direction-A live candidate recall equals the exact emulation (0.9991). The comparison is not meaningful while saturated; it needs the direction-B `k_max`/floor retuning first |
+| memory within the 1.5 GiB limit | dev Qdrant at 105 k + 760 points: no OOM during the M3 runs | observed (not a gate measurement; E-R1 §13.5 governs) |
