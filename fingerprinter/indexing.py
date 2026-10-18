@@ -614,10 +614,27 @@ class Builder:
         if hnsw.get("m") != params.hnsw_m or hnsw.get("ef_construct") != params.ef_construct or \
                 vec.get("size") != params.dim or str(vec.get("distance")).lower() != params.distance.lower():
             failures.append("params: collection config differs from the recorded params")
-        # capacity
+        # capacity: the ledger must cover every resident point (the safety property). The generation may
+        # exceed its admission holder by points that live writes reserved separately (§13.3, N-16).
         exact = self.p.index.count(name)
+        warnings: list[str] = []
         if exact > int(row["reserved_points"] or 0):
-            failures.append(f"capacity: {exact} points > reserved {row['reserved_points']}")
+            resident = 0
+            for sp in self.p.indexed_specs():
+                for rl in ("media", "target"):
+                    _, gs = self.gens.partition(sp, rl, serial=False)
+                    for gr in gs.values():
+                        if gr.get("collection") and gr["state"] != "RETIRED":
+                            try:
+                                resident += self.p.index.count(gr["collection"])
+                            except IndexMissingError:
+                                continue
+            reserved = self.capacity.read()["reserved"]
+            if reserved < resident:
+                failures.append(f"capacity: ledger {reserved} < resident {resident}")
+            else:
+                warnings.append(f"capacity: g holds {exact} > admission {row['reserved_points']} (live writes, "
+                                f"covered by the ledger: {reserved} >= {resident})")
         # accessibility
         if not self.p.index.health().get("ok"):
             failures.append("accessibility: index not healthy")
@@ -625,7 +642,8 @@ class Builder:
         for b in sorted(bucket_digests):
             manifest.update(hashlib.sha256("".join(sorted(bucket_digests[b])).encode()).digest())
         ok = not failures
-        return {"pass": ok, "lag": lag, "failures": failures[:50], "total_points": total, "exact_count": exact,
+        return {"pass": ok, "lag": lag, "failures": failures[:50], "warnings": warnings, "total_points": total,
+                "exact_count": exact,
                 "subjects": sum(1 for e in entries.values() if e["desired_op"] == UPSERT),
                 "manifest_digest": manifest.hexdigest()}
 

@@ -1179,3 +1179,15 @@ recorded), production matcher and reconciler. `results/m3-live-lpairs.json`.
 On L-PAIRS, M3-1's comparison (precision ≥ V1 and recall ≥ V1 against the
 stronger baseline on identical held-out pairs, zero FP) **holds** through
 the live candidate path.
+
+### 13.12 Rebuild, lease and occurrence-fence scenarios
+
+`env/bin/python -m pytest -p no:cacheprovider tests/p10/test_generations.py` — **5 passed** (integration).
+
+| ID | Result | What was shown |
+|---|---|---|
+| R-6 / G-4 | PASS | builder killed after 20 of 64 buckets (uncatchable): generation left BUILDING with 20 bucket cursors; after the build lease expires a new build **adopts** the same generation (no new number), resumes from the cursors and validates READY with the artifact-only manifest digest |
+| R-12 / G-12 | PASS after a correction | a subject written during the build (after CREATED) is present at its newest seq in both the new and the old generation at promotion. **Found a design defect**: validation's "exact count of g ≤ `reserved_points`" rejected this correctly accounted generation (34 > 31, the live write having reserved separately); corrected to the ledger condition (design §20 N-16) |
+| R-13 | PASS | a second builder cannot take a valid build lease; after expiry it gets epoch + 1; the stale builder's transition conditioned on its old `build_epoch` is rejected |
+| R-28 (C-14b) | PASS | T's points deleted again after the repairer's confirming count (hook P7) with a detector merging before `repaired`: `detections` raised, the REPAIRED LWT does not hide the second loss; the repair is repeated, every occurrence of T closes and T's qualifying run is at or after every requirement |
+| K-2 | PASS | the same content and target version under `dinov2-seg/1` and `/2` give two distinct MatchIds (two `matches` keys, C-6) |
