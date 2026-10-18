@@ -56,10 +56,10 @@ from fingerprinter.candidates import (
     SearchStepAbandonedError,
     policy_for,
 )
-from fingerprinter.confidence import CALIBRATED, Technique, Techniques
+from fingerprinter.confidence import CALIBRATED, Technique, TechniqueError, Techniques
 from fingerprinter.coord import utc, uuid7
 from fingerprinter.db import SERIAL, LwtUnknownError
-from fingerprinter.errors import StorageUnavailableError
+from fingerprinter.errors import ConfigError, StorageUnavailableError
 from fingerprinter.generations import Generations
 from fingerprinter.indexing import Indexer, SubjectInvalidError, WaitingIndexError
 from fingerprinter.objects import IntegrityError, ObjectMissingError
@@ -561,6 +561,22 @@ class Matcher:
         finally:
             self.tasks.release(member, token)
 
+    def check_policy(self, kind: str, floor: float) -> None:
+        """A candidate floor above the technique's ``s_seg`` drops hits in [s_seg, floor), which can be part
+        of a qualifying run (validation §13.18): refused, never searched with."""
+        s_seg = self.techniques.get(self.p.settings.matching.technique_version).params.s_seg
+        if floor > s_seg:
+            raise ConfigError(f"candidate floor {floor} of {kind} exceeds the verifier's s_seg {s_seg}")
+
+    def check_policies(self) -> None:
+        """Start-up form of ``check_policy`` for every direction (``matcher run`` refuses to start)."""
+        try:
+            self.techniques.get(self.p.settings.matching.technique_version)
+        except TechniqueError:
+            return  # not registered yet: every task waits on it in verification, nothing is searched wrongly
+        for kind in (KIND_A, KIND_B, KIND_EQ):
+            self.check_policy(kind, policy_for(self.p, kind).floor)
+
     def run_task(self, sid: str, spec: str, kind: str) -> str:
         row = self.tasks.row(sid, spec, kind)
         if row is None:
@@ -660,6 +676,7 @@ class Matcher:
             hit_excluded = self.lowinfo.hit_excluded(spec, cache, {})
             rev = self.lowinfo.current_rev(spec)
         policy = policy_for(self.p, kind, row.get("cap_override"))
+        self.check_policy(kind, policy.floor)
         exclude = subject.content_id  # never a candidate of its own content, in any direction (design §6.3, N-13)
         out = self.searcher.search(spec, kind, query, policy, skip_query=skip, exclude_key=exclude,
                                    hit_excluded=hit_excluded)

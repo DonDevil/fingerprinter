@@ -160,7 +160,11 @@ class MatchingConfig(_Section):
 
     k0: int = Field(default=32, ge=1)
     k_max_a: int = Field(default=256, ge=1)
-    k_max_b: int = Field(default=512, ge=1)
+    # direction B (validation §13.18): a target segment of a much-copied film has more true neighbours
+    # above floor_b than 512 (19x corpus: up to 3,208), so 512 ended every run INCOMPLETE; 4096 covers
+    # the measured requirement. A floor must never exceed the technique's s_seg (checked at start-up
+    # and before every search step).
+    k_max_b: int = Field(default=4096, ge=1)
     k_max_eq: int = Field(default=512, ge=1)
     floor_a: float = Field(default=0.60, gt=-1, lt=1)
     floor_b: float = Field(default=0.70, gt=-1, lt=1)

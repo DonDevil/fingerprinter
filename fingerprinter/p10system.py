@@ -251,6 +251,7 @@ class P10System:
         """``matcher run``: rounds of (rebuild the queue from ``match_due`` → workers drain it). With
         ``until_idle`` it returns after a round that processed nothing."""
         m = self.p.settings.matching
+        self.matcher.check_policies()   # ConfigError: refuse to start rather than search with a lossy floor
         counts: dict[str, int] = {}
         lease_ms = int(m.task_lease_s * 1000)
         lock = threading.Lock()
@@ -269,8 +270,9 @@ class P10System:
                 with lock:
                     key = out.split(":")[0]
                     counts[key] = counts.get(key, 0) + 1
-                    if key not in ("terminal", "not_due", "missing", "claim_lost"):
-                        done[0] += 1  # only progress keeps an until-idle loop going
+                    if key not in ("terminal", "not_due", "missing", "claim_lost", "crashed"):
+                        done[0] += 1  # only progress keeps an until-idle loop going (a crash is logged, not
+                        # progress: a task that crashes on every claim must not keep until_idle spinning)
 
         while not stop.is_set():
             self.tasks.schedule(horizon_s=0)

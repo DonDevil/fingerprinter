@@ -254,6 +254,34 @@ def test_g15_saturation_is_incomplete_never_done(p10) -> None:
     assert st["status"] == "provisional" and any("saturated_segments" in r for r in st["reasons"])
 
 
+def test_candidate_floor_above_s_seg_is_refused(p10) -> None:
+    """Direction-B floor guard (validation §13.18): a floor above the technique's s_seg would drop hits
+    that can be part of a qualifying run; the search step refuses before any query or candidate row."""
+    p10.sys.p.settings = p10.sys.p.settings.model_copy(update={"matching": p10.sys.p.settings.matching.model_copy(
+        update={"floor_b": 0.85})})
+    m = p10.ingest_media(*clip("lp-000-sintel-re-encode.mp4"))
+    tid, ver, _ = p10.register_target(*film("sintel"), title="Sintel")
+    p10.bootstrap()
+    p10.reconcile()
+    from fingerprinter.errors import ConfigError
+
+    with pytest.raises(ConfigError, match="exceeds the verifier's s_seg"):
+        p10.run_matcher()                                   # refuses to start (no task claimed)
+    t = p10.target(tid, ver)
+    tb = p10.sys.tasks.row(t.subject_id, p10.spec, KIND_B)
+    assert tb["state"] == "PENDING" and tb.get("searched_run") is None and not tb.get("epoch")
+    with pytest.raises(ConfigError):                        # the per-step backstop refuses as well
+        p10.sys.matcher.run_task(t.subject_id, p10.spec, KIND_B)
+    assert not p10.s.db.rows("SELECT * FROM {ks}.match_candidates WHERE subject_id = ? AND spec_digest = ? "
+                             "AND kind = ? ALLOW FILTERING", t.subject_id, p10.spec, KIND_B)
+    # with the floor at s_seg the same tasks run: direction B finds the clip
+    p10.sys.p.settings = p10.sys.p.settings.model_copy(update={"matching": p10.sys.p.settings.matching.model_copy(
+        update={"floor_b": 0.80})})
+    p10.drive()
+    assert p10.sys.tasks.row(t.subject_id, p10.spec, KIND_B)["state"] == "DONE"
+    assert p10.sys.tasks.row(p10.media(m).subject_id, p10.spec, KIND_A)["state"] == "DONE"
+
+
 def test_k1_k6_k9_first_decision_final_and_ids(world) -> None:
     p10, (tid, ver, _) = world
     m = p10.ingest_media(*clip("lp-000-sintel-re-encode.mp4"))
