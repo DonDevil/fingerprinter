@@ -1,0 +1,55 @@
+{
+ "benchmark": "P10-ESET",
+ "excerpts": 20,
+ "items": 160,
+ "negatives_same_excerpt_linked": {
+  "negative_half": 0,
+  "negative_shift30": 0
+ },
+ "offline": {
+  "fn": 72,
+  "fp": 0,
+  "precision": 1.0,
+  "precision_wilson95": [
+   0.9834,
+   1.0
+  ],
+  "recall": 0.76,
+  "recall_wilson95": [
+   0.7086,
+   0.8048
+  ],
+  "tn": 12420,
+  "tp": 228
+ },
+ "offline_recall_by_variant": {
+  "fmp4-1s": 0.82,
+  "fmp4-2s": 0.82,
+  "h264-3m": 0.83,
+  "h264-400k": 0.52,
+  "remux-mkv": 0.83,
+  "vp9": 0.74
+ },
+ "offline_seconds": 1.4,
+ "pairs": 12720,
+ "rule": {
+  "coverage": 0.9,
+  "max_duration_diff_frac": 0.02,
+  "max_duration_diff_s": 5.0,
+  "max_offset_s": 10.0,
+  "rule": "equiv/v1"
+ },
+ "segments_per_item": {
+  "max": 25,
+  "min": 7
+ },
+ "variants": [
+  "h264-400k",
+  "h264-3m",
+  "vp9",
+  "remux-mkv",
+  "fmp4-1s",
+  "fmp4-2s"
+ ],
+ "verifier_params_digest": "377167ec707d48a9148811bde472b24e0eaed5773ce95f8ae8c302f56be29faf"
+}

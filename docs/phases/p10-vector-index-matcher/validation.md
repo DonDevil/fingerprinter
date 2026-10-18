@@ -1126,3 +1126,56 @@ discarded and repeated from a dropped keyspace.
 | G-9 | PASS | Scylla failure right after the commit intent: the intent survives, the task waits/retries, the reconciler's intents pass and the rerun converge to exactly one `matches` row |
 | G-11 | PASS | a worker killed after a verification page (uncatchable exception): task left VERIFYING under its lease; after lease expiry (shifted clock) another claim resumes the same run (run 1) to DONE, one decision |
 | G-14 (simulated two-host) | PASS | two matcher instances (separate instance ids, one Qdrant, one keyspace) drain the same queue concurrently: every task DONE once, one row per `match_id` |
+
+### 13.9 Level-5 equivalence (§8, I-4) — E-SET and P8's set
+
+**E-SET** (P10-D18), `benchmarks/p10-index/make_eset.py --excerpts 20`
+(outside git: `~/anti_piracy/datasets/p10/e-set/`, 160 items): 20 S-SRC
+excerpts of 60–120 s (seeded, spread over the 7 films), each as six
+variants — H.264 400 kb/s, H.264 3 Mb/s, MKV remux, fragmented MP4 (1 s and
+2 s fragments), VP9 WebM — from a 480p mezzanine cut, plus a 30 s-shifted
+copy and a 50 % sub-clip. Vectors with P9's production pipeline
+(`encode_corpus.py`, `dinov2-seg/2`, CUDA FP32). Offline `equiv/v1` over
+all 12,720 item pairs: `eset_eval.py` → `results/e-set-offline.json`.
+
+| Measured (offline) | Value |
+|---|---|
+| equivalent pairs linked | **228 / 300 — recall 0.760** (Wilson 0.709–0.805); target 1.0 **not met** |
+| false links | **0 / 12,420** (precision 1.000) |
+| 30 s-shifted copies / 50 % sub-clips linked to their excerpt | 0 / 0 |
+| recall by variant (pairs containing it) | H.264 400k 0.52, VP9 0.74, fMP4 1 s 0.82, fMP4 2 s 0.82, H.264 3M 0.83, MKV remux 0.83 |
+| cause of misses | heavy compression (400 kb/s at 480p) and VP9 lower segment cosines below the 2.1 `s_seg` 0.80, so the best run covers < 90 % of the segments of one side; the rule and parameters were not changed on this test set |
+
+**P8's 6 s set** (P8's exact ffmpeg commands rebuilt by `p8_set.py`,
+crawler2 untouched; `results/p8-set.json`): 5 items × 2 segments; **all 10
+pairs link** under 2.1 (`L` = 2). The plan expected "not linked (2 segments
+< L)" because it assumed `L` = 3; with the tuned `L` = 2 a 2-segment item can
+satisfy the 90 % coverage rule. All pairs are truly equivalent, so no false
+link, but two 5 s segments are thin evidence — recorded as a limitation (the
+minimum verifiable duration under 2.1 is 10 s).
+
+Live equivalence (media↔media tasks writing `equivalence_links`): §13.11.
+
+### 13.10 M3 through the live system: L-PAIRS (I-5)
+
+`benchmarks/p10-index/m3_live.py --drop-rebuild` in keyspace
+`fingerprinter_m3` (collection prefix `m3`): 7 films registered through
+`TargetManager.register` on the real S-SRC files (production content ids),
+reference representations and 180 clips committed through P9's commit
+protocol from the cached P9-encoded vectors (ingest 1,153 s under load),
+index built and validated (760 target / 6,220 media points, manifests
+recorded), production matcher and reconciler. `results/m3-live-lpairs.json`.
+
+| Result | Value |
+|---|---|
+| tasks | 187 `media_vs_targets` + 7 `target_vs_media`, all DONE (32 s); recovery 0/0 |
+| live ANN candidate recall vs provenance (A ∪ B) | **1.000** (150/150) |
+| **nested held-out (per-fold 2.1 parameters on the live candidate sets) — the M3-1 figure** | TP 110 / FN 40 / **FP 0** / TN 330 — **P 1.000, R 0.733** (Wilson 0.656–0.798); equal to the exact-search emulation (§13.3) |
+| deployed 2.1 (in-sample parameters) | TP 100 / FN 50 / FP 0 / TN 330 |
+| V1 baselines on the same 480 pairs | V1 on V2 vectors P 1.000 / R 0.247; V1 end to end P 1.000 / R 0.227 (§13.4) |
+| decisions | 100 stored, all held (0 published, 0 XADDed) |
+| §5 drop/rebuild | tasks `WAITING_INDEX` while lost; rebuild 31 s; **manifest digests equal** (both roles); decisions **identical** (100/100); every decision re-proposed; recovery 0/0 |
+
+On L-PAIRS, M3-1's comparison (precision ≥ V1 and recall ≥ V1 against the
+stronger baseline on identical held-out pairs, zero FP) **holds** through
+the live candidate path.

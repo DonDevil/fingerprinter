@@ -1,0 +1,95 @@
+{
+ "benchmark": "P10-P8-SET",
+ "linked": 10,
+ "note": "all pairs are the same 6 s content; the plan expected them below the minimum verifiable duration",
+ "pairs": {
+  "frag.mp4|high.mkv": {
+   "coverage": [
+    1.0,
+    1.0
+   ],
+   "linked": true,
+   "reason": "equivalent"
+  },
+  "frag.mp4|high.mp4": {
+   "coverage": [
+    1.0,
+    1.0
+   ],
+   "linked": true,
+   "reason": "equivalent"
+  },
+  "frag.mp4|low.mp4": {
+   "coverage": [
+    1.0,
+    1.0
+   ],
+   "linked": true,
+   "reason": "equivalent"
+  },
+  "frag.mp4|vp8.webm": {
+   "coverage": [
+    1.0,
+    1.0
+   ],
+   "linked": true,
+   "reason": "equivalent"
+  },
+  "high.mkv|high.mp4": {
+   "coverage": [
+    1.0,
+    1.0
+   ],
+   "linked": true,
+   "reason": "equivalent"
+  },
+  "high.mkv|low.mp4": {
+   "coverage": [
+    1.0,
+    1.0
+   ],
+   "linked": true,
+   "reason": "equivalent"
+  },
+  "high.mkv|vp8.webm": {
+   "coverage": [
+    1.0,
+    1.0
+   ],
+   "linked": true,
+   "reason": "equivalent"
+  },
+  "high.mp4|low.mp4": {
+   "coverage": [
+    1.0,
+    1.0
+   ],
+   "linked": true,
+   "reason": "equivalent"
+  },
+  "high.mp4|vp8.webm": {
+   "coverage": [
+    1.0,
+    1.0
+   ],
+   "linked": true,
+   "reason": "equivalent"
+  },
+  "low.mp4|vp8.webm": {
+   "coverage": [
+    1.0,
+    1.0
+   ],
+   "linked": true,
+   "reason": "equivalent"
+  }
+ },
+ "segments_per_item": {
+  "frag.mp4": 2,
+  "high.mkv": 2,
+  "high.mp4": 2,
+  "low.mp4": 2,
+  "vp8.webm": 2
+ },
+ "total_pairs": 10
+}
