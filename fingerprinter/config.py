@@ -278,14 +278,32 @@ class Settings(_Section):
 PROVISIONAL_MAX_POINTS = 250_000
 
 
+def _check_e_r1_evidence(max_points: int, evidence: str | None) -> None:
+    """CAP-8: a limit other than the provisional one only from a **passing** E-R1 report that measured
+    at least that many resident points (design §13.4: set to a measured passing total, never raised by
+    a failure). ``evidence`` is the report's path; a label alone is not evidence."""
+    import json
+
+    if not evidence:
+        raise ValueError("index.max_points other than 250000 needs index.max_points_evidence (E-R1 report)")
+    try:
+        report = json.loads(Path(evidence).expanduser().read_text())
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"index.max_points_evidence {evidence!r} is not a readable E-R1 report: {exc}") from exc
+    measured = report.get("measured_max_resident_total")
+    if report.get("benchmark") != "E-R1" or report.get("pass") is not True or report.get("gate_eligible") is not True:
+        raise ValueError(f"index.max_points_evidence {evidence!r} is not a passing, gate-eligible E-R1 report")
+    if not isinstance(measured, int) or max_points > measured:
+        raise ValueError(f"index.max_points {max_points} exceeds the E-R1 measured total {measured}")
+
+
 def _check_p10(s: Settings) -> None:
     """P10 bounds that must hold together (design §7.2, §12.4, §13.3); fail closed at startup."""
     ix, m = s.index, s.matching
     if ix.capacity_margin_points >= ix.max_points:
         raise ValueError("index.capacity_margin_points must be below index.max_points")
-    if ix.max_points != PROVISIONAL_MAX_POINTS and not ix.max_points_evidence:
-        # CAP-8: a limit other than the provisional one only from a measured E-R1 report
-        raise ValueError("index.max_points other than 250000 needs index.max_points_evidence (E-R1 report)")
+    if ix.max_points != PROVISIONAL_MAX_POINTS:
+        _check_e_r1_evidence(ix.max_points, ix.max_points_evidence)
     if ix.drain_grace_s < 2 * ix.active_ttl_s + m.task_lease_s:
         raise ValueError("index.drain_grace_s must be >= 2 * index.active_ttl_s + matching.task_lease_s")
     for k_max in (m.k_max_a, m.k_max_b, m.k_max_eq):

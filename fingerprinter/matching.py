@@ -737,9 +737,22 @@ class Matcher:
             cursor += len(batch)
             self.hook("matcher.after_page", subject=row["subject_id"], kind=kind, run=r, cursor=cursor)
             self._lwt(row, {"verify_cursor": cursor})
+        # a candidate left PENDING by a retryable outcome (verification timeout) is retried here, bounded by
+        # verify_retries; one still not verified counts as failed — a run never ends DONE with a candidate
+        # it did not verify (G-13, validation §13.21)
+        for _ in range(self.p.settings.matching.verify_retries):
+            pending = [c for c in self.db.rows("SELECT * FROM {ks}.match_candidates WHERE subject_id = ? AND "
+                                               "spec_digest = ? AND kind = ? AND generation = ? AND run = ?",
+                                               row["subject_id"], spec, kind, g, r) if c["state"] == "PENDING"]
+            if not pending:
+                break
+            if query is None:
+                query = self._query_vectors(subject)
+            for c in sorted(pending, key=lambda x: x["rank"]):
+                self._candidate(row, subject, query, c, tech, stats, cache)
         cands = self.db.rows("SELECT state, reason FROM {ks}.match_candidates WHERE subject_id = ? AND spec_digest = ? "
                              "AND kind = ? AND generation = ? AND run = ?", row["subject_id"], spec, kind, g, r)
-        failed = sum(1 for c in cands if c["state"] == "FAILED")
+        failed = sum(1 for c in cands if c["state"] in ("FAILED", "PENDING"))
         reason = None
         if stats.get("saturated"):
             reason = f"saturated_segments={stats['saturated']}"

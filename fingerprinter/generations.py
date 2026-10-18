@@ -187,6 +187,13 @@ class Generations:
         old = int(static.get("active_generation") or 0)
         now = self.p.now()
         ix, m = self.p.settings.index, self.p.settings.matching
+        validated = utc(row.get("validated_at"))
+        if validated is None or now - validated > timedelta(seconds=ix.revalidate_after_s):
+            # R-9: a validation older than revalidate_after_s does not promote; the generation goes back
+            # to VALIDATING and the next build (which adopts it) validates it again
+            self.transition(spec, role, g, READY, VALIDATING, build_epoch=None)
+            self.forget()
+            return False
         horizon = now + timedelta(seconds=ix.active_ttl_s + m.search_timeout_s + ix.clock_margin_s)
         stmts = ["UPDATE {ks}.index_generations SET active_generation = ?, active_epoch = ? "
                  "WHERE spec_digest = ? AND role = ? IF active_epoch = ?",

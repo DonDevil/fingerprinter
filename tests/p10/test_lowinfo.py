@@ -116,3 +116,42 @@ def test_l16_unreadable_witness_retries_never_excludes(li, monkeypatch) -> None:
     monkeypatch.setattr(p10.s.db, "one", flaky)
     with pytest.raises(StorageUnavailableError):
         p10.sys.lowinfo.usable_flags(p10.spec, t1, {})
+
+
+def test_l5_duplicate_observation_bumps_revision_once(li) -> None:
+    """L-5: repeated observation of an unchanged target set (duplicate registration/retirement
+    observations) does not bump ``target_set_rev``; one real change bumps it exactly once."""
+    p10, w = li
+    r0 = p10.sys.lowinfo.observe(p10.spec)
+    assert [p10.sys.lowinfo.observe(p10.spec) for _ in range(3)] == [r0] * 3
+    p10.s.targets.retire(w["t2"][0], reason="L-5", actor="test")
+    assert p10.sys.lowinfo.observe(p10.spec) == r0 + 1
+    assert p10.sys.lowinfo.observe(p10.spec) == r0 + 1
+
+
+def test_l11_unobserved_registration_adds_no_exclusion(li) -> None:
+    """L-11: X (sharing the ident with T1/T3) registered in P9 but not observed by the scan: no flag names X
+    as a witness, no new exclusion, and T2's usable flags are unchanged."""
+    p10, w = li
+    before = {k: p10.sys.lowinfo.usable_flags(p10.spec, trep(p10, w[k]), {}) for k in ("t1", "t2", "t3")}
+    rng = np.random.default_rng(78)
+    x = p10.register_target(np.vstack(w["ident"] + [unit(rng.standard_normal(DIM)) for _ in range(3)]),
+                            np.arange(5) * 5.0, title="X")
+    xs = trep(p10, x)
+    for r in p10.sys.lowinfo.records(p10.spec):
+        assert not any(xs in ref for refs in (r.get("witnesses") or {}).values() for ref in refs)
+    assert p10.sys.lowinfo.record(p10.spec, xs) is None
+    after = {k: p10.sys.lowinfo.usable_flags(p10.spec, trep(p10, w[k]), {}) for k in ("t1", "t2", "t3")}
+    assert after == before
+
+
+def test_l15_payload_never_decides_an_exclusion(li) -> None:
+    """L-15: T's payload says ``lowinfo = true`` but its record has no flag ⇒ eligible (the record decides);
+    U's payload says false although its record is flagged ⇒ eligible (payload false: no check, a stale
+    payload can only reduce exclusion)."""
+    p10, w = li
+    t2, t1 = trep(p10, w["t2"]), trep(p10, w["t1"])
+    check = p10.sys.lowinfo.hit_excluded(p10.spec, {}, {})
+    assert not check({"trep": t2, "k": 0, "lowinfo": True})        # record of T2 has no flag
+    assert not check({"trep": t1, "k": 0, "lowinfo": False})       # T1 seg 0 is flagged, payload false
+    assert check({"trep": t1, "k": 0, "lowinfo": True})            # both agree: excluded (filter OK)
