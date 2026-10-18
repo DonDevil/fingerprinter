@@ -66,7 +66,16 @@ from fingerprinter.objects import IntegrityError, ObjectMissingError
 from fingerprinter.p10ctx import KIND_A, KIND_B, KIND_EQ, OPPOSITE, P10, ROLE_OF_KIND, Subject
 from fingerprinter.publish import Outcome, Publisher
 from fingerprinter.store import day_of, shard_of
-from fingerprinter.verify import TECHNIQUE_NAME, Vectors, Verification, equivalence, verify
+from fingerprinter.verify import (
+    EQUIV_RULE,
+    EQUIV_RULES,
+    TECHNIQUE_NAME,
+    Vectors,
+    Verification,
+    equiv_link_version,
+    equivalence,
+    verify,
+)
 from fingerprinter.vindex import MEDIA, TARGET, IndexMissingError, IndexUnavailableError, point_id
 
 log = logging.getLogger("fingerprinter.matching")
@@ -441,21 +450,24 @@ class MatchCommitter:
     # --- equivalence links (design §10) ---
 
     def link(self, a: Subject, b: Subject, tech: Technique, evidence: dict[str, Any],
-             provenance: dict[str, Any]) -> bool:
+             provenance: dict[str, Any], *, rule: str = EQUIV_RULE) -> bool:
+        version = equiv_link_version(tech.version, rule)
         ref = self.intent_put("equiv_link", {"a": a.content_id, "b": b.content_id, "spec": a.spec_digest,
-                                             "version": tech.version}, {"evidence": evidence, "provenance": provenance})
-        applied = self._link_rows(a.content_id, b.content_id, a.spec_digest, tech, evidence, provenance)
+                                             "version": version}, {"evidence": evidence, "provenance": provenance})
+        applied = self._link_rows(a.content_id, b.content_id, a.spec_digest, tech, evidence, provenance,
+                                  version=version)
         self.intent_del(ref)
         return applied
 
     def _link_rows(self, a: str, b: str, spec: str, tech: Technique, evidence: dict[str, Any],
-                   provenance: dict[str, Any]) -> bool:
+                   provenance: dict[str, Any], *, version: str | None = None) -> bool:
+        version = version or tech.version
         applied = False
         now = self.p.now()
         for x, y in ((a, b), (b, a)):
             res = self.db.lwt("INSERT INTO {ks}.equivalence_links (content_id, other_content_id, spec_digest, "
                               "technique_name, technique_version, state, evidence, provenance, decided_at, audit) "
-                              "VALUES (?,?,?,?,?,'LINKED',?,?,?,?) IF NOT EXISTS", x, y, spec, tech.name, tech.version,
+                              "VALUES (?,?,?,?,?,'LINKED',?,?,?,?) IF NOT EXISTS", x, y, spec, tech.name, version,
                               json.dumps(evidence, sort_keys=True, default=str),
                               json.dumps(provenance, sort_keys=True, default=str), now,
                               [json.dumps({"at": now.isoformat(), "action": "link"})])
@@ -492,8 +504,9 @@ class MatchCommitter:
             self._reverse_rows(key, pl["match_id"])
             self.publish_if_calibrated(key, self.techniques.get(key["technique_version"]))
         elif row["kind"] == "equiv_link":
-            tech = self.techniques.get(key["version"])
-            self._link_rows(key["a"], key["b"], key["spec"], tech, pl["evidence"], pl["provenance"])
+            tech = self.techniques.get(key["version"].split("+", 1)[0])   # "<technique>[+<rule>]"
+            self._link_rows(key["a"], key["b"], key["spec"], tech, pl["evidence"], pl["provenance"],
+                            version=key["version"])
         elif row["kind"] == "equiv_revoke":
             self.revoke(key["a"], key["b"], key["spec"], key["version"], reason=pl["reason"], actor=pl["actor"])
         self.intent_del(ref)
@@ -839,7 +852,8 @@ class Matcher:
         t0 = time.monotonic()
         if kind == KIND_EQ:
             a, b, va, vb = (media, target, mv, tv) if media.content_id <= target.content_id else (target, media, tv, mv)
-            eq = equivalence(va, vb, tech.params)
+            rule = EQUIV_RULES[self.p.settings.matching.equivalence_rule]
+            eq = equivalence(va, vb, tech.params, rule)
             dt = time.monotonic() - t0
             metrics.P10_VERIFY_SECONDS.labels(kind=kind).observe(dt)
             if dt > self.p.settings.matching.verify_timeout_s:
@@ -847,7 +861,7 @@ class Matcher:
                 return
             if eq.linked:
                 prov = self._provenance(row, subject, o, tech, eq.verification, stats, c, dt)
-                self.committer.link(a, b, tech, eq.evidence(), prov)
+                self.committer.link(a, b, tech, eq.evidence(), prov, rule=rule.rule)
             self._cand_state(row, c, "VERIFIED", outcome="linked" if eq.linked else "not_equivalent")
             return
         excluded = frozenset()

@@ -184,6 +184,7 @@ class MatchingConfig(_Section):
     backoff_max_s: float = Field(default=900.0, gt=0)
     technique_version: str = "2.1"
     equivalence_enabled: bool = False
+    equivalence_rule: str = "equiv/v1"
     publish_probable: bool = False
     lowinfo_enabled: bool = False
     lowinfo_limit: int = Field(default=256, ge=1)
@@ -311,6 +312,10 @@ def _check_p10(s: Settings) -> None:
             raise ValueError("matching.k0 must not exceed any k_max")
     if m.page_b > m.cap_b_total:
         raise ValueError("matching.page_b must not exceed matching.cap_b_total")
+    from fingerprinter.verify import EQUIV_RULES
+
+    if m.equivalence_rule not in EQUIV_RULES:
+        raise ValueError(f"matching.equivalence_rule {m.equivalence_rule!r} is not one of {sorted(EQUIV_RULES)}")
     if m.backoff_base_s > m.backoff_max_s:
         raise ValueError("matching.backoff_base_s must not exceed matching.backoff_max_s")
 

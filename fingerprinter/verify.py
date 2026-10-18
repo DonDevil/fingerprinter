@@ -289,14 +289,30 @@ def best_score(media: Vectors, target: Vectors, params: VerifierParams,
 
 @dataclass(frozen=True)
 class EquivParams:
+    """An immutable equivalence rule version. ``segment`` (``equiv/v2`` onwards) overrides the segment
+    parameters of the run search (``s_seg``, ``s_mean``, ``vote_floor``, ``max_gap``,
+    ``phase_tolerance_s``) for equivalence only; ``None`` (``equiv/v1``) uses the matching technique's.
+    The coverage, duration and offset rule is the same in every version (P10-D13)."""
+
     coverage: float = 0.90
     max_duration_diff_s: float = 5.0
     max_duration_diff_frac: float = 0.02
     max_offset_s: float = 10.0
     rule: str = EQUIV_RULE
+    segment: dict[str, Any] | None = None
+
+    def document(self) -> dict[str, Any]:
+        doc = asdict(self)
+        if doc["segment"] is None:
+            del doc["segment"]  # equiv/v1's digest is unchanged by the field's introduction
+        return doc
 
     def digest(self) -> str:
-        return hashlib.sha256(json.dumps(asdict(self), sort_keys=True).encode()).hexdigest()
+        return hashlib.sha256(json.dumps(self.document(), sort_keys=True).encode()).hexdigest()
+
+    def run_params(self, params: VerifierParams) -> VerifierParams:
+        return params if self.segment is None else VerifierParams.from_document({**params.document(),
+                                                                                 **self.segment})
 
 
 @dataclass
@@ -309,11 +325,30 @@ class Equivalence:
     duration_b_s: float
     reason: str
     verification: Verification
+    rule: str = EQUIV_RULE
+    rule_digest: str = ""
 
     def evidence(self) -> dict[str, Any]:
         return {"linked": self.linked, "coverage_a": self.coverage_a, "coverage_b": self.coverage_b,
                 "offset_s": self.offset_s, "duration_a_s": self.duration_a_s, "duration_b_s": self.duration_b_s,
-                "reason": self.reason, "rule": EQUIV_RULE, "verification": self.verification.summary()}
+                "reason": self.reason, "rule": self.rule, "rule_digest": self.rule_digest,
+                "verification": self.verification.summary()}
+
+
+# Immutable equivalence rule versions (design §10, validation §13.19). A new version is added here, never
+# changed in place; a link records its rule and rule digest, and links of a rule other than equiv/v1 are
+# keyed by ``<technique version>+<rule>`` so two rule versions never share a link row.
+EQUIV_RULES: dict[str, EquivParams] = {
+    EQUIV_RULE: EquivParams(),
+    # selected on E-TUNE only (max recall at zero false links, most conservative of the plateau), held-out
+    # E-SET 280/300 linked, 0/12,420 false links: benchmarks/p10-index/results/equiv-tune.json
+    "equiv/v2": EquivParams(rule="equiv/v2", segment={"s_seg": 0.65, "s_mean": 0.65, "vote_floor": 0.55,
+                                                      "max_gap": 1, "phase_tolerance_s": 2.5}),
+}
+
+
+def equiv_link_version(technique_version: str, rule: str) -> str:
+    return technique_version if rule == EQUIV_RULE else f"{technique_version}+{rule}"
 
 
 def _duration(v: Vectors, seg: float) -> float:
@@ -325,10 +360,10 @@ def equivalence(a: Vectors, b: Vectors, params: VerifierParams, eq: EquivParams 
     within max(5 s, 2 %), |offset| ≤ 10 s. No exclusion applies between media (C-14n).
     Callers order the pair canonically (by content id) so the decision is symmetric."""
     eq = eq or EquivParams()
-    res = verify(a, b, params, frozenset())
+    res = verify(a, b, eq.run_params(params), frozenset())
     da, db_ = _duration(a, params.segment_duration_s), _duration(b, params.segment_duration_s)
     if not res.runs:
-        return Equivalence(False, 0.0, 0.0, None, da, db_, "no qualifying run", res)
+        return Equivalence(False, 0.0, 0.0, None, da, db_, "no qualifying run", res, eq.rule, eq.digest())
     best = max(res.runs, key=lambda r: (r.matched, r.mean_similarity, -abs(r.offset_s)))
     cov_a = len(set(best.media_segments)) / max(len(a), 1)
     cov_b = len(set(best.target_segments)) / max(len(b), 1)
@@ -341,4 +376,5 @@ def equivalence(a: Vectors, b: Vectors, params: VerifierParams, eq: EquivParams 
         reason, ok = f"offset {best.offset_s:.2f}s > {eq.max_offset_s}s", False
     else:
         reason, ok = "equivalent", True
-    return Equivalence(ok, round(cov_a, 6), round(cov_b, 6), best.offset_s, round(da, 3), round(db_, 3), reason, res)
+    return Equivalence(ok, round(cov_a, 6), round(cov_b, 6), best.offset_s, round(da, 3), round(db_, 3), reason, res,
+                       eq.rule, eq.digest())

@@ -14,6 +14,11 @@ For each of ``--excerpts`` excerpts (60-120 s, seeded positions spread over the
 Labels are provenance only. Output (outside git):
 ``~/anti_piracy/datasets/p10/e-set/{media/, manifest.json}``.
 
+``--avoid <manifest.json> --prefix t --seed 9`` builds a **disjoint** set (the
+equivalence tuning set E-TUNE, validation §13.19): no excerpt overlaps in time
+an excerpt of the avoided manifest (same film), so tuning never sees E-SET
+content.
+
     env/bin/python benchmarks/p10-index/make_eset.py --data ~/anti_piracy/datasets/p9 \
         --out ~/anti_piracy/datasets/p10/e-set --excerpts 20
 """
@@ -53,7 +58,15 @@ def main() -> None:
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--excerpts", type=int, default=20)
     ap.add_argument("--seed", type=int, default=8)
+    ap.add_argument("--prefix", default="e", help="item name prefix (E-SET: e)")
+    ap.add_argument("--avoid", type=Path, help="manifest.json of a set whose excerpts must not overlap")
+    ap.add_argument("--corpus", default="E-SET")
     a = ap.parse_args()
+    avoid: dict[str, list[tuple[float, float]]] = {}
+    if a.avoid:
+        for it in json.loads(a.avoid.read_text())["items"]:
+            if it["role"] == "variant":
+                avoid.setdefault(it["film"], []).append((it["start_s"], it["start_s"] + it["seconds"] + 30.0))
     lp = json.loads((a.data / "l-pairs" / "manifest.json").read_text())
     films = [(i["film"], (a.data / "l-pairs" / i["file"]).resolve(), float(i["probe"]["duration_s"]))
              for i in lp["items"] if i["kind"] == "target"]
@@ -61,11 +74,20 @@ def main() -> None:
     media = a.out / "media"
     media.mkdir(parents=True, exist_ok=True)
     items = []
+    skipped: list[str] = []
     for e in range(a.excerpts):
         film, path, dur = films[e % len(films)]
-        length = float(rng.integers(60, 121))
-        start = float(rng.uniform(20.0, max(dur - length - 60.0, 21.0)))
-        base = f"e{e:02d}-{film}"
+        for _ in range(1000):
+            length = float(rng.integers(60, 121))
+            start = float(rng.uniform(20.0, max(dur - length - 60.0, 21.0)))
+            # [start, start + length + 30] also covers the 30 s-shifted negative
+            if all(start + length + 30.0 <= lo or start >= hi for lo, hi in avoid.get(film, [])):
+                break
+        else:
+            skipped.append(f"{a.prefix}{e:02d}-{film}")
+            print(f"[{e + 1}/{a.excerpts}] {film}: no excerpt avoids {a.avoid} - skipped", flush=True)
+            continue
+        base = f"{a.prefix}{e:02d}-{film}"
         mezz = media / f"{base}-mezz.mp4"
         vf = ["-vf", "scale=-2:480,format=yuv420p", "-an", "-map", "0:v:0"]
         if not mezz.exists():
@@ -108,10 +130,10 @@ def main() -> None:
         items.append({"file": f"media/{sub.name}", "kind": "video", "excerpt": e, "film": film,
                       "role": "negative_half", "start_s": round(start, 3), "seconds": length / 2, "sha256": sha(sub)})
         print(f"[{e + 1}/{a.excerpts}] {base}: {length:.0f}s at {start:.1f}s", flush=True)
-    manifest = {"corpus": "E-SET",
+    manifest = {"corpus": a.corpus, "avoided": None if a.avoid is None else str(a.avoid),
                 "definition": "validation §8 / P10-D18; labels = provenance (same excerpt, different "
                 "encoding or packaging = equivalent; shifted 30 s, 50 % sub-clip, other excerpts = not)",
-                "seed": a.seed, "variants": [*VARIANTS, "remux-mkv", "fmp4-1s", "fmp4-2s"], "items": items,
+                "seed": a.seed, "skipped": skipped, "variants": [*VARIANTS, "remux-mkv", "fmp4-1s", "fmp4-2s"], "items": items,
                 "licence_note": "derived from the S-SRC openly licensed films (P9 data-preparation §7)"}
     (a.out / "manifest.json").write_text(json.dumps(manifest, indent=1, sort_keys=True))
     print(json.dumps({"items": len(items)}))

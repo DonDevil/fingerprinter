@@ -216,3 +216,32 @@ def test_equivalence_rule() -> None:
     other = sample(OTHER, 0.0, 300.0, 0.0, seed=24)
     assert not equivalence(full, other, P).linked
     assert EquivParams().coverage == 0.90
+
+
+def test_equivalence_rule_versions_are_immutable_and_separate() -> None:
+    """equiv/v1's digest and behaviour are unchanged by rule versioning (validation §13.19); a later rule
+    overrides only the run-search parameters, and its links are keyed apart from v1's."""
+    from fingerprinter.verify import EQUIV_RULE, EQUIV_RULES, EquivParams, equiv_link_version
+
+    v1 = EQUIV_RULES[EQUIV_RULE]
+    assert v1 == EquivParams() and v1.segment is None
+    assert v1.digest() == "c105837c066536f2617ed3b8e0c0934de489b5facbeab58abb0eb07563afcb05"   # pre-versioning
+    assert v1.run_params(P) is P
+    v2 = EquivParams(rule="equiv/v2", segment={"s_seg": 0.6, "vote_floor": 0.5})
+    rp = v2.run_params(P)
+    assert (rp.s_seg, rp.vote_floor, rp.min_run, rp.tau_confirmed) == (0.6, 0.5, P.min_run, P.tau_confirmed)
+    assert v2.digest() != v1.digest()
+    assert equiv_link_version("2.1", EQUIV_RULE) == "2.1" and equiv_link_version("2.1", "equiv/v2") == "2.1+equiv/v2"
+
+
+def test_equiv_v2_is_the_evidenced_parameter_set() -> None:
+    """The registered equiv/v2 is exactly the setting selected on E-TUNE (immutable; its evidence file)."""
+    import json
+    from pathlib import Path
+
+    from fingerprinter.verify import EQUIV_RULES
+
+    rep = json.loads((Path(__file__).resolve().parents[2] / "benchmarks/p10-index/results/equiv-tune.json")
+                     .read_text())
+    assert EQUIV_RULES["equiv/v2"].segment == rep["selected"]
+    assert EQUIV_RULES["equiv/v2"].digest() == rep["selected_digest"]
