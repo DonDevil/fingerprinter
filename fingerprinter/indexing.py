@@ -212,8 +212,8 @@ class Indexer:
         """Apply the row's current desired state to every routed generation (or ``only_gens``).
 
         ``force_gens``: re-write even if ``applied[g] = seq`` (a repair); ``covered_gens``: reservation
-        held by a rebuild admission (no per-subject reservation); ``repairing``: generations whose
-        pre-count is satisfied by an OPEN occurrence the caller holds."""
+        held by a rebuild admission (no per-subject reservation while the write fits in it, CAP-4);
+        ``repairing``: generations whose pre-count is satisfied by an OPEN occurrence the caller holds."""
         lease = self.p.key("lease", "ie", spec[-12:], role, subject_id)
         token = self.p.instance
         self.p.coord.acquire(lease, token, int(self.p.settings.index.mutation_lease_s * 1000))
@@ -273,7 +273,7 @@ class Indexer:
         n = int(row["segment_count"] or 0)
         detected: list[int] = []
         if op == UPSERT:
-            reserve = sum(n for g in todo if g["generation"] not in covered)
+            reserve = sum(n for g in todo if not (g["generation"] in covered and self._within_admission(g, n)))
             self.capacity.reserve(reserve)
             for g in todo:  # pre-count (C-13): never let this apply heal an unrecorded gap
                 p = applied.get(g["generation"])
@@ -309,6 +309,17 @@ class Indexer:
             metrics.P10_UPSERT_SECONDS.labels(role=role).observe(time.monotonic() - t0)
             done[g["generation"]] = s
         return done, detected
+
+    def _within_admission(self, g: dict[str, Any], n: int) -> bool:
+        """A bulk-load or catch-up write draws on the generation's admission holder (design §13.3) only
+        while it fits: exact count + n ≤ ``reserved_points``. Beyond it — growth past the rebuild headroom —
+        it reserves in the ledger like a live write, so nothing bypasses the ledger (CAP-4). Points that
+        live writes reserved separately are counted here too (conservative: reserved twice until the
+        next audit)."""
+        try:
+            return self.p.index.count(g["collection"]) + n <= int(g.get("reserved_points") or 0)
+        except IndexMissingError:
+            return False
 
     def _count(self, g: dict[str, Any], role: str, sid: str, seq: int) -> int | None:
         try:
@@ -482,6 +493,11 @@ class Builder:
                         self.gens.renew_lease(spec, role, epoch)
                         time.sleep(1.0)
                 self.catch_up(spec, role, g)
+                blocked = self._capacity_blocked(spec, role, g)
+                if blocked:
+                    # stays CATCHING_UP (resumable): validation cannot pass while these rows are missing
+                    return {"state": "CAPACITY_BLOCKED", "generation": g, "blocked_rows": blocked,
+                            **self._requirement(spec, role)}
                 self.gens.transition(spec, role, g, CATCHING_UP, VALIDATING, build_epoch=epoch)
             elif state == VALIDATING:
                 report = self.validate(spec, role, g)
@@ -520,6 +536,10 @@ class Builder:
                 except SubjectInvalidError as exc:
                     log.error(json.dumps({"event": "build_subject_invalid", "subject": s.subject_id,
                                           "reason": exc.reason}))
+                except WaitingIndexError as exc:
+                    # refused before any write (e.g. capacity): the row stays BLOCKED/PENDING for catch-up
+                    log.warning(json.dumps({"event": "build_subject_waiting", "subject": s.subject_id,
+                                            "reason": exc.reason}))
             if not self.p.db.lwt("UPDATE {ks}.index_generations SET build_cursor[?] = 'done' WHERE spec_digest = ? "
                                  "AND role = ? AND generation = ? IF build_epoch = ?", b, spec, role, g, epoch).applied:
                 raise RuntimeError("build lease lost (build_epoch changed)")
@@ -538,13 +558,19 @@ class Builder:
                 for _ in range(5):
                     try:
                         self.indexer.apply(spec, role, b, e["subject_id"], covered_gens={g})
-                    except SubjectInvalidError:
+                    except (SubjectInvalidError, WaitingIndexError):
                         break
                     cur = self.indexer.entry(spec, role, b, e["subject_id"])
                     if (cur["applied"] or {}).get(g) == cur["seq"]:
                         fixed += 1
                         break
         return fixed
+
+    def _capacity_blocked(self, spec: str, role: str, g: int) -> int:
+        """Rows refused on capacity that g still lacks (the build cannot complete until a release)."""
+        return sum(1 for b in range(BUCKETS) for e in self.indexer.entries(spec, role, b)
+                   if e["state"] == BLOCKED and e.get("blocked_reason") == "capacity"
+                   and (e["applied"] or {}).get(g) != e["seq"])
 
     # --- validation (§12.5) -------------------------------------------------------------------
 

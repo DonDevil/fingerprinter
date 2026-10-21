@@ -189,6 +189,7 @@ class MatchingConfig(_Section):
     lowinfo_enabled: bool = False
     lowinfo_limit: int = Field(default=256, ge=1)
     lowinfo_threshold: float = Field(default=0.95, gt=0, le=1)
+    lowinfo_max_attempts: int = Field(default=5, ge=1)   # refresh failures before BLOCKED (design §7.3)
     artifact_cache_bytes: int = Field(default=256 * 1024**2, ge=0)
     poll_interval_s: float = Field(default=1.0, gt=0)
 

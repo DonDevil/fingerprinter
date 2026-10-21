@@ -12,7 +12,8 @@ import pytest
 
 from fingerprinter.errors import StorageUnavailableError
 from fingerprinter.lowinfo import COMPLETE, PARTIAL
-from fingerprinter.p10ctx import KIND_A
+from fingerprinter.p10ctx import KIND_A, KIND_B
+from fingerprinter.vindex import IndexUnavailableError
 from tests.p10 import synth
 
 pytestmark = pytest.mark.p10_integration
@@ -155,3 +156,239 @@ def test_l15_payload_never_decides_an_exclusion(li) -> None:
     assert not check({"trep": t2, "k": 0, "lowinfo": True})        # record of T2 has no flag
     assert not check({"trep": t1, "k": 0, "lowinfo": False})       # T1 seg 0 is flagged, payload false
     assert check({"trep": t1, "k": 0, "lowinfo": True})            # both agree: excluded (filter OK)
+
+
+# --- cases unrun after the exit-gate pass (validation §13.21) ------------------------------------
+
+
+def reference_flags(p10) -> dict[str, set[int]]:
+    """Exhaustive numpy float32 classification of every live target at the authoritative set."""
+    vec = {t.subject_id: (t, p10.sys.p.artifacts.load_subject(t)) for t in p10.sys.lowinfo.members(p10.spec)}
+    out: dict[str, set[int]] = {}
+    for sid, (t, v) in vec.items():
+        flags = set()
+        for i, k in enumerate(v.segment_index):
+            for oid, (o, ov) in vec.items():
+                if o.target_id != t.target_id and np.any(ov.vectors.astype(np.float64) @
+                                                         v.vectors[i].astype(np.float64) >= 0.95):
+                    flags.add(int(k))
+                    break
+        out[sid] = flags
+    return out
+
+
+def stored_flags(p10) -> dict[str, set[int]]:
+    live = {t.subject_id for t in p10.sys.lowinfo.members(p10.spec)}
+    return {r["target_representation_id"]: {int(x) for x in (r.get("flags") or ())}
+            for r in p10.sys.lowinfo.records(p10.spec) if r["target_representation_id"] in live
+            and r.get("status") == COMPLETE}
+
+
+def refresh_row(p10) -> dict:
+    return p10.s.db.one("SELECT * FROM {ks}.lowinfo_refresh WHERE spec_digest = ?", p10.spec)
+
+
+def with_ident(p10, w, seed: int, title: str, ident=None):
+    rng = np.random.default_rng(seed)
+    return p10.register_target(np.vstack((ident or w["ident"]) + [unit(rng.standard_normal(DIM)) for _ in range(3)]),
+                               np.arange(5) * 5.0, title=title)
+
+
+def test_l2_retired_witness_found_from_witness_lists(li) -> None:
+    """L-2: T1's ident flags have witnesses T3 and X. Retiring T3 (observed) keeps the flags through the
+    live witness X (no rerun); retiring X too clears them (no live witness), and T1's target_vs_media is
+    re-enqueued (``lowinfo_flag_cleared``); the payload copy follows the new revision."""
+    p10, w = li
+    x = with_ident(p10, w, 91, "X")
+    p10.drive()
+    p10.sys.lowinfo.observe(p10.spec)
+    p10.sys.lowinfo.refresh(p10.spec)
+    t1 = trep(p10, w["t1"])
+    rec = p10.sys.lowinfo.record(p10.spec, t1)
+    assert set(rec["flags"]) == {0, 1} and all(len(rec["witnesses"][k]) == 2 for k in (0, 1))
+    run0 = p10.sys.tasks.row(t1, p10.spec, KIND_B)["run"]
+    p10.s.targets.retire(w["t3"][0], reason="L-2", actor="test")
+    p10.sys.lowinfo.observe(p10.spec)
+    out = p10.sys.lowinfo.refresh(p10.spec)
+    rec = p10.sys.lowinfo.record(p10.spec, t1)
+    assert out["cleared"] == 0 and set(rec["flags"]) == {0, 1}
+    assert all(trep(p10, w["t3"]) not in "".join(rec["witnesses"][k]) for k in (0, 1))   # found from the lists
+    assert p10.sys.tasks.row(t1, p10.spec, KIND_B)["run"] == run0
+    p10.s.targets.retire(x[0], reason="L-2", actor="test")
+    rev = p10.sys.lowinfo.observe(p10.spec)
+    out = p10.sys.lowinfo.refresh(p10.spec)
+    rec = p10.sys.lowinfo.record(p10.spec, t1)
+    assert out["cleared"] >= 1 and not (rec.get("flags") or set()) and int(rec["rev"]) == rev
+    assert p10.sys.lowinfo.usable_flags(p10.spec, t1, {}) == frozenset()
+    tb = p10.sys.tasks.row(t1, p10.spec, KIND_B)
+    assert tb["run"] == run0 + 1 and tb["rerun_reason"] == "lowinfo_flag_cleared"
+    e = p10.sys.indexer.entry(p10.spec, "target", p10.target(*w["t1"][:2]).bucket, t1)
+    assert e["desired_ver"].endswith(f"+li{rev}")
+    assert stored_flags(p10) == reference_flags(p10)
+
+
+def test_l3_crash_after_the_revision_bump_resumes_and_converges(li, monkeypatch) -> None:
+    """L-3: X (sharing the ident) is observed (rev r+1); the refresh dies after its first record. Then
+    ``done_rev < requested_rev``, records not yet written leave X's segments eligible (fail-closed); the
+    next refresh resumes and the records equal the exhaustive reference."""
+    p10, w = li
+    x = with_ident(p10, w, 92, "X")
+    p10.sys.indexer.ensure(p10.target(x[0], x[1]))     # indexed; the reconciler's own refresh not run
+    rev = p10.sys.lowinfo.observe(p10.spec)
+    real = p10.sys.lowinfo.classify
+    n = {"calls": 0}
+
+    def crash_after_first(spec, t, r):
+        n["calls"] += 1
+        if n["calls"] == 2:
+            raise RuntimeError("kill -9 of the refresh worker")
+        return real(spec, t, r)
+
+    monkeypatch.setattr(p10.sys.lowinfo, "classify", crash_after_first)
+    with pytest.raises(RuntimeError):
+        p10.sys.lowinfo.refresh(p10.spec)
+    monkeypatch.setattr(p10.sys.lowinfo, "classify", real)
+    row = refresh_row(p10)
+    assert int(row["done_rev"] or 0) < int(row["requested_rev"]) == rev
+    xs = trep(p10, x)
+    rec = p10.sys.lowinfo.record(p10.spec, xs)
+    if rec is None or int(rec["rev"]) < rev:
+        assert p10.sys.lowinfo.usable_flags(p10.spec, xs, {}) == frozenset()
+    p10.sys.lowinfo.refresh(p10.spec)
+    assert int(refresh_row(p10)["done_rev"]) == rev
+    assert stored_flags(p10) == reference_flags(p10)
+    assert stored_flags(p10)[xs] == {0, 1}
+
+
+def test_l7_corrupted_and_missing_records_detected_and_repaired(li) -> None:
+    """L-7: T2's record is corrupted with a flag whose witness is live but not similar, T3's record is
+    deleted. The corrupted flag is usable until detected (an alarm case outside the safety model:
+    records are written only after an exact cosine check); one full recomputation reports
+    ``extra_flag`` and ``missing_record`` and repairs both."""
+    p10, w = li
+    t2 = p10.target(*w["t2"][:2])
+    t1 = p10.target(*w["t1"][:2])
+    rec = p10.sys.lowinfo.record(p10.spec, t2.subject_id)
+    from fingerprinter.lowinfo import witness_ref
+
+    assert p10.sys.lowinfo._write_full(p10.spec, t2, int(rec["rev"]), {3}, {3: [witness_ref(t1)]}, COMPLETE)
+    p10.s.db.run("DELETE FROM {ks}.lowinfo_class WHERE spec_digest = ? AND target_representation_id = ?",
+                 p10.spec, trep(p10, w["t3"]))
+    assert p10.sys.lowinfo.usable_flags(p10.spec, t2.subject_id, {}) == frozenset({3})   # the alarm window
+    diff = p10.sys.lowinfo.full_recompute(p10.spec)
+    assert diff["extra_flag"] >= 1 and diff["missing_record"] >= 1
+    assert p10.sys.lowinfo.usable_flags(p10.spec, t2.subject_id, {}) == frozenset()
+    assert stored_flags(p10) == reference_flags(p10)
+
+
+def test_l8_registration_during_a_refresh_loops_to_the_latest(li, monkeypatch) -> None:
+    """L-8: a refresh for r+1 (X) is running when Y registers and is observed (r+2). ``done_rev`` never
+    claims r+1 or r+2 before the records of r+2 are written; the next refresh completes r+2; usable
+    flags stay a subset of the reference throughout."""
+    p10, w = li
+    x = with_ident(p10, w, 93, "X")
+    p10.sys.indexer.ensure(p10.target(x[0], x[1]))     # indexed; the reconciler's own refresh not run
+    r1 = p10.sys.lowinfo.observe(p10.spec)
+    real = p10.sys.lowinfo.classify
+    state = {"y": None}
+
+    def register_y_during(spec, t, r):
+        if state["y"] is None:
+            state["y"] = with_ident(p10, w, 94, "Y")
+            p10.sys.indexer.ensure(p10.target(state["y"][0], state["y"][1]))
+            state["rev"] = p10.sys.lowinfo.observe(p10.spec)
+        return real(spec, t, r)
+
+    monkeypatch.setattr(p10.sys.lowinfo, "classify", register_y_during)
+    p10.sys.lowinfo.refresh(p10.spec)
+    monkeypatch.setattr(p10.sys.lowinfo, "classify", real)
+    r2 = state["rev"]
+    assert r2 == r1 + 1
+    row = refresh_row(p10)
+    assert int(row["requested_rev"]) == r2 and int(row["done_rev"] or 0) < r1   # r+1's LWT lost to r+2
+    ref = reference_flags(p10)
+    for sid in ref:
+        assert p10.sys.lowinfo.usable_flags(p10.spec, sid, {}) <= ref[sid]
+    p10.sys.lowinfo.refresh(p10.spec)
+    assert int(refresh_row(p10)["done_rev"]) == r2
+    assert stored_flags(p10) == reference_flags(p10)
+    assert stored_flags(p10)[trep(p10, state["y"])] == {0, 1}
+
+
+def test_l9_refresh_failing_repeatedly_becomes_blocked_and_visible(li, monkeypatch) -> None:
+    """L-9: the refresh worker cannot reach Qdrant (every classification search fails). After the
+    configured attempts the refresh is BLOCKED with ``last_error`` and ``attempts``; nothing is excluded
+    except through usable flags of the records written before; once Qdrant is back it completes."""
+    p10, w = li
+    x = with_ident(p10, w, 95, "X")
+    p10.sys.indexer.ensure(p10.target(x[0], x[1]))     # indexed; the reconciler's own refresh not run
+    rev = p10.sys.lowinfo.observe(p10.spec)
+    before = {sid: p10.sys.lowinfo.usable_flags(p10.spec, sid, {}) for sid in reference_flags(p10)}
+    real = p10.index.search_batch
+
+    def down(name, reqs, **kw):
+        if reqs and reqs[0].exact:
+            raise IndexUnavailableError("injected: refresh worker cannot reach Qdrant")
+        return real(name, reqs, **kw)
+
+    monkeypatch.setattr(p10.index, "search_batch", down)
+    for _ in range(p10.sys.p.settings.matching.lowinfo_max_attempts + 1):
+        out = p10.sys.reconcile_once(force=True)
+        assert "error" in str(out.get("lowinfo"))
+    row = refresh_row(p10)
+    assert row["state"] == "BLOCKED" and "injected" in (row["last_error"] or "")
+    assert int(row["attempts"]) >= p10.sys.p.settings.matching.lowinfo_max_attempts
+    assert int(row["done_rev"] or 0) < rev
+    for sid, flags in before.items():
+        assert p10.sys.lowinfo.usable_flags(p10.spec, sid, {}) <= flags | reference_flags(p10)[sid]
+    monkeypatch.setattr(p10.index, "search_batch", real)
+    p10.sys.lowinfo.refresh(p10.spec)
+    row = refresh_row(p10)
+    assert int(row["done_rev"]) == rev and row["state"] == "DONE" and int(row["attempts"] or 0) == 0
+    assert stored_flags(p10) == reference_flags(p10)
+
+
+def test_l14_truncated_enumeration_is_completed_never_claimed_complete(p10, monkeypatch) -> None:
+    """L-14 (lifecycle): one ident segment is shared by more than ``L`` other targets, and the
+    highest-ranked copies belong to targets that are retired in P9 but whose points are still in the
+    index (their DELETE not yet applied). A query of size ``L`` is truncated: the classification must
+    enumerate further (or record PARTIAL and not advance ``done_rev``), never write a COMPLETE record that
+    misses a flag a live witness supports. With the page bound exhausted the record is PARTIAL, excludes
+    nothing, and ``done_rev``/``full_requested`` show the incomplete step."""
+    m = p10.sys.p.settings.matching.model_copy(update={"lowinfo_enabled": True, "lowinfo_limit": 2})
+    p10.sys.p.settings = p10.sys.p.settings.model_copy(update={"matching": m})
+    rng = np.random.default_rng(140)
+    ident = unit(rng.standard_normal(DIM))
+    near = unit(ident + 0.18 * unit(rng.standard_normal(DIM)))      # cos(ident, near) ≈ 0.98
+    assert 0.95 < float(ident @ near) < 0.995
+
+    def tgt(first, seed, title):
+        r = np.random.default_rng(seed)
+        return p10.register_target(np.vstack([first] + [unit(r.standard_normal(DIM)) for _ in range(4)]),
+                                   np.arange(5) * 5.0, title=title)
+
+    t = tgt(ident, 141, "T")
+    live_w = tgt(near, 142, "W")                       # the only live witness, ranked below the dead copies
+    dead = [tgt(ident, 143 + i, f"D{i}") for i in range(3)]
+    p10.bootstrap()
+    p10.drive()
+    for d in dead:                                     # retired in P9; DELETE intents not applied yet
+        p10.s.targets.retire(d[0], reason="L-14", actor="test")
+    ts = p10.target(t[0], t[1]).subject_id
+    p10.sys.lowinfo.observe(p10.spec)
+    p10.sys.lowinfo.refresh(p10.spec)
+    rec = p10.sys.lowinfo.record(p10.spec, ts)
+    assert rec["status"] == COMPLETE and 0 in set(rec["flags"]), rec
+    assert any(p10.target(live_w[0], live_w[1]).subject_id in x for x in rec["witnesses"][0])
+    assert stored_flags(p10) == reference_flags(p10)
+    # the page bound exhausted: PARTIAL, nothing excluded, done_rev not advanced, full recomputation requested
+    import fingerprinter.lowinfo as lowinfo_mod
+
+    monkeypatch.setattr(lowinfo_mod, "MAX_PAGES", 1)
+    rev = p10.sys.lowinfo.observe(p10.spec, members=p10.sys.lowinfo.members(p10.spec)[:-1])  # force a new rev
+    p10.sys.lowinfo.refresh(p10.spec)
+    rec = p10.sys.lowinfo.record(p10.spec, ts)
+    assert rec["status"] == PARTIAL
+    assert p10.sys.lowinfo.usable_flags(p10.spec, ts, {}) == frozenset()
+    row = refresh_row(p10)
+    assert int(row["done_rev"] or 0) < rev and row["full_requested"]

@@ -92,5 +92,6 @@ P10_SCAN_CYCLE = Gauge(P + "p10_scan_cycle", "Completed backstop cycles", ["scan
 P10_SCAN_STALLED = Counter(P + "p10_scan_stalled_total", "Backstop scans that refused to skip", ["scan"])
 P10_LOWINFO_WITNESS = Counter(P + "lowinfo_witness_checks_total", "Witness liveness checks", ["result"])
 P10_LOWINFO_TRUNCATED = Counter(P + "lowinfo_enumeration_truncated_total", "Truncated classification queries")
+P10_LOWINFO_REFRESH_FAILURES = Counter(P + "lowinfo_refresh_failures_total", "Failed low-information refreshes")
 P10_LOWINFO_DIFF = Counter(P + "lowinfo_backstop_diff_total", "Full recomputation differences", ["kind"])
 P10_EQUIVALENCE = Counter(P + "equivalence_links_total", "Equivalence decisions", ["state"])

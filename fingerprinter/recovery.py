@@ -395,10 +395,16 @@ class Recovery:
         unresolved = sum(1 for r in rows if r["state"] == CLOSED and r["resolution"] == PENDING)
         metrics.P10_RECOVERY_OPEN.labels(spec=spec[:19]).set(open_)
         metrics.P10_RECOVERY_UNRESOLVED.labels(spec=spec[:19]).set(unresolved)
+        max_attempts = self.p.settings.matcher_reconcile.repair_max_attempts
         for role in ("media", "target"):
             for st in (OPEN, REPAIRED, RERUN_PENDING, CLOSED):
                 metrics.P10_REPAIRS.labels(role=role, state=st).set(
                     sum(1 for r in rows if r["role"] == role and r["state"] == st))
+            # an occurrence whose repair keeps failing stays OPEN and is retried with backoff, never dropped;
+            # past repair_max_attempts it is reported (alert), and the report clears once it is REPAIRED
+            metrics.P10_REPAIRS_BLOCKED.labels(role=role).set(
+                sum(1 for r in rows if r["role"] == role and r["state"] == OPEN
+                    and int(r.get("attempts") or 0) >= max_attempts))
         return open_, unresolved
 
     def settled(self, subject_id: str, spec: str, kinds: list[str]) -> dict[str, Any]:

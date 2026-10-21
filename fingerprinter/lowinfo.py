@@ -40,11 +40,12 @@ from fingerprinter.db import SERIAL
 from fingerprinter.errors import StorageUnavailableError
 from fingerprinter.generations import Generations
 from fingerprinter.p10ctx import P10, Subject, target_live
-from fingerprinter.vindex import TARGET, SearchRequest
+from fingerprinter.vindex import TARGET, IndexServiceError, SearchRequest
 
 RULE = "lowinfo/v1"
 COMPLETE, PARTIAL = "COMPLETE", "PARTIAL"
 MAX_WITNESSES = 4
+MAX_PAGES = 8   # exact queries per segment while enumerating past a truncated (size-L) result
 log = logging.getLogger("fingerprinter.lowinfo")
 
 
@@ -181,51 +182,70 @@ class LowInfo:
     def classify(self, spec: str, t: Subject, rev: int) -> dict[str, Any]:
         """Full classification of one target at revision ``rev`` (exact searches on the active target
         generation, ``exact`` + ``quantization.ignore`` + ``score_threshold``; witnesses confirmed on
-        artifacts). Returns {flags, witnesses, status, truncated}."""
+        artifacts). Returns {flags, witnesses, status, truncated}.
+
+        Completeness (design §7.3, C-9): a query returning exactly ``L`` hits is truncated. Such a segment
+        is enumerated further with the target ids already seen added to ``must_not`` (each page excludes
+        at least one more target, so a page shorter than ``L`` proves every remaining copy was seen), until
+        it has ``MAX_WITNESSES`` witnesses or the enumeration is complete. A segment still truncated after
+        ``MAX_PAGES`` makes the record PARTIAL (it then excludes nothing)."""
         m = self.p.settings.matching
         ptr = self.gens.active(spec, TARGET, fresh=True)
         if ptr is None:
             raise StorageUnavailableError("no ACTIVE target generation for classification")
         vec = self.p.artifacts.load_subject(t)
-        reqs = [SearchRequest(vector=v, limit=m.lowinfo_limit, exact=True, ignore_quantization=True,
-                              score_threshold=m.lowinfo_threshold,
-                              must_not=[{"key": "tid", "match": {"value": t.target_id}}]) for v in vec.vectors]
-        results = self.p.index.search_batch(ptr.collection, reqs, hnsw_ef=None, oversampling=1.0,
-                                            timeout_s=m.search_timeout_s)
+
+        def request(v: np.ndarray, tids: list[str]) -> SearchRequest:
+            return SearchRequest(vector=v, limit=m.lowinfo_limit, exact=True, ignore_quantization=True,
+                                 score_threshold=m.lowinfo_threshold,
+                                 must_not=[{"key": "tid", "match": {"any": tids}}])
+
+        def search(reqs: list[SearchRequest]) -> list[list[Any]]:
+            return self.p.index.search_batch(ptr.collection, reqs, hnsw_ef=None, oversampling=1.0,
+                                             timeout_s=m.search_timeout_s)
+
+        results = search([request(v, [t.target_id]) for v in vec.vectors])
         flags: set[int] = set()
         witnesses: dict[int, list[str]] = {}
         truncated = 0
         others: dict[str, Subject] = {}
         for k, v, hits in zip(vec.segment_index, vec.vectors, results, strict=True):
-            if len(hits) >= m.lowinfo_limit:
-                truncated += 1
-                metrics.P10_LOWINFO_TRUNCATED.inc()
             chosen: list[str] = []
             seen_tid: set[str] = set()
-            for h in sorted(hits, key=lambda x: (-x.score, x.id)):
-                pl = h.payload
-                if pl.get("tid") == t.target_id or pl.get("tid") in seen_tid:
-                    continue
-                o = others.get(pl.get("trep"))
-                if o is None:
-                    o = self.p.target_subject(pl["tid"], int(pl["tver"]), spec)
-                    others[pl["trep"]] = o
-                if not o.live or o.subject_id != pl.get("trep"):
-                    continue
-                ov = self.p.artifacts.load_subject(o)
-                idx = np.where(ov.segment_index == int(pl["k"]))[0]
-                if not idx.size:
-                    continue
-                cos = float(v.astype(np.float64) @ ov.vectors[idx[0]].astype(np.float64))
-                if cos >= m.lowinfo_threshold:  # confirmed on SHA-verified artifacts (C-13)
-                    chosen.append(witness_ref(o))
-                    seen_tid.add(pl["tid"])
-                if len(chosen) >= MAX_WITNESSES:
+            excluded = [t.target_id]
+            for page in range(MAX_PAGES):
+                for h in sorted(hits, key=lambda x: (-x.score, x.id)):
+                    pl = h.payload
+                    if pl.get("tid") == t.target_id or pl.get("tid") in seen_tid:
+                        continue
+                    o = others.get(pl.get("trep"))
+                    if o is None:
+                        o = self.p.target_subject(pl["tid"], int(pl["tver"]), spec)
+                        others[pl["trep"]] = o
+                    if not o.live or o.subject_id != pl.get("trep"):
+                        continue
+                    ov = self.p.artifacts.load_subject(o)
+                    idx = np.where(ov.segment_index == int(pl["k"]))[0]
+                    if not idx.size:
+                        continue
+                    cos = float(v.astype(np.float64) @ ov.vectors[idx[0]].astype(np.float64))
+                    if cos >= m.lowinfo_threshold:  # confirmed on SHA-verified artifacts (C-13)
+                        chosen.append(witness_ref(o))
+                        seen_tid.add(pl["tid"])
+                    if len(chosen) >= MAX_WITNESSES:
+                        break
+                if len(chosen) >= MAX_WITNESSES or len(hits) < m.lowinfo_limit:
+                    break                       # enough witnesses, or every copy above the threshold seen
+                metrics.P10_LOWINFO_TRUNCATED.inc()
+                if page == MAX_PAGES - 1:
+                    truncated += 1              # enumeration not completed: the record cannot be COMPLETE
                     break
+                excluded += sorted({str(h.payload.get("tid")) for h in hits} - set(excluded))
+                hits = search([request(v, excluded)])[0]
             if chosen:
                 flags.add(int(k))
                 witnesses[int(k)] = chosen
-        status = COMPLETE
+        status = COMPLETE if not truncated else PARTIAL
         self._write_full(spec, t, rev, flags, witnesses, status)
         return {"flags": sorted(flags), "witnesses": witnesses, "status": status, "truncated": truncated}
 
@@ -244,17 +264,53 @@ class LowInfo:
 
     def refresh(self, spec: str) -> dict[str, Any]:
         """Bring records to the latest observed revision: classify additions, drop removed witnesses,
-        recompute segments that lost their last witness; payload copies follow via intents."""
+        recompute segments that lost their last witness; payload copies follow via intents.
+
+        A failure (index or storage unavailable) is counted on the refresh row; after
+        ``matching.lowinfo_max_attempts`` the row is BLOCKED (visible, ``last_error``) and still retried.
+        Records keep their old content and are used only through conditions 1-3 meanwhile."""
         row = self.db.one("SELECT * FROM {ks}.lowinfo_refresh WHERE spec_digest = ?", spec, level=SERIAL)
         if row is None:
             return {"state": "idle"}
         rev = int(row["requested_rev"] or 0)
         if rev <= int(row["done_rev"] or 0) and not row["full_requested"]:
             return {"state": "idle", "rev": rev}
+        try:
+            return self._refresh(spec, row, rev)
+        except (IndexServiceError, StorageUnavailableError) as exc:
+            self._failed(spec, row, exc)
+            raise
+
+    def _failed(self, spec: str, row: dict[str, Any], exc: Exception) -> None:
+        attempts = int(row.get("attempts") or 0) + 1
+        state = "BLOCKED" if attempts >= self.p.settings.matching.lowinfo_max_attempts else "PENDING"
+        self.db.run("UPDATE {ks}.lowinfo_refresh SET attempts = ?, state = ?, last_error = ?, updated_at = ? "
+                    "WHERE spec_digest = ?", attempts, state, f"{type(exc).__name__}: {exc}"[:300], self.p.now(),
+                    spec)
+        metrics.P10_LOWINFO_REFRESH_FAILURES.inc()
+        log.warning(json.dumps({"event": "lowinfo_refresh_failed", "spec": spec[:19], "attempts": attempts,
+                                "state": state, "error": str(exc)[:200]}))
+
+    def _unindexed(self, spec: str, members: dict[str, Subject]) -> int:
+        """Members whose points are not in the queried (ACTIVE target) generation yet: an exact
+        enumeration over that generation cannot see them, so a step that ran now is not complete."""
+        ptr = self.gens.active(spec, TARGET, fresh=True)
+        if ptr is None or self.indexer is None:
+            return len(members)
+        n = 0
+        for m in members.values():
+            e = self.indexer.entry(spec, TARGET, m.bucket, m.subject_id)
+            if e is None or e["desired_op"] != "UPSERT" or (e["applied"] or {}).get(ptr.generation) is None:
+                n += 1
+        return n
+
+    def _refresh(self, spec: str, row: dict[str, Any], rev: int) -> dict[str, Any]:
         members = {m.subject_id: m for m in self.members(spec)}
+        unindexed = self._unindexed(spec, members)
         recs = {r["target_representation_id"]: r for r in self.records(spec)}
         changed: set[str] = set()
         cleared: set[str] = set()
+        partial: set[str] = set()
         for trep, r in recs.items():  # removals: exact enumeration from the witness lists (no ANN)
             if trep not in members:
                 continue
@@ -265,11 +321,14 @@ class LowInfo:
                 res = self.classify(spec, t, rev)
                 if set(res["flags"]) < {int(x) for x in (r.get("flags") or ())}:
                     cleared.add(trep)
+                if res["status"] != COMPLETE:
+                    partial.add(trep)
                 changed.add(trep)
         for trep, t in members.items():  # additions: classify every member without a current record
             r = recs.get(trep)
             if r is None or int(r["rev"] or 0) < rev or r.get("status") != COMPLETE or row["full_requested"]:
-                self.classify(spec, t, rev)
+                if self.classify(spec, t, rev)["status"] != COMPLETE:
+                    partial.add(trep)
                 changed.add(trep)
         for trep in changed:  # payload copies through the mutation protocol (desired_ver carries the rev)
             if self.indexer is not None:
@@ -277,8 +336,21 @@ class LowInfo:
         for trep in cleared:  # a cleared flag may have suppressed evidence: re-cover the owner's pairs
             if self.tasks is not None:
                 self.tasks.rerun(members[trep], "target_vs_media", reason="lowinfo_flag_cleared", actor="lowinfo")
+        if partial or unindexed:
+            # the step's enumeration was not complete (a truncated query, or members whose points the
+            # queried generation does not hold yet): done_rev is not advanced, a full recomputation is
+            # requested; the records written meanwhile only ever miss flags (fail-closed)
+            state = "TRUNCATED" if partial else "WAITING_INDEX"
+            self.db.lwt("UPDATE {ks}.lowinfo_refresh SET full_requested = true, state = ?, attempts = 0, "
+                        "last_error = null, updated_at = ? WHERE spec_digest = ? IF requested_rev = ?",
+                        state, self.p.now(), spec, rev)
+            log.warning(json.dumps({"event": "lowinfo_step_incomplete", "spec": spec[:19], "rev": rev,
+                                    "partial_records": len(partial), "unindexed_members": unindexed}))
+            return {"state": state.lower(), "rev": rev, "changed": len(changed), "cleared": len(cleared),
+                    "partial": len(partial), "unindexed": unindexed}
         self.db.lwt("UPDATE {ks}.lowinfo_refresh SET done_rev = ?, full_requested = false, state = 'DONE', "
-                    "updated_at = ? WHERE spec_digest = ? IF requested_rev = ?", rev, self.p.now(), spec, rev)
+                    "attempts = 0, last_error = null, updated_at = ? WHERE spec_digest = ? IF requested_rev = ?",
+                    rev, self.p.now(), spec, rev)
         return {"state": "done", "rev": rev, "changed": len(changed), "cleared": len(cleared)}
 
     def full_recompute(self, spec: str) -> dict[str, int]:
