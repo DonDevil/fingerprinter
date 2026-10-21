@@ -1,0 +1,288 @@
+{
+ "base_spec_digest": "sha256:a4df3d19252891dc0d8d266d5056a226159ffc276898fdfd680472e54497d3d5",
+ "benchmark": "P10-EQUIV-DENSITY",
+ "coverage_required": 0.9,
+ "dense_cost": {
+  "bytes": 1382400,
+  "items": 6,
+  "seconds": 34.6,
+  "vectors": 450,
+  "vectors_5s": 90,
+  "vectors_ratio": 5.0
+ },
+ "dense_segment_duration_s": 1.0,
+ "dense_spec_digest": "sha256:7732a552edcac38daa0bc85c380500e36d238cdee8cc82236480177fb2fda57c",
+ "equivalent_pairs": 300,
+ "linked_pairs_with_dense_bound_below_coverage": 0,
+ "missed_excerpts": [
+  15
+ ],
+ "misses_with_bound_ge_coverage": {
+  "1s": 8,
+  "5s": 0
+ },
+ "pairs": [
+  {
+   "bound_1s": 1.0,
+   "bound_5s": 1.0,
+   "pair": [
+    "media/t15-elephants-dream-fmp4-1s.mp4",
+    "media/t15-elephants-dream-fmp4-2s.mp4"
+   ],
+   "v2_coverage_5s": [
+    1.0,
+    1.0
+   ],
+   "v2_linked_5s": true,
+   "variants": [
+    "fmp4-1s",
+    "fmp4-2s"
+   ]
+  },
+  {
+   "bound_1s": 0.96,
+   "bound_5s": 0.8667,
+   "pair": [
+    "media/t15-elephants-dream-fmp4-1s.mp4",
+    "media/t15-elephants-dream-h264-3m.mp4"
+   ],
+   "v2_coverage_5s": [
+    0.866667,
+    0.866667
+   ],
+   "v2_linked_5s": false,
+   "variants": [
+    "fmp4-1s",
+    "h264-3m"
+   ]
+  },
+  {
+   "bound_1s": 0.9467,
+   "bound_5s": 0.8667,
+   "pair": [
+    "media/t15-elephants-dream-fmp4-1s.mp4",
+    "media/t15-elephants-dream-h264-400k.mp4"
+   ],
+   "v2_coverage_5s": [
+    0.866667,
+    0.866667
+   ],
+   "v2_linked_5s": false,
+   "variants": [
+    "fmp4-1s",
+    "h264-400k"
+   ]
+  },
+  {
+   "bound_1s": 0.96,
+   "bound_5s": 0.8667,
+   "pair": [
+    "media/t15-elephants-dream-fmp4-1s.mp4",
+    "media/t15-elephants-dream-remux.mkv"
+   ],
+   "v2_coverage_5s": [
+    0.866667,
+    0.866667
+   ],
+   "v2_linked_5s": false,
+   "variants": [
+    "fmp4-1s",
+    "remux-mkv"
+   ]
+  },
+  {
+   "bound_1s": 0.96,
+   "bound_5s": 0.8667,
+   "pair": [
+    "media/t15-elephants-dream-fmp4-1s.mp4",
+    "media/t15-elephants-dream-vp9.webm"
+   ],
+   "v2_coverage_5s": [
+    0.866667,
+    0.866667
+   ],
+   "v2_linked_5s": false,
+   "variants": [
+    "fmp4-1s",
+    "vp9"
+   ]
+  },
+  {
+   "bound_1s": 0.96,
+   "bound_5s": 0.8667,
+   "pair": [
+    "media/t15-elephants-dream-fmp4-2s.mp4",
+    "media/t15-elephants-dream-h264-3m.mp4"
+   ],
+   "v2_coverage_5s": [
+    0.866667,
+    0.866667
+   ],
+   "v2_linked_5s": false,
+   "variants": [
+    "fmp4-2s",
+    "h264-3m"
+   ]
+  },
+  {
+   "bound_1s": 0.9467,
+   "bound_5s": 0.8667,
+   "pair": [
+    "media/t15-elephants-dream-fmp4-2s.mp4",
+    "media/t15-elephants-dream-h264-400k.mp4"
+   ],
+   "v2_coverage_5s": [
+    0.866667,
+    0.866667
+   ],
+   "v2_linked_5s": false,
+   "variants": [
+    "fmp4-2s",
+    "h264-400k"
+   ]
+  },
+  {
+   "bound_1s": 0.96,
+   "bound_5s": 0.8667,
+   "pair": [
+    "media/t15-elephants-dream-fmp4-2s.mp4",
+    "media/t15-elephants-dream-remux.mkv"
+   ],
+   "v2_coverage_5s": [
+    0.866667,
+    0.866667
+   ],
+   "v2_linked_5s": false,
+   "variants": [
+    "fmp4-2s",
+    "remux-mkv"
+   ]
+  },
+  {
+   "bound_1s": 0.96,
+   "bound_5s": 0.8667,
+   "pair": [
+    "media/t15-elephants-dream-fmp4-2s.mp4",
+    "media/t15-elephants-dream-vp9.webm"
+   ],
+   "v2_coverage_5s": [
+    0.866667,
+    0.866667
+   ],
+   "v2_linked_5s": false,
+   "variants": [
+    "fmp4-2s",
+    "vp9"
+   ]
+  },
+  {
+   "bound_1s": 1.0,
+   "bound_5s": 1.0,
+   "pair": [
+    "media/t15-elephants-dream-h264-3m.mp4",
+    "media/t15-elephants-dream-h264-400k.mp4"
+   ],
+   "v2_coverage_5s": [
+    1.0,
+    1.0
+   ],
+   "v2_linked_5s": true,
+   "variants": [
+    "h264-3m",
+    "h264-400k"
+   ]
+  },
+  {
+   "bound_1s": 1.0,
+   "bound_5s": 1.0,
+   "pair": [
+    "media/t15-elephants-dream-h264-3m.mp4",
+    "media/t15-elephants-dream-remux.mkv"
+   ],
+   "v2_coverage_5s": [
+    1.0,
+    1.0
+   ],
+   "v2_linked_5s": true,
+   "variants": [
+    "h264-3m",
+    "remux-mkv"
+   ]
+  },
+  {
+   "bound_1s": 1.0,
+   "bound_5s": 1.0,
+   "pair": [
+    "media/t15-elephants-dream-h264-3m.mp4",
+    "media/t15-elephants-dream-vp9.webm"
+   ],
+   "v2_coverage_5s": [
+    1.0,
+    1.0
+   ],
+   "v2_linked_5s": true,
+   "variants": [
+    "h264-3m",
+    "vp9"
+   ]
+  },
+  {
+   "bound_1s": 1.0,
+   "bound_5s": 1.0,
+   "pair": [
+    "media/t15-elephants-dream-h264-400k.mp4",
+    "media/t15-elephants-dream-remux.mkv"
+   ],
+   "v2_coverage_5s": [
+    1.0,
+    1.0
+   ],
+   "v2_linked_5s": true,
+   "variants": [
+    "h264-400k",
+    "remux-mkv"
+   ]
+  },
+  {
+   "bound_1s": 1.0,
+   "bound_5s": 1.0,
+   "pair": [
+    "media/t15-elephants-dream-h264-400k.mp4",
+    "media/t15-elephants-dream-vp9.webm"
+   ],
+   "v2_coverage_5s": [
+    1.0,
+    1.0
+   ],
+   "v2_linked_5s": true,
+   "variants": [
+    "h264-400k",
+    "vp9"
+   ]
+  },
+  {
+   "bound_1s": 1.0,
+   "bound_5s": 1.0,
+   "pair": [
+    "media/t15-elephants-dream-remux.mkv",
+    "media/t15-elephants-dream-vp9.webm"
+   ],
+   "v2_coverage_5s": [
+    1.0,
+    1.0
+   ],
+   "v2_linked_5s": true,
+   "variants": [
+    "remux-mkv",
+    "vp9"
+   ]
+  }
+ ],
+ "pairs_of_missed_excerpts": 15,
+ "rule": "equiv/v2",
+ "rule_digest": "e8c9d0bb2f35cb69c0a966fcd6a03b9b6b9e930555943f9c7915649acb5d8b5e",
+ "s_seg": 0.65,
+ "seconds": 44,
+ "set": "E-TUNE",
+ "v2_misses_5s": 8
+}
