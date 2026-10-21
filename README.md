@@ -121,11 +121,15 @@ outside this one describe V1 only.
 
 ## V2 vector index and matcher (crawler2 P10)
 
-- **Status:** in design review (2026-10-17; design corrections C-1…C-15).
-  Audit and proposed design are written; no P10 decision is approved,
-  nothing is implemented and no P10 test or E-R1 has run. M3 is not passed.
+- **Status (2026-10-21):** implemented on branch `p10-impl` under the
+  operator's authorization; 148 tests pass on the real stack. **M3 is not
+  passed:** level-5 equivalence recall fails (0.933 against 1.0), and E-R1
+  capacity, calibration and the V1 end-to-end comparison on N-SOAK are
+  blocked on hardware, labelled data or owner decisions. `match.found`
+  publication is held.
+- **Setup and operation:** [`docs/p10-matcher.md`](docs/p10-matcher.md).
 - **Documents:** [`docs/phases/p10-vector-index-matcher/`](docs/phases/p10-vector-index-matcher/README.md)
-  (audit, design, decisions, validation plan, proposed ADR-028).
+  (audit, design, decisions, validation and gate table, proposed ADR-028).
 
 ## Quick start
 

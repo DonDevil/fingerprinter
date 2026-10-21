@@ -1,44 +1,46 @@
 # P10 — vector index and matcher (milestone M3)
 
-Status (2026-10-18, after the exit-gate completion pass): **IMPLEMENTATION
-COMPLETE; M3 NOT PASSED** — two gates fail on measurement (level-5
-equivalence recall; E-R1 on the HDD dev host) and the rest is blocked on
-owner decisions, labelled data or unrun cases. Implemented under the
-operator's authorization (decisions.md §0). Executed evidence only in
+Status (2026-10-21, after the exit-gate resolution pass): **IMPLEMENTATION
+COMPLETE; M3 NOT PASSED** — level-5 equivalence recall fails on measurement;
+E-R1 (fails on the HDD dev host at 1.5 GiB and at 4 GiB), calibration and
+the N-SOAK V1 end-to-end comparison are blocked on hardware, labelled data
+or owner decisions. Implemented under the operator's authorization
+(decisions.md §0). Executed evidence only in
 [validation.md §13](validation.md#13-execution-record-implementation-phase-from-2026-10-18)
-(this pass: §13.17–§13.25); the gate table is
-[validation.md §11](validation.md#11-m3-exit-checklist-updated-2026-10-18-after-the-exit-gate-pass-1317-1325);
-owner decisions needed: [decisions.md §6](decisions.md#6-owner-decisions-required-after-the-exit-gate-pass-2026-10-18);
+(this pass: §13.26–§13.33; previous: §13.17–§13.25); the gate table is
+[validation.md §11](validation.md#11-m3-exit-checklist-updated-2026-10-21-after-the-exit-gate-resolution-pass-1326-1333);
+owner decisions: [decisions.md §6, §6.1](decisions.md#6-owner-decisions-required-after-the-exit-gate-pass-2026-10-18);
 local operator guide [`docs/p10-matcher.md`](../../p10-matcher.md);
-implementation notes design §20 (N-1…N-24).
+implementation notes design §20 (N-1…N-28).
 
 | Gate (validation §11) | Status | Key measurement |
 |---|---|---|
 | M3-1 P/R ≥ V1, zero FP | **PASS** (measured populations) | L-PAIRS 110/40/0/330 (R 0.733) vs V1 R 0.247 / 0.227; pooled P 0.9989 / R 0.812 vs V1-on-V2 P 0.9857 / R 0.449 |
-| M3-2 new target vs history, no re-encode | **PASS** | direction B DONE at base/10x/19x (was INCOMPLETE); B candidate recall 0.9972 |
-| P10-T1 ANN recall + latency | **PASS** | segment recall@100 0.9999 (film) / 0.9949 (clip); media-level ANN = exact in both directions; p95 ≤ 3.4 ms (was 43.9 ms) |
+| M3-2 new target vs history, no re-encode | **PASS** | direction B DONE at base/10x/19x; B candidate recall 0.9972 |
+| P10-T1 ANN recall + latency | **PASS** | segment recall@100 0.9999 (film) / 0.9949 (clip); media-level ANN = exact in both directions; p95 ≤ 3.4 ms |
 | P10-T2 drop/rebuild | **PASS** | manifests equal; decisions identical with ANN and exact search (403/403, 110/110) |
 | P10-T3 growth bounds | **PASS** | bounds hold; no saturation up to 19x (`k_max_b` 4096) |
-| P10-T4 equivalence | **FAIL** | `equiv/v2` 280/300 (0.933), `equiv/v1` 228/300; 0/12,420 false links |
+| P10-T4 equivalence | **FAIL** | `equiv/v1` (default) 228/300, `equiv/v2` 280/300 (0.933), 1 s-sampling test spec 286/300 held-out (not registered); 0/12,420 false links in all |
 | P10-T5 failures G-* | **PASS** (single host) | all G-1…G-15; real multi-host is P14 |
-| P10-T6 / T10 E-R1 | **FAIL → BLOCKED** (O-1) | disk-bound rescoring on the HDD, reproduced at 1 copy (6 ms → 2,993 ms p95); `max_points` stays 250,000 |
-| P10-T7 V1 end to end | PASS (L-PAIRS); N-SOAK NOT RUN (O-4) | TP 34, FP 0 |
-| P10-T8 calibration | **BLOCKED** (data, O-3); publication held | reproduced exactly: UNAVAILABLE |
+| P10-T6 / T10 E-R1 | **BLOCKED** (O-1; FAIL on this host) | disk-bound rescoring on a USB HDD, reproduced (5.5 → 3,083 ms p95); 6 copies at 4 GiB (decision run, not gate-eligible) p95 2.8–44.5 s; `max_points` stays 250,000 |
+| P10-T7 V1 end to end | PASS (L-PAIRS); N-SOAK **BLOCKED** (O-4, owner: not now) | TP 34, FP 0; N-SOAK ≈ 22 h estimated |
+| P10-T8 calibration | **BLOCKED** (data, O-3); publication held | UNAVAILABLE; no hard negatives reach confirmation (1 of 877) |
 | P10-T9 lowinfo adoption | not adopted — filter disabled (valid; not an M3 gate) | 12 flagged, `lost_tp` 1 |
-| P10-T11 crash/scan/identity/capacity | **PARTIAL** | unrun: R-7 (a), R-10, R-21, R-26/27/29 variants, L-2/3/7…10/14, K-4, CAP-4, CAP-9 |
+| P10-T11 crash/scan/identity/capacity | **PASS** (single host) | every listed case run; 5 defects found and fixed (CAP-4, L-2, L-9, L-14, repairs gauge) |
 
-| Status | P10 (2026-10-18) |
+| Status | P10 (2026-10-21) |
 |---|---|
-| decisions | D1–D20 approved for implementation; D12, D13 (b) deferred; D6 values re-tuned by measurement (`k_max_b` 4096, `search_ef` 384); D8 implemented, not enabled; D9: technique 2.1 UNAVAILABLE (held); D13 (a): `equiv/v1` default, `equiv/v2` registered (owner decision); D14 provisional 250,000 — E-R1 **failed** |
-| implemented | vector index adapter + dev service, generations, mutation protocol, builder/validation/promotion (with revalidation), capacity ledger (CAP-8 evidence check), recovery protocol, reconciler, discovery, run-fenced tasks in both directions + media↔media, verifier `temporal/v2`, versioned `equiv/v1`/`equiv/v2`, technique registry, held `match.found` 1.0, CLI |
-| tests | 105 integration/unit tests pass on the real Scylla 6.2.3, Qdrant 1.15.1, MinIO, Redis (validation §13.25); P9 unit suite unchanged (100 pass) |
-| known limits | 7 animated films from one reel (equivalence tuning: 5); V1 end-to-end not run on N-SOAK; single-node Scylla; HDD dev host; real multi-host is P14 |
+| decisions | D1–D20 approved for implementation; D12, D13 (b) deferred; D6 values re-tuned by measurement (`k_max_b` 4096, `search_ef` 384); D8 implemented, not enabled; D9: technique 2.1 UNAVAILABLE (held); D13 (a): `equiv/v1` default, `equiv/v2` registered; D14 provisional 250,000 — E-R1 **failed**; open owner decisions O-1…O-6 (decisions §6.1) |
+| implemented | vector index adapter + dev service, generations, mutation protocol, builder/validation/promotion (with revalidation), capacity ledger (admission-bounded bulk load, CAP-8 evidence check), recovery protocol, reconciler, discovery, run-fenced tasks in both directions + media↔media, verifier `temporal/v2`, versioned `equiv/v1`/`equiv/v2`, technique registry, held `match.found` 1.0, CLI |
+| tests | 148 integration/unit tests pass on the real Scylla 6.2.3, Qdrant 1.15.1, MinIO, Redis (validation §13.33); P9 unit suite unchanged (100 pass) |
+| known limits | 7 animated films from one reel (equivalence tuning: 5); V1 end-to-end not run on N-SOAK; single-node Scylla; USB-HDD dev host; real multi-host is P14; P9 `publisher republish --stream <other>` defect (O-6) tracked for P9 |
 
-Exit-gate completion pass commits (local branch `p10-impl`, not pushed):
-`3e52357` ANN latency and segment recall; `1142b04` direction B completes
-(`k_max_b` 4096, floor guard); `8792515` failure-matrix tests and the three
-defects they found (G-13, R-9, CAP-8); `2c62405` versioned equivalence rule
-`equiv/v2`; `cfe5137` benchmark harnesses and evidence; followed by the
+Exit-gate completion pass commits (2026-10-18): `3e52357`, `1142b04`,
+`8792515`, `2c62405`, `cfe5137`, `bbe9284`. Exit-gate resolution pass
+(2026-10-21, local branch `p10-impl`, not pushed): `939d59e` defects found
+by the remaining T11 matrix cases, with their tests; `bf10cab` R-26/R-27/R-29
+variants; `63d395f` equivalence density experiment; `b334497` R-25 (b)–(d) tests,
+E-R1 reproduction and the 4 GiB decision measurement; followed by the
 documentation commit that adds this paragraph.
 
 **History of the design review.** Status (2026-10-17): **IN DESIGN REVIEW.** Audit complete; design proposed;
@@ -68,7 +70,7 @@ can no longer be hidden by a later one; retired subjects resolve theirs).
 |---|---|
 | [audit.md](audit.md) | existing matcher and P9 representation model, labelled data and V1 baseline, measurements on real vectors, volume estimates, risks |
 | [design.md](design.md) | proposed architecture, both matching directions, candidate bounds, verifier, provenance, equivalence, rebuild, budgets |
-| [decisions.md](decisions.md) | P10-D1…D20 (all PROPOSED; correction log §5), what needs operator approval |
+| [decisions.md](decisions.md) | P10-D1…D20 (approved for implementation, §0; correction log §5), owner decisions O-1…O-6 (§6, §6.1) |
 | [design.md §12.10](design.md#1210-index-integrity-recovery-obligations-and-task-reruns-p10-d19-p10-d20-corrected-c-13-c-14) | authoritative index-integrity recovery protocol (C-13, occurrence identity C-14) |
 | [validation.md](validation.md) | test matrix, methodology, acceptance criteria; evidence that exists today |
 | [ADR-028-vector-index.md](ADR-028-vector-index.md) | proposed index architecture ADR |

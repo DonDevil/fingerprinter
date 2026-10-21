@@ -789,7 +789,7 @@ extrapolation to the §8 scenarios (labelled extrapolated); verification time
 per candidate by duration; contention: matcher + Qdrant + encoder + stack
 together (host `MemAvailable` floor, encoder throughput change).
 
-## 11. M3 exit checklist (updated 2026-10-18 after the exit-gate pass, §13.17–§13.25)
+## 11. M3 exit checklist (updated 2026-10-21 after the exit-gate resolution pass, §13.26–§13.33)
 
 Authority: crawler2 `docs/v2-phase-plan.md` §P10 (exit gate and named tests)
 as elaborated by §2–§10 of this plan (§13.24). Status words: **PASS**,
@@ -803,24 +803,25 @@ an owner decision — decisions.md §6), **NOT RUN**.
 | P10-T1 | ANN recall@k (§4): segment recall@100 ≥ 0.97; media-level ANN ≥ exact − 0.005 in **both** directions; per-segment p95 ≤ 10 ms; ≤ 1.5 GiB | **PASS** | segment recall@100 0.9999 / 0.9949; media-level B: ANN = exact for every film, A: 0.9991 = 0.9991 (identical candidate sets); p95 2.72–3.39 ms; no OOM | §13.17, §13.18 | — |
 | P10-T2 | drop-and-rebuild: equal manifests; identical decisions with production ANN **and** exact search (§5) | **PASS** | L-PAIRS 110/110 (§13.16); L-PAIRS + 200 SOAK 403/403, manifests equal, exact-search rerun identical (0 new, 0 divergences); tasks `WAITING_INDEX` while lost | §13.16, §13.23 | — |
 | P10-T3 | growth bounds + effectiveness (§6) | **PASS** | bounds hold at every scale; B recall vs provenance 0.9972 at 19x (≥ 0.99); A recall at every scale = held-out; 0 FP on L-PAIRS at every scale; direction B DONE at every scale | §13.18, §13.23 | saturation returns above 4,096 copies of one segment (honestly INCOMPLETE) |
-| P10-T4 | level-5 linking: recall 1.0 on E-SET, zero false links, sub-clip/shift not linked, revocation durable (§8) | **FAIL** (recall) | `equiv/v2` 280/300 (0.933) live and offline, `equiv/v1` 228/300; **0/12,420 false links** in both; shift/sub-clip not linked; revocation durable; P8's 6 s set 10/10 linked | §13.9, §13.19, §13.23 | owner decision O-2 |
+| P10-T4 | level-5 linking: recall 1.0 on E-SET, zero false links, sub-clip/shift not linked, revocation durable (§8) | **FAIL** (recall) | production `equiv/v1` 228/300; `equiv/v2` 280/300 (0.933) live and offline; 1 s-sampling test spec (not registered) 286/300 (0.953) held-out; **0/12,420 false links** in all; shift/sub-clip not linked; revocation durable; P8's 6 s set 10/10 linked; every miss fails coverage at verification (low-bitrate degradation; scene-cut straddle, removed by 1 s sampling) | §13.9, §13.19, §13.23, §13.27 | owner decision O-2; no measured rule reaches 1.0 |
 | P10-T5 | failures G-1…G-15 (§9) | **PASS** (single host) | G-1, G-1b, G-2 (§5), G-3, G-4, G-5, G-6, G-7, G-8, G-9, G-10, G-11, G-12, G-13, G-14 (simulated two hosts), G-15 | §13.8, §13.12, §13.21 | real multi-host: P14 |
-| P10-T6 | resources (§10) | **FAIL → BLOCKED** | E-R1 latency failure attributed: random reads of on-disk originals on the HDD once they exceed the page cache (1-copy reproduction p95 6 ms → 2,993 ms; int8 only 2.5 ms) | §13.5, §13.20 | O-1 (SSD host or memory/D2 decision), then E-R1 rerun |
-| P10-T7 | V1 end-to-end baseline reproducible (§2.1) | **PASS (L-PAIRS)**; N-SOAK **NOT RUN** | 480 pairs, 45 min, gate-eligible | §13.4 | O-4 |
-| P10-T8 | calibration status and reliability (§3.3) | **BLOCKED** (labelled data) — publication held | reproduced exactly: UNAVAILABLE (4/5 bins fail); confirmed-only diagnostic also fails (876/877 true) | §13.3, §13.22 | O-3; publication gate verified closed |
-| P10-T9 | lowinfo vs unfiltered oracle, `lost_tp = 0` (§3.4) — **adoption gate of the filter, not an M3 gate** (§3.4, §11a, D8; §13.24) | **not adopted — filter disabled** (a valid configuration) | 12/760 flagged (< 20), `lost_tp` 1; disabled ⇒ excludes nothing (code + L-tests); fail-closed witness checks | §13.3, §13.7, §13.21 | future adoption: ≥ 5 more works with shared idents |
-| P10-T10 | E-R1 capacity (design §13.4) | **FAIL → BLOCKED** | as P10-T6; `max_points` stays 250,000 (provisional); CAP-8 now needs a passing E-R1 report | §13.5, §13.20 | O-1 |
-| P10-T11 | mutation/rebuild crashes, reader/scan, lowinfo, identity, capacity, V-1, G-15 | **PARTIAL** | passed: R-1…R-6, R-7 (b), R-8, R-9, R-11…R-20, R-22, R-23, R-25 a, R-26 a/b, R-27, R-28, R-29 u1/v2, H-1…H-9, L-1, L-4…L-6, L-11…L-13, L-15…L-17, K-1…K-3, K-5…K-11, CAP-1…CAP-3, CAP-5…CAP-8, V-1 unit, G-15, §9a.4 | §13.6, §13.7, §13.12, §13.21 | **NOT RUN:** R-7 (a), R-10, R-21, c*/d*/j*/v* variants of R-26/R-27/R-29, L-2, L-3, L-7…L-10, L-14 (lifecycle), K-4, CAP-4, CAP-9 (race), V-1 across two hosts |
+| P10-T6 | resources (§10) | **BLOCKED** (O-1; measured FAIL on this host) | E-R1 latency failure attributed and reproduced: random reads of on-disk originals on the USB HDD once they exceed the page cache (1-copy diagnosis p95 5.5 ms → 3,083 ms; int8 only 2.4 ms); decision run at 6 copies under 4 GiB (not gate-eligible) also fails: p95 2.8 s / 44.5 s / 32.4 s, anon 1.52 GiB | §13.5, §13.20, §13.32 | O-1: SSD/NVMe index storage (or a D2 change) and a gate-eligible E-R1 rerun |
+| P10-T7 | V1 end-to-end baseline reproducible (§2.1) | **PASS (L-PAIRS)**; N-SOAK **BLOCKED** (owner: not now) | 480 pairs, 45 min, gate-eligible; N-SOAK estimate ≈ 22 h (614.8 h of video at 28×) | §13.4, §13.29 | O-4 |
+| P10-T8 | calibration status and reliability (§3.3) | **BLOCKED** (labelled data) — publication held | reproduced exactly: UNAVAILABLE (4/5 bins fail; 3,182 proposed-verified pairs, 7 films); confirmed-only diagnostic also fails (876/877 true: no hard negatives reach confirmation) | §13.3, §13.22, §13.28 | O-3; publication gate verified closed (K-8/K-10) |
+| P10-T9 | lowinfo vs unfiltered oracle, `lost_tp = 0` (§3.4) — **adoption gate of the filter, not an M3 gate** (§3.4, §11a, D8; §13.24) | **not adopted — filter disabled** (a valid configuration) | 12/760 flagged (< 20), `lost_tp` 1; disabled ⇒ excludes nothing (code + L-tests); fail-closed witness checks; L-1…L-17 all pass (three lowinfo defects fixed, §13.26) | §13.3, §13.7, §13.21, §13.26 | future adoption: ≥ 5 more works with shared idents |
+| P10-T10 | E-R1 capacity (design §13.4) | **BLOCKED** (O-1; measured FAIL on this host) | as P10-T6; `max_points` stays 250,000 (provisional); CAP-8 accepts only a passing, gate-eligible (1.5 GiB) E-R1 report | §13.5, §13.20, §13.32 | O-1 |
+| P10-T11 | mutation/rebuild crashes, reader/scan, lowinfo, identity, capacity, V-1, G-15 | **PASS** (single host) | every listed case run and passing: R-1…R-29 incl. R-7 (a), R-10, R-21, R-25 a–d, R-26 a/b/c1–c7/d1/d2, R-27 + j1–j4, R-29 u1/v1…v13 (C-13/C-14 negative controls fail as expected), H-1…H-9, L-1…L-9 and L-11…L-17 (L-10 is the filter's adoption comparison = P10-T9), K-1…K-11, CAP-1…CAP-9, V-1 (single-host simulation), G-15, §9a.4; 5 defects found and fixed (CAP-4, L-2, L-9, L-14, repairs gauge) | §13.6, §13.7, §13.12, §13.21, §13.26, §13.33 | V-1 across two real hosts: P14 (not an M3 condition, §13.24) |
 
-**M3: NOT PASSED.** Measured failures: P10-T4 (equivalence recall 0.933 <
-1.0) and P10-T6/P10-T10 (E-R1 on the HDD dev host). Blocked: P10-T8
-(calibration data; publication held), P10-T11 (unrun cases listed above),
-and the N-SOAK V1 end-to-end comparison. Passing since the first
-evaluation: P10-T1 (latency, both-direction ANN recall), P10-T2 (both
-configurations, §5 corpus), P10-T3 and M3-2 without INCOMPLETE runs,
-P10-T5. The single most important blocker is O-1 (E-R1 needs SSD-class
-index storage or a memory/D2 decision). Real multi-machine validation is P14
-and not required by M3 (§13.24).
+**M3: NOT PASSED** (2026-10-21). Measured failure: P10-T4 (equivalence
+recall 0.933 with `equiv/v2`, 0.760 with production `equiv/v1`; no measured
+rule reaches 1.0 — the best, a 1 s-sampling test spec, 0.953 held-out).
+Blocked: P10-T6/P10-T10 (E-R1 fails on this HDD host at 1.5 GiB and also at
+4 GiB; needs SSD/NVMe index storage, O-1), P10-T8 (calibration data;
+publication held, O-3), and the N-SOAK V1 end-to-end comparison (O-4, owner:
+not now). Passing: M3-1 and M3-2 on the measured populations, P10-T1,
+P10-T2, P10-T3, P10-T5 and P10-T11 (single host). The filter (P10-T9) stays
+disabled. Real multi-machine validation is P14 and not required by M3
+(§13.24).
 
 ### 11a. Issue → test matrix (corrections C-1…C-15, design §19)
 
@@ -1585,7 +1586,7 @@ delaying a search step past its deadline), R-21 (reconciler killed mid
 verification pass), the c*/d* variants of R-26 and j*/v* of R-27/R-29
 beyond those of §13.6, L-2, L-3, L-7…L-10, L-14 (lifecycle part), K-4,
 CAP-4 (bypass attempts), CAP-9 (continuous-audit race), V-1 across two
-hosts. These are **NOT RUN**, not passed.
+hosts. These are **NOT RUN**, not passed. *(2026-10-21: all run and passing on a single host — §13.26, §13.33; V-1 across two hosts remains P14.)*
 
 ### 13.22 Calibration (P10-T8, §3.3) — reproduced; UNAVAILABLE stands (labelled-data blocker)
 
@@ -1722,3 +1723,218 @@ payloads (N-17) and equal the artifact-only digest. Executed: §13.23.
   hand after the stopped second diagnosis). The dev Qdrant container is
   running and empty. Datasets built here stay outside git:
   `~/anti_piracy/datasets/p10/{e-tune,vectors/e-tune,runs/gate}`.
+
+## Exit-gate resolution pass (2026-10-21)
+
+Branch `p10-impl` from `bbe9284`. Logs under
+`~/anti_piracy/datasets/p10/runs/gate2/`. Baseline before any change: the
+P10 suite at `bbe9284` **105 passed** (`suite-p10-baseline-bbe9284.log`).
+
+### 13.26 Remaining T11 matrix cases (P10-T11) — all run, all PASS (single host)
+
+New real-stack tests: `tests/p10/test_matrix_exit.py` (R-7 (a), R-10, R-21,
+K-4, CAP-4 ×2, CAP-9, O-6), `tests/p10/test_recovery_variants.py` (R-26
+c1–c7, d1, d2; R-27 j1–j4; R-29 v1/v1′, v2/v3/v11/v12, v4, v5, v6/v10, v7/v8,
+v9, v13; C-13/C-14 negative controls) and `tests/p10/test_lowinfo.py` (L-2,
+L-3, L-7, L-8, L-9, L-14 lifecycle). Crashes are a raising hook (crash) or a
+`BaseException` (kill -9, escapes every `except Exception`); an unknown LWT
+outcome is a wrapper that applies the statement and then raises; a restart
+is a fresh `P10System` on the same stores.
+
+| ID | What was shown |
+|---|---|
+| R-7 (a) | the catch-up pass killed mid-way: the generation stays CATCHING_UP, never promoted with a partial set; the next drive restarts a full pass and promotes once; manifests equal |
+| R-10 | a step pinned to g1 whose round is delayed past its deadline while g2 is promoted: readers never see an empty pointer; every query goes to its pinned generation; none after its step's deadline or after `drain_horizon_at`; the slow step is abandoned and repeated on g2; g1 retired after the grace and a post-horizon pass |
+| R-21 | three lost subjects and an orphan; the verification pass killed right after its first occurrence became durable: the restarted pass (from its beginning — no persisted cursor, design N-25) repairs each divergence exactly once in effect (one occurrence per lost subject, closed RERUN_DONE; points restored; orphan removed); a repeated pass changes nothing |
+| R-26 c1–c7, d1, d2 | every crash point of the loss-detection → repair → rerun chain, plus unknown LWT outcomes: obligation durable before repair; never CLOSED before a post-repair run; the hidden pair found by the rerun; `recovery_open = recovery_unresolved = 0` at the end; the repairs-blocked gauge reflects rows past `repair_max_attempts` (**defect found**, below) |
+| R-27 j1–j4 + negative control | stale workers (held at a gate) with an older occurrence: no stale-occurrence LWT applies; a second occurrence never closes on a run older than its repair; the control (stub that ignores `occurrence_id`) fails the same assertions |
+| R-29 v1…v13 + negative control | unresolved occurrence history: never removed, reset or resolved by another occurrence; `recovery_unresolved` falls only by the occurrence's own resolve; `settled` never while a row is PENDING; retired subject with an unresolved occurrence. v4: the plan's wording conflicts with design §12.10's run-bump rule; the test follows the design |
+| L-2 | a target added while a refresh runs: the refresh does not complete while a member's points are not applied in the active generation (**defect found**) |
+| L-3, L-7, L-8 | revision bumps, witness re-confirmation on artifacts, removal of a witness ⇒ flags recomputed, never stale |
+| L-9 | refresh failures: counted, `last_error` recorded, BLOCKED after `matching.lowinfo_max_attempts` (**defect found**: no failure accounting) |
+| L-14 | lifecycle: a truncated query (exactly `L` hits) is paged; a still-truncated classification is PARTIAL, never COMPLETE (**defect found**: COMPLETE with a missing flag) |
+| K-4 | two spec bindings of one target version are two rows / MatchIds, not collapsed |
+| CAP-4 | bulk load beyond a generation's admission draws on the ledger and is refused at the limit (**defect found**, below) |
+| CAP-9 | worker killed after cleanup and re-run; reservation CAS response dropped after it applied; audits running continuously during live writes and a rebuild admission; builder killed between admission and CREATED: ledger ≥ Σ exact counts at every sample; only the audit lowers `reserved` (statement log); duplicates removed by the next audit; the orphan holder kept until the build lease expired |
+| O-6 | P9's `publisher republish --stream <other>` defect reproduced against P10's hint reader (§13.31) |
+
+**Defects found and fixed** (`939d59e`; pre-fix failures reproduced on a
+worktree of `bbe9284`, `prefix-head-bbe9284.log`):
+
+| Case | Pre-fix (measured) | Fix |
+|---|---|---|
+| CAP-4 | a bulk load counted as "covered by admission" without checking the admission: ledger 219 < resident 240, 240 > limit 222 | `_within_admission`: only points within the holder's `reserved_points` are covered; the rest reserve on the ledger; CATCHING_UP reports `CAPACITY_BLOCKED` with the blocked rows instead of promoting |
+| L-2 | refresh completed while a member's points were not yet applied | `_unindexed` check: the refresh stays `WAITING_INDEX`, `full_requested`, `done_rev` not advanced |
+| L-9 | `AttributeError`, no failure accounting | `attempts`, `last_error`, BLOCKED at `matching.lowinfo_max_attempts` (default 5); metric `lowinfo_refresh_failures_total` |
+| L-14 | truncated classification recorded COMPLETE without the flag | paging with a `must_not` on seen target ids (`MAX_PAGES` 8); still truncated ⇒ PARTIAL, refresh `TRUNCATED` |
+| R-26 step 6 | repairs-blocked gauge always 0 | `recovery.counters()` sets `repairs_blocked` from OPEN rows at `repair_max_attempts` |
+
+Commits: `939d59e` (fixes + `test_matrix_exit.py` + lowinfo tests),
+`bf10cab` (`test_recovery_variants.py`). Still **not run**: V-1 across two
+real hosts (P14; single-host simulation passes, §13.21).
+
+### 13.27 Level-5 equivalence: miss classification and denser sampling (P10-T4, O-2) — FAIL stands
+
+**Classification of the 20 `equiv/v2` held-out misses** (E-SET): every one
+fails the coverage rule (best run < 0.90 of segments) at verification; none
+is an ANN retrieval miss. Two mechanisms: (i) very-low-bitrate encodes
+(`h264-400k`) with degraded frames at the same pts (segment cosine as low as
+0.29); (ii) segment timestamps straddling scene cuts after fMP4
+re-segmentation (0.083–0.125 s shift; cosine 0.14 on the straddling
+segment). The coverage upper bound at the best common offset
+(`equiv_density.py`, default mode, `results/equiv-density-e-tune.json`)
+shows that at 5 s sampling 0 of E-TUNE's 8 v2 misses can reach 0.90, at 1 s
+sampling 8 of 8 can — so the scene-cut class is a sampling-density limit.
+
+**Denser sampling experiment** (test spec: dinov2-seg/2 with only
+`sampling.segment_duration_s` = 1.0, spec digest
+`sha256:7732a552…`, ≠ production `sha256:a4df3d19…`; FP32 P9 encoder; 5.0×
+vectors and storage per item):
+`env/bin/python benchmarks/p10-index/equiv_density.py --grid --set $D/e-tune --vectors $D/vectors/e-tune --dense-out $D/vectors/e-tune-dense1 --heldout $D/e-set --heldout-dense $D/vectors/e-set-dense1 --dense-s 1.0 --workers 4 --out benchmarks/p10-index/results/equiv-density-grid.json`
+(`D=~/anti_piracy/datasets/p10`). 54 configurations (s_seg 0.80…0.55 ×
+max_gap 1/2/5 s × phase 0.5/1/2.5 s; min_run and min_mode_votes ×5 for the
+5× density), selected on E-TUNE only (max recall at 0 false links), then
+**one** held-out evaluation:
+
+| | E-TUNE (selection) | E-SET held-out |
+|---|---|---|
+| selected | s_seg 0.70, s_mean 0.70, vote_floor 0.60, max_gap 5 s, phase 0.5 s | same rule (candidate digest `6841b404…`, not registered) |
+| recall | 300/300 = 1.000 | **286/300 = 0.9533** (Wilson 95 % 0.923–0.972) |
+| false links | 0/12,420 | **0/12,420** (half, shift-30 s, negative-vs-negative, other-excerpt: all 0) |
+
+All 14 residual held-out misses are `h264-400k` pairs (films e07, e08, e12,
+e14; coverage 0.774–0.897): the scene-cut class is gone, the
+low-bitrate-degradation class remains. Cost: grid 4,730 s; held-out
+verification 0.93 ms/pair; vectors 39–41 MB per set (vs 8–9 MB). Not
+measured at 1 s: ANN recall, latency, index capacity (5× points ⇒ the
+250,000-point limit holds one fifth of the media).
+
+**Outcome:** P10-T4 **FAIL** stands (production `equiv/v1`; `equiv/v2` 0.933;
+the dense candidate 0.953 held-out). No rule or spec was registered or made
+default. Recall 1.0 on E-SET was not reached by any measured rule; adopting
+1 s sampling would need a new P9 spec version, a backfill, and its own
+ANN/latency/capacity evidence (owner decision O-2).
+Commit `63d395f`.
+
+### 13.28 Calibration label audit (P10-T8, O-3) — BLOCKED stands
+
+The calibration population per §3.3/D9 ("this proposed, verified pair is a
+true match") is the 3,182 proposed-and-verified pairs of `tune_eval.py`
+(1,078 positive, 2,104 negative; 7 films; 20 negatives above τ_p);
+candidate recall vs provenance 0.9991. Outer reliability: Brier 0.080 vs
+constant 0.224, ECE 0.096, 4/5 bins fail ⇒ **UNAVAILABLE** (reproduced,
+§13.22). Of 877 confirmed held-out decisions only 1 is false: the labels
+contain no hard negatives that reach confirmation, so no calibration of the
+confidence that would be published is possible on this data. Labels were
+not altered. Publication hold re-verified by K-8/K-10 in the final suite
+(§13.33).
+
+### 13.29 V1 end-to-end on N-SOAK (P10-T7, M3-1, O-4) — BLOCKED (owner: not now)
+
+Corrected cost (the earlier "≈ 137 h × 7 targets" was wrong: it counted the
+SOAK-1000 media once per target): N-SOAK has 6,092 pairs (929 positive) over
+1,000 items and 7 targets; V1 end to end decodes **614.8 h** of video;
+at the L-PAIRS measured rate (21.10 h in 45.3 min = 28.0× real time) that is
+**≈ 22 h wall-clock** (estimate; plausible 15–45 h with codec/resolution
+variance), GPU and HDD busy throughout. Owner decision (2026-10-21): **not
+run now, stays BLOCKED**; no waiver of the comparison was given.
+
+### 13.30 Capacity release (O-5) — unchanged
+
+CAP-7's finding stands (§13.21): freed points inside an admitted live
+generation are released only at generation turnover. CAP-4 (now bounded by
+the admission) and CAP-9 (race) pass. No change to the ledger semantics
+without an owner decision.
+
+### 13.31 P9 `publisher republish --stream <other>` (O-6) — documented, not fixed
+
+Reproduced (`test_o6_…`) through P9's own `TargetManager.republish`: it
+re-emits `target.retired` envelopes into whichever stream is named, here
+`representation.ready`. P10's hint reader rejects them (counted
+`invalid`; no cursor stall); no intent, task or decision results.
+P10 never reads the target streams (D5); the targets scan remains the
+authority. The defect is
+in P9 code and is tracked separately; P9 was not modified.
+
+### 13.32 E-R1 (P10-T6, P10-T10, O-1) — diagnosis reproduced; 4 GiB decision measurement; BLOCKED stands
+
+**Storage.** The only non-HDD device on the host is the NVMe holding the
+owner's Windows partitions, which is excluded; no SSD-class index volume
+exists. The index device `sda` is a USB-attached 2.5″ HDD
+(`WDC WD5000LPVT`, rotational, `TRAN usb` — lsblk in the report).
+
+**1-copy diagnosis reproduced** (alone on the host, fresh `qdrant-e-r1d`,
+removed afterwards; 100 queries per mode after 30 warm-up):
+`~/anti_piracy/datasets/p10/venv/bin/python -I benchmarks/p10-index/e_r1_diag.py --vectors ~/anti_piracy/datasets/p10/vectors --device sda --caps 1536m,384m --queries 100 --warmup 30 --out benchmarks/p10-index/results/e-r1-diag-repro.json`
+
+| Cap | rescore + payload | rescore, no payload | no rescore, payload | no rescore, no payload |
+|---|---|---|---|---|
+| 1,536 MiB (anon 137 MiB, file 420 MiB) | p95 5.5 ms, 0.2 reads | 2.5 ms, 0.1 | 5.6 ms, 0.3 | 2.5 ms, 0.1 |
+| 384 MiB (anon 128 MiB, file 248 MiB) | **p50 2,411, p95 3,083 ms, 224 reads (984 KiB)** | p50 172, p95 351 ms, 21.6 reads | 5.6 ms, 0.2 | **2.4 ms, 0.1** |
+
+Same attribution as §13.20 (3,083 vs 2,993 ms p95 for the full
+configuration; int8 + HNSW alone 2.4 ms): once the float32 originals leave
+the page cache, rescoring's random reads on the HDD dominate. One mode
+differs from §13.20: rescoring without on-disk payload measured 351 ms p95
+here vs 2,408 ms there (21.6 vs 160 reads/query) — the amount of the
+originals still cached after the cap drop varies between runs; the
+conclusion is unchanged (both fail by orders of magnitude, and the
+real-corpus 6-copy state caches far less).
+
+**Decision measurement: E-R1 at 6 copies under a 4 GiB cap** (owner-approved
+2026-10-21 as evidence for O-1 option (2); **not gate-eligible** — the gate
+is one 1.5 GiB instance. `capacity_e_r1.py` now sets `gate_eligible` only
+when the cgroup limit is 1.5 GiB, so this report can never satisfy CAP-8).
+Dedicated `qdrant-e-r1` (same digest, `--memory 4g --memory-swap 4g --cpus
+2`, fresh volume, fresh random API key, ports 26333/26334), alone on the
+host, removed with its volume afterwards:
+`FINGERPRINTER_INDEX__API_KEY=… ~/anti_piracy/datasets/p10/venv/bin/python -I benchmarks/p10-index/capacity_e_r1.py --vectors ~/anti_piracy/datasets/p10/vectors --copies 6 --http-port 26333 --grpc-port 26334 --container qdrant-e-r1 --cgroup /sys/fs/cgroup/system.slice/docker-<id>.scope --out benchmarks/p10-index/results/e-r1-6copies-4g.json --samples ~/anti_piracy/datasets/p10/runs/e-r1/6copies-4g.samples.jsonl`
+(2 h 44 min of measurement).
+
+| Rule / measurement (N = 626,658, R_req = 1,304,649) | Result |
+|---|---|
+| no `oom_kill` | pass (0) |
+| exact counts = harness total at every boundary | pass (636,658 → 1,304,788 → 657,394) |
+| phase 3 resident ≥ R_req | pass (1,304,788) |
+| `anon` peak ≤ 1.35 GiB | **fail** — 1.52 GiB in phase 3 (two generations being indexed); 0.80–0.90 GiB otherwise |
+| query p95 ≤ 10 ms after 60 s warm-up | **fail** — phase 2 (warm, g1 only): p50 8.2 ms, **p95 2,755 ms**; phase 3 (rebuild while serving): p50 24.7 s, **p95 44.5 s**; phase 5 (steady, g2): p50 23.3 s, **p95 32.4 s** (21 queries in 300 s) |
+| page cache | phase 1–2 file ≈ 2.2–2.6 GB (originals mostly cached ⇒ p50 8 ms, tail from misses); after g1's deletion in phase 4 the cache held 0.65–0.78 GB and g2's originals were cold |
+| live writes | p50 114 ms, p95 15.0 s; 1 error (a `retrieve` timed out after 4 s in phase 3) |
+| build | g1 ingest 659 s; g2 ingest 1,667 s, green after 279 s; volume 3.3 GB (1 generation), 6.6 GB (2) |
+
+**Outcome:** a 4 GiB limit on this host does **not** make E-R1 pass: with
+both generations resident the originals exceed the cache, and after a
+generation switch the new originals are cold, so every phase's p95 is
+dominated by HDD random reads; the anon rule also fails during the rebuild.
+Option (2) alone is therefore not sufficient on HDD-backed storage; the
+measured evidence points to option (1) (SSD/NVMe index storage) or (3)/(4)
+with their own measurements. P10-T6 and P10-T10 stay **BLOCKED** (O-1);
+`index.max_points` stays the provisional 250,000.
+
+### 13.33 Final test runs and cleanup (2026-10-21)
+
+R-25 (b)–(d) were found missing from both the passed and the not-run lists
+of §13.21 and were added (`tests/p10/test_r25_variants.py`, all **PASS**):
+
+| ID | What was shown |
+|---|---|
+| R-25 (b) | T's points lost, M DONE without (M, T); a new intent for T (s+1) before any verification: the apply's pre-count opens the occurrence (`apply_precount`) **before** its upsert (call order), the apply heals the points, the occurrence still drives T's rerun, (M, T) found, CLOSED `RERUN_DONE`, M run 1, recovery 0/0, `settled` |
+| R-25 (c) | g′ promoted; T's points deleted from the DRAINING g inside its search horizon; a reader with the cached g pointer runs M to DONE without (M, T); g not RETIRED inside the horizon; the first pass after horizon + grace verifies g (started after the horizon) and detects T; T's rerun finds (M, T); g RETIRED and its collection deleted only afterwards |
+| R-25 (d) | as (a), then g's target collection deleted; after the rebuild supersedes g, one `unauditable` occurrence per subject applied to g, durable before g is RETIRED; T's rerun finds (M, T); CLOSED `RERUN_DONE` |
+
+Final runs (2026-10-21/22, alone on the host after the E-R1 measurements):
+
+- `. scripts/p10-env.sh && env/bin/python -m pytest -p no:cacheprovider tests/p10 -q -rf`
+  — **148 passed, 0 failed** (54 min 55 s; real Scylla 6.2.3, Qdrant
+  1.15.1, MinIO, Redis): the 105 of §13.25 plus 43 new (§13.26: 40;
+  R-25 (b)–(d): 3). Log: `runs/gate2/suite-p10-exit.log`. (Before R-25
+  (b)–(d): 145 passed, `runs/gate2/suite-p10-final.log`.)
+- `env/bin/python -m pytest -p no:cacheprovider tests/v2 -q` — **100
+  passed**, 118 skipped (integration environment not set, as before).
+- No file under P9's modules, `tests/v2`, V1 (`matching/`, `worker/`,
+  `old/`), crawler2 or its contract package changed in this pass.
+- Cleanup: containers/volumes `qdrant-e-r1d` (by the harness) and
+  `qdrant-e-r1` (by hand, after the 4 GiB run) removed; the temporary API key
+  file deleted; the scratch worktree of `bbe9284` used for the pre-fix runs
+  removed (`git worktree remove`). Test vectors of the density experiment
+  stay outside git (`~/anti_piracy/datasets/p10/vectors/*-dense1`, 80 MB).

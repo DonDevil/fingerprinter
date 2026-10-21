@@ -7,7 +7,7 @@ mutation/recovery protocol and the P10 reconciler. The design of record and
 all evidence are in [`phases/p10-vector-index-matcher/`](phases/p10-vector-index-matcher/README.md);
 executed results are only in its `validation.md` §13.
 
-**Status (2026-10-18, after the exit-gate pass): implemented; 105 integration/unit tests pass on the real stack; M3 not passed** (gates and evidence: `validation.md` §11, §13; owner decisions: `decisions.md` §6).
+**Status (2026-10-21, after the exit-gate resolution pass): implemented; 148 integration/unit tests pass on the real stack; M3 not passed** (gates and evidence: `validation.md` §11, §13; owner decisions: `decisions.md` §6, §6.1).
 
 ## 1. Boundaries
 
@@ -60,6 +60,11 @@ selects an immutable equivalence rule version (`equiv/v1` default,
 `equiv/v2` registered; links of a non-v1 rule are keyed
 `<technique>+<rule>`).
 
+Added by the 2026-10-21 pass (validation §13.26): `matching.lowinfo_max_attempts`
+(default 5) — consecutive failed low-information refreshes before the refresh
+row is BLOCKED (`fingerprinter_lowinfo_refresh_failures_total`); the filter
+itself stays disabled (`matching.lowinfo_enabled = false`).
+
 ## 4. Tests
 
 ```bash
@@ -91,6 +96,7 @@ only with distinct `FINGERPRINTER_INDEX__COLLECTION_PREFIX` values (design
 | `benchmarks/p10-index/e_r1_diag.py` | §13.20: which reads make a query slow (rescore × payload at lowered memory caps), dedicated `qdrant-e-r1d` container |
 | `benchmarks/p10-index/make_eset.py`, `eset_eval.py`, `p8_set.py` | §8: E-SET (and the disjoint E-TUNE with `--avoid`), offline/live equivalence (configured rule), P8's 6 s set |
 | `benchmarks/p10-index/equiv_tune.py` | §13.19: equivalence-only segment parameters tuned on E-TUNE, evaluated once on E-SET |
+| `benchmarks/p10-index/equiv_density.py` | §13.27: coverage bound of equivalence misses and a denser-sampling test spec (`--encode-all`, `--grid`: tune on E-TUNE, one held-out E-SET evaluation); writes only test vectors outside git |
 
 Exact command lines are in `validation.md` §13. Vector caches, per-pair logs
 and per-second samples stay outside git in `~/anti_piracy/datasets/p10/`.
@@ -161,6 +167,8 @@ P9 is unaffected.
 | held publication | `matches.published_at` null; `match summary` → `unpublished`; `fingerprinter_match_unpublished_uncalibrated` |
 | subject's own data invalid | task `FAILED` with `failure` (`artifact_corrupt`, `artifact_missing`, `invalid_vector`), error log line |
 | rebuild progress / failure | `index status` generation states; `fingerprinter_index_build_progress`; FAILED generation with `failure` |
+| repairs not succeeding | OPEN `index_repairs` rows at `matcher_reconcile.repair_max_attempts`; `fingerprinter_index_repairs_blocked{role}` |
+| low-information refresh | `lowinfo status`: refresh state `DONE` / `TRUNCATED` (a PARTIAL record) / `WAITING_INDEX` (a member not yet applied) / `PENDING` / `BLOCKED` (`attempts`, `last_error`) |
 
 Structured JSON log lines (`fingerprinter.matching`, `.recovery`, `.indexing`,
 `.discovery`) carry subject, kind, spec, run and generation; no media
@@ -171,4 +179,6 @@ content or credentials are logged.
 - *Tasks stay `WAITING_INDEX(missing)`*: the spec/role has no ACTIVE generation — run `index rebuild … --promote`.
 - *`CAPACITY_BLOCKED`*: the projected generation does not fit `max_points − margin`; the limit may only be raised to a value measured by E-R1 (`index.max_points_evidence`).
 - *`index check` reports a manifest mismatch*: the generation differs from the artifacts; rebuild (a new generation number), never edit points by hand.
+- *Rebuild stays CATCHING_UP with `CAPACITY_BLOCKED` and `blocked_rows`*: subjects beyond the generation's admission could not reserve ledger capacity; free capacity (retire an old generation, `index drop --generation`, let the audit run) and rerun the build — never promoted with blocked rows.
+- *`lowinfo` refresh BLOCKED*: it failed `matching.lowinfo_max_attempts` times in a row (it is still retried); read `last_error`, fix the index/storage cause, or run `lowinfo refresh --spec D`. Matching is unaffected while the filter is disabled.
 - *`match publish-held` refused*: the technique version is not CALIBRATED (2.1 is UNAVAILABLE, validation §13.3).

@@ -185,7 +185,21 @@ this environment; none was taken here (validation §11, §13.17–§13.25).
 | O-1 | Index storage / memory for E-R1 (D3, D14, D2) | P10-T6, P10-T10 (M3 per §11) | SSD/NVMe-backed index volume (≥ ≈ 20,000 random reads/s) and rerun E-R1 at 6 copies; or a memory limit holding the originals (≈ 3 GiB at 6 copies); or originals/payload in RAM; or rescoring off (needs its own recall run); or a different latency criterion. §13.20 |
 | O-2 | Level-5 equivalence recall target (D13) | P10-T4 | adopt `equiv/v2` (0.933, 0 false links) and accept the measured compression class as a documented limit; change the 0.90 coverage rule; a denser-sampling spec (P9-style); or keep 1.0 and leave P10-T4 failing. §13.19 |
 | O-3 | Calibration data and the meaning of "proposed, verified match" (D9) | publication of `match.found` (P10-T8) | label hard negatives that reach confirmation, more films, live action; decide whether confidence is calibrated over all verified candidates or over confirmed decisions. Publication stays held until then. §13.22 |
-| O-4 | V1 end-to-end baseline on N-SOAK (D17) | full M3-1 scope | fund the ≈ 137 h × 7 targets run, or formally scope M3-1's N-SOAK comparison to V1-on-V2-vectors. §13.24 |
+| O-4 | V1 end-to-end baseline on N-SOAK (D17) | full M3-1 scope | run it (corrected estimate ≈ 22 h wall-clock for 614.8 h of decoded video, validation §13.29 — the earlier "≈ 137 h × 7 targets" was wrong), or formally scope M3-1's N-SOAK comparison to V1-on-V2-vectors. §13.24 |
 | O-5 | Capacity release inside a live generation (§13.3) | none (efficiency) | keep (freed points released at generation turnover) or redesign the audit bound for ACTIVE generations. §13.21 CAP-7 |
 | O-6 | P9 `publisher republish --stream <other>` re-emits target.retired envelopes into the named stream (observed, P9 code, not changed) | none for P10 (P10 publication is separate and gated) | fix in a P9 change |
 
+
+### 6.1 Status after the exit-gate resolution pass (2026-10-21)
+
+Evidence: validation §13.26–§13.33. Decisions taken by the owner in this
+pass are marked **owner**; nothing else was decided here.
+
+| # | Status | What changed |
+|---|---|---|
+| O-1 | **open** | No SSD/NVMe index volume available (the host's NVMe holds the owner's Windows partitions and is excluded). **Owner** approved a decision-evidence measurement of option (2): E-R1 at 6 copies with a 4 GiB container memory limit (validation §13.32). It is not gate evidence for the 1.5 GiB criterion; P10-T6/T10 stay BLOCKED whatever it shows. |
+| O-2 | **open** | Misses classified (coverage stage, two mechanisms); a 1 s-sampling test spec removes the scene-cut class but not low-bitrate degradation: held-out 0.9533, 0 false links (§13.27). Options now measured: keep 1.0 and P10-T4 failing; adopt a lower target with the documented limit; a new P9 spec at 1 s (5× vectors and index points, needs a backfill and its own ANN/latency/capacity evidence) — none reaches 1.0 on E-SET. No rule or spec registered or made default. |
+| O-3 | **open** | Label audit (§13.28): no hard negatives reach confirmation (1 false of 877 confirmed); new labelled data needed. Publication held (K-8/K-10). |
+| O-4 | **owner: not now** | Corrected estimate ≈ 22 h (§13.29). Stays BLOCKED; no waiver given. |
+| O-5 | **open** (efficiency only) | unchanged; CAP-4/CAP-9 now pass (§13.30). |
+| O-6 | **tracked, not fixed** | reproduced through P9's own code; P10 rejects the foreign envelopes (§13.31). Fix belongs to a P9 change. |
