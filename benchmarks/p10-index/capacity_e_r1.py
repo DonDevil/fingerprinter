@@ -402,6 +402,10 @@ def main() -> None:
         "host": platform.node(), "samples": len(samples),
     })
     report["pass"] = all(report["pass_rules"].values())
+    # The gate is one 1.5 GiB instance: a run under any other memory limit is decision evidence only and
+    # must never satisfy CAP-8 (index.max_points_evidence requires gate_eligible).
+    report["memory_limit_is_gate_limit"] = report["memory"]["limit_bytes"] == int(1.5 * GiB)
+    report["gate_eligible"] = report["gate_eligible"] and report["memory_limit_is_gate_limit"]
     report["measured_max_resident_total"] = max((p.get("boundary", {}).get("total", 0)
                                                  for p in report["phases"].values()), default=0)
     a.out.parent.mkdir(parents=True, exist_ok=True)

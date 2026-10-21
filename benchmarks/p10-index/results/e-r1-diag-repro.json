@@ -1,0 +1,118 @@
+{
+ "benchmark": "P10-E-R1-DIAG",
+ "build_seconds": 156.9,
+ "caps": {
+  "1536m": {
+   "memory_after": {
+    "anon": 143355904,
+    "current": 600694784,
+    "file": 439992320,
+    "max": "1610612736",
+    "oom_kill": 0
+   },
+   "memory_before": {
+    "anon": 143679488,
+    "current": 599302144,
+    "file": 439963648,
+    "max": "1610612736",
+    "oom_kill": 0
+   },
+   "modes": {
+    "rescore=False,payload=False": {
+     "disk_reads_per_query": 0.1,
+     "kib_read_per_query": 0.8,
+     "p50_ms": 2.1,
+     "p95_ms": 2.48,
+     "p99_ms": 2.68,
+     "queries": 100
+    },
+    "rescore=False,payload=True": {
+     "disk_reads_per_query": 0.3,
+     "kib_read_per_query": 1.8,
+     "p50_ms": 5.12,
+     "p95_ms": 5.63,
+     "p99_ms": 5.81,
+     "queries": 100
+    },
+    "rescore=True,payload=False": {
+     "disk_reads_per_query": 0.1,
+     "kib_read_per_query": 0.5,
+     "p50_ms": 2.12,
+     "p95_ms": 2.54,
+     "p99_ms": 2.7,
+     "queries": 100
+    },
+    "rescore=True,payload=True": {
+     "disk_reads_per_query": 0.2,
+     "kib_read_per_query": 1.4,
+     "p50_ms": 5.1,
+     "p95_ms": 5.49,
+     "p99_ms": 5.77,
+     "queries": 100
+    }
+   }
+  },
+  "384m": {
+   "memory_after": {
+    "anon": 133935104,
+    "current": 402575360,
+    "file": 259989504,
+    "max": "402653184",
+    "oom_kill": 0
+   },
+   "memory_before": {
+    "anon": 143245312,
+    "current": 336666624,
+    "file": 183873536,
+    "max": "402653184",
+    "oom_kill": 0
+   },
+   "modes": {
+    "rescore=False,payload=False": {
+     "disk_reads_per_query": 0.1,
+     "kib_read_per_query": 0.7,
+     "p50_ms": 2.01,
+     "p95_ms": 2.39,
+     "p99_ms": 2.58,
+     "queries": 100
+    },
+    "rescore=False,payload=True": {
+     "disk_reads_per_query": 0.2,
+     "kib_read_per_query": 1.2,
+     "p50_ms": 5.06,
+     "p95_ms": 5.6,
+     "p99_ms": 5.73,
+     "queries": 100
+    },
+    "rescore=True,payload=False": {
+     "disk_reads_per_query": 21.6,
+     "kib_read_per_query": 94.6,
+     "p50_ms": 171.96,
+     "p95_ms": 351.08,
+     "p99_ms": 433.81,
+     "queries": 100
+    },
+    "rescore=True,payload=True": {
+     "disk_reads_per_query": 224.2,
+     "kib_read_per_query": 983.7,
+     "p50_ms": 2411.18,
+     "p95_ms": 3082.98,
+     "p99_ms": 3216.83,
+     "queries": 100
+    }
+   }
+  }
+ },
+ "container": "qdrant-e-r1d",
+ "cpus": 2,
+ "device": "sda",
+ "device_info": "NAME ROTA MODEL                  TRAN\nsda     1 WDC WD5000LPVT-08G33T1 usb",
+ "host": {
+  "kernel": "7.0.0-38-generic",
+  "nproc": 12
+ },
+ "image": "qdrant/qdrant@sha256:d122138f76868edba68d36cb0833139c1d1761f00f09e48e61f8314196e6a4c6",
+ "points": 104443,
+ "qdrant_version": "1.15.1",
+ "volume_bytes": 628502393
+}
