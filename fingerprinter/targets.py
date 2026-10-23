@@ -38,7 +38,7 @@ from antipiracy_contracts.ownership import Component
 
 from fingerprinter.coord import utc, uuid7
 from fingerprinter.db import SERIAL
-from fingerprinter.errors import FingerprinterError
+from fingerprinter.errors import ConfigError, FingerprinterError
 from fingerprinter.objects import META_SHA, ref_key
 from fingerprinter.publish import TARGET_REGISTERED, TARGET_RETIRED, Outcome
 from fingerprinter.requests import DEFAULT, internal_source
@@ -378,7 +378,16 @@ class TargetManager:
         report.repair("target_register_resolved")
 
     def republish(self, stream: str = TARGET_REGISTERED) -> int:
-        """Re-emit the stored envelopes (same event_ids) of current target versions."""
+        """Re-emit the stored envelopes (same event_ids) of current target versions.
+
+        Only the two target streams are valid: any other name used to re-emit ``target.retired``
+        envelopes into that stream (P10 O-6: observed in ``representation.ready``).
+        """
+        if stream not in (TARGET_REGISTERED, TARGET_RETIRED):
+            raise ConfigError(
+                f"cannot republish target events into {stream!r}; "
+                f"valid streams: {TARGET_REGISTERED!r}, {TARGET_RETIRED!r}"
+            )
         event = "registered" if stream == TARGET_REGISTERED else "retired"
         count = 0
         for t in self.list():

@@ -37,6 +37,7 @@ from acquisition.errors import (
     UnsupportedContentTypeError,
     UnsupportedSchemeError,
 )
+from acquisition.pinned_adapter import PinnedHTTPAdapter
 from acquisition.ssrf_guard import Resolver, default_resolver, validate_destination
 from acquisition.validation import probe_media
 
@@ -85,7 +86,15 @@ class MediaAcquirer:
         self._allowed_content_type_prefixes = tuple(allowed_content_type_prefixes)
         self._temp_dir = temp_dir
         self._chunk_size = chunk_size
-        self._session = session or requests.Session()
+        self._resolver = resolver or default_resolver
+        if session is None:
+            session = requests.Session()
+            if not allow_private_networks:
+                # Pin each connection to the address the guard validated (DNS rebinding).
+                adapter = PinnedHTTPAdapter(resolver=self._resolver)
+                session.mount("http://", adapter)
+                session.mount("https://", adapter)
+        self._session = session
         self._validate = validate
         self._validator = validator or probe_media
         self._user_agent = user_agent
@@ -95,7 +104,6 @@ class MediaAcquirer:
         # narrow, explicit opt-out for test/dev fixtures; it must never be
         # the production default. See acquisition/ssrf_guard.py.
         self._allow_private_networks = allow_private_networks
-        self._resolver = resolver or default_resolver
 
     def acquire(self, url: str) -> MediaArtifact:
         """Download `url` to a local temp file and validate it.

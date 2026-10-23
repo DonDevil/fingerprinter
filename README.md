@@ -194,10 +194,12 @@ yet: [`docs/benchmarks.md`](docs/benchmarks.md).
 
 - **SSRF hardening:** outbound media fetches validate the resolved
   destination address (rejecting loopback/private/link-local/reserved
-  ranges) on the initial URL and every redirect hop. **Known limitation:**
-  DNS rebinding / TOCTOU between this check and the actual socket
-  connection is not closed by this alone — see
-  [`docs/architecture/system-architecture.md`, §7](docs/architecture/system-architecture.md#7-ssrf--outbound-fetch-security).
+  ranges) on the initial URL and every redirect hop. `MediaAcquirer`'s
+  default-created session also pins each connection to a validated address,
+  closing the DNS-rebinding gap for that path. A caller-supplied session is
+  not modified, and the explicit private-network opt-out disables these
+  protections; see
+  [`docs/architecture/system-architecture.md`, §7](docs/architecture/system-architecture.md#7-ssrf-outbound-fetch-security).
 - **Media bounds:** scheme allowlist, bounded redirects, a hard byte cap
   enforced against actual bytes written, and `ffprobe`-based validation
   that downloaded bytes decode as real media.
@@ -240,7 +242,7 @@ called production-validated merely because its unit tests pass.
 | Redis job contract (claim/lease/retry/crash-recovery) | IMPLEMENTED, unit + integration tested | VALIDATED (single-host, automated tests) | Real multi-host throughput/latency under sustained load | [system-architecture.md §3](docs/architecture/system-architecture.md#3-redis-streams-job-model) |
 | SQLite backend | Not used by this repository at all — SQLite is explicitly excluded from production per the founding design proposal | N/A | N/A | [design-proposal-1.md](docs/design/design-proposal-1.md) |
 | Media acquisition | IMPLEMENTED (scheme allowlist, size/redirect bounds, ffprobe validation) | VALIDATED (automated tests against real fixtures) | — | [system-architecture.md §5](docs/architecture/system-architecture.md#5-matching-pipeline-detail) |
-| SSRF protection | IMPLEMENTED (resolved-address validation, all hops) | VALIDATED for the address-classification logic itself; DNS rebinding/TOCTOU gap is a known, documented, unsolved limitation | Connection-pinning fix for DNS rebinding | [system-architecture.md §7](docs/architecture/system-architecture.md#7-ssrf--outbound-fetch-security) |
+| SSRF protection | IMPLEMENTED (resolved-address validation on every hop; default-created sessions pin connections to validated addresses) | VALIDATED by deterministic regression tests, including a scripted DNS-rebinding attempt against a local server; not live external-network validation | Caller-supplied sessions are not pinned; private-network opt-out disables the guard and pinning | [system-architecture.md §7](docs/architecture/system-architecture.md#7-ssrf-outbound-fetch-security) |
 | DINOv2 embedding (CPU) | IMPLEMENTED | VALIDATED (automated tests, benchmarked) | — | [system-architecture.md §5](docs/architecture/system-architecture.md#5-matching-pipeline-detail), [benchmarks.md](docs/benchmarks.md) |
 | DINOv2 embedding (GPU) | IMPLEMENTED (device selection + inference hygiene, correct by code inspection) | **REQUIRES GPU VALIDATION** — no benchmark or correctness run against real CUDA hardware exists in this repo | Run against real GPU hardware, capture benchmark numbers | [installation.md](docs/installation.md#optional-gpu-setup), [benchmarks.md](docs/benchmarks.md#gpu-benchmarking) |
 | Temporal segment matching | IMPLEMENTED, unit tested | VALIDATED for algorithm correctness against synthetic cases; thresholds are PROVISIONAL HEURISTICS, **not** calibrated against labeled real-world data | Calibration against a labeled dataset (does not exist yet) | [system-architecture.md §5](docs/architecture/system-architecture.md#5-matching-pipeline-detail), `matching/config.py` |
@@ -250,7 +252,7 @@ called production-validated merely because its unit tests pass.
 | Worker process / deployment | IMPLEMENTED (`worker/main.py`, env-var configuration, structured shutdown) | VALIDATED (single-host, automated tests) | Real multi-host fleet operation | [usage.md](docs/usage.md#start-a-worker) |
 | Observability (logs, counters, health summary, run record) | IMPLEMENTED, worker-local only | VALIDATED (automated tests) | Fleet-wide aggregation is explicitly DEFERRED (no dashboard/metrics backend by design) | [system-architecture.md §8](docs/architecture/system-architecture.md#8-observability) |
 | Crawler integration (submission API) | IMPLEMENTED (`integration/`: idempotency, backpressure, outcome lookup) | VALIDATED (automated tests) for the API itself | Backpressure/idempotency defaults are PROVISIONAL, not load-tested; no consumer of the crawler's own evidence-job queue exists (DEFERRED) | [system-architecture.md §9](docs/architecture/system-architecture.md#9-relationship-to-the-crawler-repository) |
-| Crash recovery (`XAUTOCLAIM`, attempt fencing) | IMPLEMENTED, unit tested | VALIDATED (automated tests simulate worker death) | Real multi-host crash scenarios | `tests/test_crash_recovery.py`, [system-architecture.md §3](docs/arrchitecture/system-architecture.md#3-redis-streams-job-model) |
+| Crash recovery (`XAUTOCLAIM`, attempt fencing) | IMPLEMENTED, unit tested | VALIDATED (automated tests simulate worker death) | Real multi-host crash scenarios | `tests/test_crash_recovery.py`, [system-architecture.md §3](docs/architecture/system-architecture.md#3-redis-streams-job-model) |
 | Retry system (exponential backoff) | IMPLEMENTED, unit tested | VALIDATED | — | [system-architecture.md §3](docs/architecture/system-architecture.md#3-redis-streams-job-model) |
 
 ## Architecture documentation

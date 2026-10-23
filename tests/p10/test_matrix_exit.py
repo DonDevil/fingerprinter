@@ -473,11 +473,15 @@ def test_k4_two_spec_bindings_of_one_target_version_are_not_collapsed(p10) -> No
 # --- O-6 (decisions §6): the P9 republish defect does not reach P10 ------------------------------
 
 
-def test_o6_p9_republish_into_the_rep_ready_stream_is_rejected_by_the_hint_reader(p10) -> None:
-    """O-6 is a P9 defect (``publisher republish --stream <other>`` re-emits ``target.retired`` envelopes
-    into whichever stream is named; P9 code unchanged here). Reproduced through P9's own
-    ``TargetManager.republish``; P10's only stream reader validates every entry as
-    ``representation.ready`` and skips the foreign envelopes (counted ``invalid``): no intent, task or
+def test_o6_p9_republish_refuses_foreign_streams_and_the_hint_reader_still_rejects_foreign_envelopes(
+    p10,
+) -> None:
+    """O-6 was a P9 defect (``publisher republish --stream <other>`` re-emitted ``target.retired``
+    envelopes into whichever stream was named); fixed in P14 (2026-10-22): ``TargetManager.republish``
+    now raises ``ConfigError`` for anything but the two target streams. The second half keeps the
+    defence in depth that did not depend on the fix: foreign envelopes put into the rep-ready stream by
+    any means (here: the publisher called directly, i.e. what the defect did) are validated by P10's
+    only stream reader as ``representation.ready`` and skipped (counted ``invalid``): no intent, task or
     cursor stall follows from them. P10 never reads the target streams (D5)."""
     from fingerprinter.discovery import READY
 
@@ -489,7 +493,16 @@ def test_o6_p9_republish_into_the_rep_ready_stream_is_rejected_by_the_hint_reade
     p10.s.coord.client.xgroup_create(stream, "media-registry", id="$", mkstream=True)  # P9's release condition
     p10.s.pub.register_consumer(READY, "media-registry", actor="test")                   # (P8's group, production)
     before = p10.s.coord.client.xlen(stream)
-    n = p10.s.targets.republish(READY)                    # what `publisher republish --stream <ready>` does
+    from fingerprinter.errors import ConfigError
+
+    with pytest.raises(ConfigError, match="cannot republish"):
+        p10.s.targets.republish(READY)                   # `publisher republish --stream <ready>`: now refused
+    assert p10.s.coord.client.xlen(stream) == before     # ... and nothing was written
+    n = 0
+    for t in p10.s.targets.list():                       # the defect's effect, produced directly
+        if t["retired_envelope"]:
+            p10.s.pub.publish(READY, t["retired_event_id"], "target.retired", t["retired_envelope"])
+            n += 1
     added = p10.s.coord.client.xrange(stream, min="-", max="+")[before:]
     assert n >= 1 and len(added) == n
     assert all(b"target.retired" in (f.get(b"envelope") or b"") for _, f in added)   # the P9 defect, observed

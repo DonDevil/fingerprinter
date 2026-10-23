@@ -9,22 +9,19 @@ reserved for internal use — closing the gap where a crawler-supplied
 `candidate_url` (or a redirect target reached through it) could point the
 acquirer at internal infrastructure.
 
-DNS-rebinding / TOCTOU limitation (deliberately not solved here — see
-docs/architecture/phase-13-production-hardening.md, "Phase 13A"): this
-module re-resolves DNS itself immediately before each connection attempt,
-but `requests`/urllib3 performs its own, independent resolution a moment
-later when it actually opens the socket. An attacker who controls DNS for
-the candidate's hostname and changes the answer between those two lookups
-("DNS rebinding") is not defeated by this check alone. Fully closing that
-gap requires pinning the actual connection to the address validated here
-(a custom transport adapter) — a materially larger change, deliberately
-out of scope for this pass.
+DNS rebinding: closed for sessions the acquirer creates itself by
+``acquisition/pinned_adapter.py``, which resolves, validates and connects in
+one step (the address checked is the address used; Host/SNI stay the
+hostname). The per-hop check here still runs first so a hostile URL fails
+fast with a typed error before any socket is opened. A caller-supplied
+``requests.Session`` is not modified and therefore keeps the old
+check-then-resolve-again window.
 """
 from __future__ import annotations
 
 import ipaddress
 import socket
-from typing import Callable, List, Sequence, Tuple, Union
+from typing import Callable, List, Optional, Sequence, Tuple, Union
 
 from acquisition.errors import UnsafeDestinationError
 
@@ -63,6 +60,21 @@ def is_unsafe_address(addr: IPAddress) -> bool:
     return any(addr in network for network in _EXTRA_UNSAFE_NETWORKS if addr.version == network.version)
 
 
+def _legacy_literal(hostname: str) -> Optional[IPAddress]:
+    """The address `hostname` denotes if it is an IP literal in any spelling inet_aton accepts."""
+    host = hostname.strip("[]")
+    try:
+        return ipaddress.ip_address(host.split("%", 1)[0])
+    except ValueError:
+        pass
+    if not host or not all(c in "0123456789abcdefABCDEFxX." for c in host):
+        return None
+    try:
+        return ipaddress.IPv4Address(socket.inet_aton(host))
+    except OSError:
+        return None
+
+
 def resolve_addresses(hostname: str, port: int, resolver: Resolver = default_resolver) -> List[IPAddress]:
     """Resolve `hostname` to concrete IP addresses via `resolver`.
 
@@ -70,6 +82,9 @@ def resolve_addresses(hostname: str, port: int, resolver: Resolver = default_res
     (acquisition/acquirer.py) maps that onto the same transient-network
     classification a real connection failure already gets.
     """
+    literal = _legacy_literal(hostname)
+    if literal is not None:  # exotic spellings (2130706433, 0x7f.1) never reach the resolver
+        return [literal]
     infos = resolver(hostname, port)
     addresses: List[IPAddress] = []
     for _family, _type, _proto, _canonname, sockaddr in infos:

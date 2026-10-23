@@ -419,7 +419,14 @@ def _dispatch(args: argparse.Namespace, svc: Services, actor: str) -> int:  # no
             svc.pub.register_consumer(args.stream, args.group, actor=actor)
             return 0
         if args.cmd == "republish":
-            _out({"republished": TargetManager(svc).republish(args.stream)}, j)
+            from fingerprinter.errors import ConfigError
+
+            try:
+                republished = TargetManager(svc).republish(args.stream)
+            except ConfigError as exc:  # a stream that is not a target stream (P10 O-6)
+                print(f"error: {exc}", file=sys.stderr)
+                return 2
+            _out({"republished": republished}, j)
             store.audit(actor, "republish", {"stream": args.stream})
             return 0
     if args.tool == "target":

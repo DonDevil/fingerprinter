@@ -202,4 +202,4 @@ pass are marked **owner**; nothing else was decided here.
 | O-3 | **open** | Label audit (§13.28): no hard negatives reach confirmation (1 false of 877 confirmed); new labelled data needed. Publication held (K-8/K-10). |
 | O-4 | **owner: not now** | Corrected estimate ≈ 22 h (§13.29). Stays BLOCKED; no waiver given. |
 | O-5 | **open** (efficiency only) | unchanged; CAP-4/CAP-9 now pass (§13.30). |
-| O-6 | **tracked, not fixed** | reproduced through P9's own code; P10 rejects the foreign envelopes (§13.31). Fix belongs to a P9 change. |
+| O-6 | **fixed in code 2026-10-22 (crawler2 P14 sprint; uncommitted working-tree change)** | `TargetManager.republish` now raises `ConfigError` for any stream but `target.registered`/`target.retired`; CLI exits 2 with a message. The P10 reader's rejection of foreign envelopes (§13.31) is kept as defence in depth. Owner to acknowledge and commit. |

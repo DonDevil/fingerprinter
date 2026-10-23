@@ -1846,7 +1846,7 @@ generation are released only at generation turnover. CAP-4 (now bounded by
 the admission) and CAP-9 (race) pass. No change to the ledger semantics
 without an owner decision.
 
-### 13.31 P9 `publisher republish --stream <other>` (O-6) — documented, not fixed
+### 13.31 P9 `publisher republish --stream <other>` (O-6) — documented; FIXED 2026-10-22 (see end of section)
 
 Reproduced (`test_o6_…`) through P9's own `TargetManager.republish`: it
 re-emits `target.retired` envelopes into whichever stream is named, here
@@ -1855,6 +1855,14 @@ re-emits `target.retired` envelopes into whichever stream is named, here
 P10 never reads the target streams (D5); the targets scan remains the
 authority. The defect is
 in P9 code and is tracked separately; P9 was not modified.
+
+**Update 2026-10-22 (crawler2 P14 sprint):** the P9 defect is fixed (`fingerprinter/targets.py`:
+`republish` refuses any stream other than the two target streams with `ConfigError`; `fingerprinter/cli.py`
+prints the error and exits 2). `test_o6_p9_republish_refuses_foreign_streams_and_the_hint_reader_still_rejects_foreign_envelopes`
+(`tests/p10/test_matrix_exit.py`) now asserts the refusal and that nothing is written, then injects the foreign
+envelopes through the publisher directly to keep the reader-rejection check. Run: `. scripts/p10-env.sh;
+env/bin/python -m pytest tests/p10/test_matrix_exit.py -k o6` → 1 passed (93 s, real Scylla/Redis/MinIO/Qdrant).
+Uncommitted working-tree change on `p10-impl`.
 
 ### 13.32 E-R1 (P10-T6, P10-T10, O-1) — diagnosis reproduced; 4 GiB decision measurement; BLOCKED stands
 
