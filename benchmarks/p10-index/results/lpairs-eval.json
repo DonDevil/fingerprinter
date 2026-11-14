@@ -1,0 +1,431 @@
+{
+ "benchmark": "P10-AUDIT-LPAIRS",
+ "cache_index": "sha256:a4df3d19252891dc0d8d266d5056a226159ffc276898fdfd680472e54497d3d5",
+ "coarse_cosine": {
+  "negatives": {
+   "max": 0.7628,
+   "min": 0.0544,
+   "n": 330,
+   "p01": 0.1107,
+   "p05": 0.1925,
+   "p25": 0.3671,
+   "p50": 0.4797,
+   "p75": 0.5671,
+   "p95": 0.6494,
+   "p99": 0.704
+  },
+  "positives": {
+   "max": 0.9759,
+   "min": 0.3923,
+   "n": 150,
+   "p01": 0.447,
+   "p05": 0.6584,
+   "p25": 0.811,
+   "p50": 0.8784,
+   "p75": 0.9167,
+   "p95": 0.9531,
+   "p99": 0.9687
+  },
+  "positives_below_0_60": 6
+ },
+ "corpus_manifest_sha256": "ab3d7711ce9bfa199b10dc7330ac89adcb2e71ce733cdafcf56bf2e1319af9c4",
+ "exploratory_v1_sweep_in_sample": {
+  "rows": [
+   {
+    "fn": 3,
+    "fp": 10,
+    "min_matched_segments": 2,
+    "precision": 0.9363,
+    "recall": 0.98,
+    "segment_threshold": 0.7,
+    "tn": 320,
+    "tp": 147
+   },
+   {
+    "fn": 14,
+    "fp": 4,
+    "min_matched_segments": 3,
+    "precision": 0.9714,
+    "recall": 0.9067,
+    "segment_threshold": 0.7,
+    "tn": 326,
+    "tp": 136
+   },
+   {
+    "fn": 28,
+    "fp": 3,
+    "min_matched_segments": 4,
+    "precision": 0.976,
+    "recall": 0.8133,
+    "segment_threshold": 0.7,
+    "tn": 327,
+    "tp": 122
+   },
+   {
+    "fn": 8,
+    "fp": 5,
+    "min_matched_segments": 2,
+    "precision": 0.966,
+    "recall": 0.9467,
+    "segment_threshold": 0.75,
+    "tn": 325,
+    "tp": 142
+   },
+   {
+    "fn": 28,
+    "fp": 2,
+    "min_matched_segments": 3,
+    "precision": 0.9839,
+    "recall": 0.8133,
+    "segment_threshold": 0.75,
+    "tn": 328,
+    "tp": 122
+   },
+   {
+    "fn": 43,
+    "fp": 0,
+    "min_matched_segments": 4,
+    "precision": 1.0,
+    "recall": 0.7133,
+    "segment_threshold": 0.75,
+    "tn": 330,
+    "tp": 107
+   },
+   {
+    "fn": 20,
+    "fp": 3,
+    "min_matched_segments": 2,
+    "precision": 0.9774,
+    "recall": 0.8667,
+    "segment_threshold": 0.8,
+    "tn": 327,
+    "tp": 130
+   },
+   {
+    "fn": 46,
+    "fp": 0,
+    "min_matched_segments": 3,
+    "precision": 1.0,
+    "recall": 0.6933,
+    "segment_threshold": 0.8,
+    "tn": 330,
+    "tp": 104
+   },
+   {
+    "fn": 63,
+    "fp": 0,
+    "min_matched_segments": 4,
+    "precision": 1.0,
+    "recall": 0.58,
+    "segment_threshold": 0.8,
+    "tn": 330,
+    "tp": 87
+   },
+   {
+    "fn": 44,
+    "fp": 1,
+    "min_matched_segments": 2,
+    "precision": 0.9907,
+    "recall": 0.7067,
+    "segment_threshold": 0.85,
+    "tn": 329,
+    "tp": 106
+   },
+   {
+    "fn": 80,
+    "fp": 0,
+    "min_matched_segments": 3,
+    "precision": 1.0,
+    "recall": 0.4667,
+    "segment_threshold": 0.85,
+    "tn": 330,
+    "tp": 70
+   },
+   {
+    "fn": 98,
+    "fp": 0,
+    "min_matched_segments": 4,
+    "precision": 1.0,
+    "recall": 0.3467,
+    "segment_threshold": 0.85,
+    "tn": 330,
+    "tp": 52
+   },
+   {
+    "fn": 87,
+    "fp": 1,
+    "min_matched_segments": 2,
+    "precision": 0.9844,
+    "recall": 0.42,
+    "segment_threshold": 0.9,
+    "tn": 329,
+    "tp": 63
+   },
+   {
+    "fn": 113,
+    "fp": 0,
+    "min_matched_segments": 3,
+    "precision": 1.0,
+    "recall": 0.2467,
+    "segment_threshold": 0.9,
+    "tn": 330,
+    "tp": 37
+   },
+   {
+    "fn": 122,
+    "fp": 0,
+    "min_matched_segments": 4,
+    "precision": 1.0,
+    "recall": 0.1867,
+    "segment_threshold": 0.9,
+    "tn": 330,
+    "tp": 28
+   }
+  ],
+  "warning": "in-sample on all 480 pairs; shows sensitivity only, not a tuned or validated setting"
+ },
+ "items": 187,
+ "negatives_best_cosine_per_pair": {
+  "max": 1.0,
+  "min": 0.2421,
+  "n": 330,
+  "p50": 0.5387,
+  "p90": 0.9973,
+  "p99": 1.0
+ },
+ "negatives_best_cosine_per_segment": {
+  "max": 1.0,
+  "min": 0.0379,
+  "n": 10446,
+  "p50": 0.3066,
+  "p90": 0.4655,
+  "p99": 1.0
+ },
+ "pairs_csv_sha256": "ff43168cb5d6f36f57ea5438826d28a493d2faed67f25afafc2c6d9554f7b4c7",
+ "positives_true_alignment": {
+  "basis": "film time = clip pts_s + clip.reel_start_s - film.reel_start_s; nearest target sampled frame",
+  "best_cosine_any_target_segment": {
+   "max": 1.0,
+   "min": 0.1933,
+   "n": 4986,
+   "p01": 0.3259,
+   "p05": 0.4318,
+   "p25": 0.6212,
+   "p50": 0.7727,
+   "p75": 0.8658,
+   "p95": 0.9449,
+   "p99": 0.9827
+  },
+  "cosine_by_phase_distance": {
+   "0-0.5s": {
+    "max": 1.0,
+    "min": -0.0038,
+    "n": 1359,
+    "p01": 0.1577,
+    "p05": 0.3657,
+    "p25": 0.7254,
+    "p50": 0.8453,
+    "p75": 0.9091,
+    "p95": 0.962,
+    "p99": 0.9876
+   },
+   "0.5-1.5s": {
+    "max": 1.0,
+    "min": -0.0324,
+    "n": 2098,
+    "p01": 0.0538,
+    "p05": 0.1409,
+    "p25": 0.438,
+    "p50": 0.707,
+    "p75": 0.8328,
+    "p95": 0.9235,
+    "p99": 0.9605
+   },
+   "1.5-2.5s": {
+    "max": 1.0,
+    "min": -0.0313,
+    "n": 1529,
+    "p01": 0.0392,
+    "p05": 0.1161,
+    "p25": 0.2861,
+    "p50": 0.5044,
+    "p75": 0.7457,
+    "p95": 0.9065,
+    "p99": 0.9636
+   }
+  },
+  "cosine_by_transform": {
+   "crop-10pct": {
+    "max": 1.0,
+    "min": -0.0324,
+    "n": 960,
+    "p01": 0.0451,
+    "p05": 0.1315,
+    "p25": 0.3675,
+    "p50": 0.6565,
+    "p75": 0.8251,
+    "p95": 0.9197,
+    "p99": 0.9485
+   },
+   "downscale-360p": {
+    "max": 1.0,
+    "min": 0.0244,
+    "n": 1162,
+    "p01": 0.0599,
+    "p05": 0.1581,
+    "p25": 0.4683,
+    "p50": 0.7063,
+    "p75": 0.8319,
+    "p95": 0.922,
+    "p99": 0.962
+   },
+   "letterbox": {
+    "max": 1.0,
+    "min": 0.0001,
+    "n": 960,
+    "p01": 0.065,
+    "p05": 0.1574,
+    "p25": 0.448,
+    "p50": 0.7088,
+    "p75": 0.8246,
+    "p95": 0.9044,
+    "p99": 0.9399
+   },
+   "pillarbox": {
+    "max": 1.0,
+    "min": -0.0038,
+    "n": 866,
+    "p01": 0.0634,
+    "p05": 0.1482,
+    "p25": 0.4428,
+    "p50": 0.7509,
+    "p75": 0.8816,
+    "p95": 0.9504,
+    "p99": 0.9743
+   },
+   "re-encode": {
+    "max": 1.0,
+    "min": -0.0313,
+    "n": 1038,
+    "p01": 0.0578,
+    "p05": 0.1531,
+    "p25": 0.438,
+    "p50": 0.7594,
+    "p75": 0.8981,
+    "p95": 0.9659,
+    "p99": 0.9932
+   }
+  },
+  "cosine_to_true_segment": {
+   "max": 1.0,
+   "min": -0.0324,
+   "n": 4986,
+   "p01": 0.0538,
+   "p05": 0.1507,
+   "p25": 0.4324,
+   "p50": 0.7136,
+   "p75": 0.8512,
+   "p95": 0.9417,
+   "p99": 0.9754
+  },
+  "per_pair_fraction_of_segments_at_or_above": {
+   "0.7": {
+    "max": 1.0,
+    "min": 0.0909,
+    "n": 150,
+    "p01": 0.0979,
+    "p05": 0.1478,
+    "p25": 0.3103,
+    "p50": 0.4947,
+    "p75": 0.6483,
+    "p95": 0.9531,
+    "p99": 1.0
+   },
+   "0.8": {
+    "max": 1.0,
+    "min": 0.0,
+    "n": 150,
+    "p01": 0.0,
+    "p05": 0.0606,
+    "p25": 0.1538,
+    "p50": 0.3125,
+    "p75": 0.4829,
+    "p95": 0.8887,
+    "p99": 1.0
+   },
+   "0.85": {
+    "max": 1.0,
+    "min": 0.0,
+    "n": 150,
+    "p01": 0.0,
+    "p05": 0.0,
+    "p25": 0.0875,
+    "p50": 0.1667,
+    "p75": 0.3,
+    "p95": 0.7581,
+    "p99": 0.951
+   },
+   "0.9": {
+    "max": 0.8571,
+    "min": 0.0,
+    "n": 150,
+    "p01": 0.0,
+    "p05": 0.0,
+    "p25": 0.0,
+    "p50": 0.0696,
+    "p75": 0.1556,
+    "p95": 0.5767,
+    "p99": 0.8004
+   }
+  },
+  "phase_distance_s": {
+   "max": 2.777,
+   "min": 0.0007,
+   "n": 4986,
+   "p01": 0.0093,
+   "p05": 0.04,
+   "p25": 0.434,
+   "p50": 0.9607,
+   "p75": 1.796,
+   "p95": 2.289,
+   "p99": 2.4442
+  }
+ },
+ "segments": 6220,
+ "v1_oracle_no_coarse": {
+  "config": {
+   "coarse_similarity_threshold": 0.6,
+   "max_index_gap": 2,
+   "min_matched_segments": 3,
+   "offset_tolerance_segments": 1,
+   "segment_similarity_threshold": 0.9
+  },
+  "expected_from_p9": {
+   "fn": 113,
+   "fp": 0,
+   "tn": 330,
+   "tp": 37
+  },
+  "fn": 113,
+  "fp": 0,
+  "precision": 1.0,
+  "recall": 0.2467,
+  "tn": 330,
+  "tp": 37
+ },
+ "v1_oracle_recall_by_transform": {
+  "crop-10pct": "7/28",
+  "downscale-360p": "7/31",
+  "letterbox": "4/28",
+  "pillarbox": "8/28",
+  "re-encode": "11/35"
+ },
+ "v1_worker_path_with_coarse_0_60": {
+  "fn": 117,
+  "fp": 0,
+  "precision": 1.0,
+  "recall": 0.22,
+  "tn": 330,
+  "tp": 33
+ }
+}

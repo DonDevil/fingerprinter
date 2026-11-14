@@ -1,0 +1,271 @@
+{
+ "benchmark": "P10-DIRECTION-B-NEIGHBOURS",
+ "floor_comparison_19x": {
+  "coffee-run": {
+   "2.1": {
+    "confirmed_070": 105,
+    "confirmed_080": 105,
+    "lost_by_080": [],
+    "true_positives_070": 41,
+    "true_positives_080": 41
+   },
+   "candidate_recall_vs_provenance_070": 1.0,
+   "candidate_recall_vs_provenance_080": 1.0,
+   "candidates_floor_070": 525,
+   "candidates_floor_080": 483,
+   "labelled_positives": 58,
+   "sintel_fold": {
+    "confirmed_070": 94,
+    "confirmed_080": 94,
+    "lost_by_080": [],
+    "true_positives_070": 35,
+    "true_positives_080": 35
+   }
+  },
+  "elephants-dream": {
+   "2.1": {
+    "confirmed_070": 299,
+    "confirmed_080": 299,
+    "lost_by_080": [],
+    "true_positives_070": 144,
+    "true_positives_080": 144
+   },
+   "candidate_recall_vs_provenance_070": 1.0,
+   "candidate_recall_vs_provenance_080": 0.9593,
+   "candidates_floor_070": 657,
+   "candidates_floor_080": 424,
+   "labelled_positives": 172,
+   "sintel_fold": {
+    "confirmed_070": 312,
+    "confirmed_080": 311,
+    "lost_by_080": [
+     "items/s-0905-240p-hevc.mp4"
+    ],
+    "true_positives_070": 157,
+    "true_positives_080": 156
+   }
+  },
+  "hero": {
+   "2.1": {
+    "confirmed_070": 78,
+    "confirmed_080": 78,
+    "lost_by_080": [],
+    "true_positives_070": 30,
+    "true_positives_080": 30
+   },
+   "candidate_recall_vs_provenance_070": 0.9787,
+   "candidate_recall_vs_provenance_080": 0.8936,
+   "candidates_floor_070": 514,
+   "candidates_floor_080": 246,
+   "labelled_positives": 47,
+   "sintel_fold": {
+    "confirmed_070": 74,
+    "confirmed_080": 74,
+    "lost_by_080": [],
+    "true_positives_070": 32,
+    "true_positives_080": 32
+   }
+  },
+  "sintel": {
+   "2.1": {
+    "confirmed_070": 249,
+    "confirmed_080": 249,
+    "lost_by_080": [],
+    "true_positives_070": 155,
+    "true_positives_080": 155
+   },
+   "candidate_recall_vs_provenance_070": 1.0,
+   "candidate_recall_vs_provenance_080": 0.9581,
+   "candidates_floor_070": 665,
+   "candidates_floor_080": 603,
+   "labelled_positives": 215,
+   "sintel_fold": {
+    "confirmed_070": 251,
+    "confirmed_080": 250,
+    "lost_by_080": [
+     "items/s-0463-720p-h264.mkv"
+    ],
+    "true_positives_070": 164,
+    "true_positives_080": 163
+   }
+  },
+  "spring": {
+   "2.1": {
+    "confirmed_070": 227,
+    "confirmed_080": 227,
+    "lost_by_080": [],
+    "true_positives_070": 89,
+    "true_positives_080": 89
+   },
+   "candidate_recall_vs_provenance_070": 0.9914,
+   "candidate_recall_vs_provenance_080": 0.931,
+   "candidates_floor_070": 444,
+   "candidates_floor_080": 284,
+   "labelled_positives": 116,
+   "sintel_fold": {
+    "confirmed_070": 226,
+    "confirmed_080": 225,
+    "lost_by_080": [
+     "items/s-0677-240p-hevc.mp4"
+    ],
+    "true_positives_070": 83,
+    "true_positives_080": 83
+   }
+  },
+  "sprite-fright": {
+   "2.1": {
+    "confirmed_070": 258,
+    "confirmed_080": 258,
+    "lost_by_080": [],
+    "true_positives_070": 149,
+    "true_positives_080": 149
+   },
+   "candidate_recall_vs_provenance_070": 1.0,
+   "candidate_recall_vs_provenance_080": 0.9727,
+   "candidates_floor_070": 678,
+   "candidates_floor_080": 592,
+   "labelled_positives": 183,
+   "sintel_fold": {
+    "confirmed_070": 263,
+    "confirmed_080": 263,
+    "lost_by_080": [],
+    "true_positives_070": 154,
+    "true_positives_080": 154
+   }
+  },
+  "tears-of-steel": {
+   "2.1": {
+    "confirmed_070": 358,
+    "confirmed_080": 358,
+    "lost_by_080": [],
+    "true_positives_070": 259,
+    "true_positives_080": 259
+   },
+   "candidate_recall_vs_provenance_070": 0.9965,
+   "candidate_recall_vs_provenance_080": 0.9896,
+   "candidates_floor_070": 654,
+   "candidates_floor_080": 626,
+   "labelled_positives": 288,
+   "sintel_fold": {
+    "confirmed_070": 359,
+    "confirmed_080": 359,
+    "lost_by_080": [],
+    "true_positives_070": 265,
+    "true_positives_080": 265
+   }
+  }
+ },
+ "floors": [
+  0.7,
+  0.75,
+  0.8,
+  0.85
+ ],
+ "scales": {
+  "10x": {
+   ">=0.7": {
+    "max": 1658,
+    "p50": 68,
+    "p99": 1202,
+    "segments_over_2048": 0,
+    "segments_over_4096": 0,
+    "segments_over_512": 80
+   },
+   ">=0.75": {
+    "max": 1358,
+    "p50": 50,
+    "p99": 945,
+    "segments_over_2048": 0,
+    "segments_over_4096": 0,
+    "segments_over_512": 53
+   },
+   ">=0.8": {
+    "max": 787,
+    "p50": 33,
+    "p99": 695,
+    "segments_over_2048": 0,
+    "segments_over_4096": 0,
+    "segments_over_512": 40
+   },
+   ">=0.85": {
+    "max": 613,
+    "p50": 18,
+    "p99": 612,
+    "segments_over_2048": 0,
+    "segments_over_4096": 0,
+    "segments_over_512": 25
+   },
+   "media_segments": 55945
+  },
+  "19x": {
+   ">=0.7": {
+    "max": 3208,
+    "p50": 127,
+    "p99": 2309,
+    "segments_over_2048": 18,
+    "segments_over_4096": 0,
+    "segments_over_512": 135
+   },
+   ">=0.75": {
+    "max": 2646,
+    "p50": 90,
+    "p99": 1805,
+    "segments_over_2048": 3,
+    "segments_over_4096": 0,
+    "segments_over_512": 86
+   },
+   ">=0.8": {
+    "max": 1510,
+    "p50": 61,
+    "p99": 1365,
+    "segments_over_2048": 0,
+    "segments_over_4096": 0,
+    "segments_over_512": 53
+   },
+   ">=0.85": {
+    "max": 1162,
+    "p50": 34,
+    "p99": 1161,
+    "segments_over_2048": 0,
+    "segments_over_4096": 0,
+    "segments_over_512": 43
+   },
+   "media_segments": 104443
+  },
+  "base": {
+   ">=0.7": {
+    "max": 131,
+    "p50": 6,
+    "p99": 99,
+    "segments_over_2048": 0,
+    "segments_over_4096": 0,
+    "segments_over_512": 0
+   },
+   ">=0.75": {
+    "max": 94,
+    "p50": 4,
+    "p99": 53,
+    "segments_over_2048": 0,
+    "segments_over_4096": 0,
+    "segments_over_512": 0
+   },
+   ">=0.8": {
+    "max": 81,
+    "p50": 3,
+    "p99": 33,
+    "segments_over_2048": 0,
+    "segments_over_4096": 0,
+    "segments_over_512": 0
+   },
+   ">=0.85": {
+    "max": 51,
+    "p50": 1,
+    "p99": 31,
+    "segments_over_2048": 0,
+    "segments_over_4096": 0,
+    "segments_over_512": 0
+   },
+   "media_segments": 5460
+  }
+ }
+}

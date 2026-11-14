@@ -1,0 +1,6 @@
+{
+ "after_indexing": 64,
+ "points": 64,
+ "retrieve": 64,
+ "scroll": 64
+}

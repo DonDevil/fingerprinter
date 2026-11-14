@@ -1,0 +1,3630 @@
+{
+ "base_params": {
+  "max_gap": 1,
+  "min_mode_votes": 10,
+  "min_run": 10,
+  "n_offsets": 3,
+  "phase_tolerance_s": 2.5,
+  "s_mean": 0.85,
+  "s_seg": 0.8,
+  "score_definition": "run-length+mean/1",
+  "segment_duration_s": 1.0,
+  "tau_confirmed": 1.0,
+  "tau_probable": 1.0,
+  "verifier": "temporal/v2",
+  "vote_floor": 0.7
+ },
+ "benchmark": "P10-EQUIV-DENSITY-GRID",
+ "candidate_rule_digest": "6841b40489958351815e876716888fedab2967bff8b86ca4c6df4eed7747b2dd",
+ "configs": 54,
+ "dense_segment_duration_s": 1.0,
+ "dense_spec_digest": "sha256:7732a552edcac38daa0bc85c380500e36d238cdee8cc82236480177fb2fda57c",
+ "grid": {
+  "max_gap_s": [
+   1.0,
+   2.0,
+   5.0
+  ],
+  "phase_tolerance_s": [
+   0.5,
+   1.0,
+   2.5
+  ],
+  "s_seg": [
+   0.8,
+   0.75,
+   0.7,
+   0.65,
+   0.6,
+   0.55
+  ]
+ },
+ "heldout": {
+  "closest_negative_by_rejecting_rule": {
+   "coverage": {
+    "min_coverage": 0.7907,
+    "pair": [
+     "media/e05-coffee-run-h264-3m.mp4",
+     "media/e19-coffee-run-fmp4-1s.mp4"
+    ],
+    "reason": "coverage 0.791/0.810 < 0.9"
+   },
+   "no": {
+    "min_coverage": 0.0,
+    "pair": [
+     "media/e00-sintel-fmp4-1s.mp4",
+     "media/e01-elephants-dream-fmp4-1s.mp4"
+    ],
+    "reason": "no qualifying run"
+   }
+  },
+  "confusion": {
+   "fn": 14,
+   "fp": 0,
+   "precision": 1.0,
+   "precision_wilson95": [
+    0.9867,
+    1.0
+   ],
+   "recall": 0.9533,
+   "recall_wilson95": [
+    0.9232,
+    0.972
+   ],
+   "tn": 12420,
+   "tp": 286
+  },
+  "misses": [
+   {
+    "pair": [
+     "media/e07-sintel-fmp4-1s.mp4",
+     "media/e07-sintel-h264-400k.mp4"
+    ],
+    "reason": "coverage 0.787/0.787 < 0.9",
+    "variants": [
+     "fmp4-1s",
+     "h264-400k"
+    ]
+   },
+   {
+    "pair": [
+     "media/e07-sintel-fmp4-2s.mp4",
+     "media/e07-sintel-h264-400k.mp4"
+    ],
+    "reason": "coverage 0.787/0.787 < 0.9",
+    "variants": [
+     "fmp4-2s",
+     "h264-400k"
+    ]
+   },
+   {
+    "pair": [
+     "media/e07-sintel-h264-3m.mp4",
+     "media/e07-sintel-h264-400k.mp4"
+    ],
+    "reason": "coverage 0.798/0.798 < 0.9",
+    "variants": [
+     "h264-3m",
+     "h264-400k"
+    ]
+   },
+   {
+    "pair": [
+     "media/e07-sintel-h264-400k.mp4",
+     "media/e07-sintel-remux.mkv"
+    ],
+    "reason": "coverage 0.798/0.798 < 0.9",
+    "variants": [
+     "h264-400k",
+     "remux-mkv"
+    ]
+   },
+   {
+    "pair": [
+     "media/e08-elephants-dream-fmp4-1s.mp4",
+     "media/e08-elephants-dream-h264-400k.mp4"
+    ],
+    "reason": "coverage 0.870/0.870 < 0.9",
+    "variants": [
+     "fmp4-1s",
+     "h264-400k"
+    ]
+   },
+   {
+    "pair": [
+     "media/e08-elephants-dream-fmp4-2s.mp4",
+     "media/e08-elephants-dream-h264-400k.mp4"
+    ],
+    "reason": "coverage 0.870/0.870 < 0.9",
+    "variants": [
+     "fmp4-2s",
+     "h264-400k"
+    ]
+   },
+   {
+    "pair": [
+     "media/e08-elephants-dream-h264-3m.mp4",
+     "media/e08-elephants-dream-h264-400k.mp4"
+    ],
+    "reason": "coverage 0.884/0.884 < 0.9",
+    "variants": [
+     "h264-3m",
+     "h264-400k"
+    ]
+   },
+   {
+    "pair": [
+     "media/e08-elephants-dream-h264-400k.mp4",
+     "media/e08-elephants-dream-remux.mkv"
+    ],
+    "reason": "coverage 0.884/0.884 < 0.9",
+    "variants": [
+     "h264-400k",
+     "remux-mkv"
+    ]
+   },
+   {
+    "pair": [
+     "media/e12-coffee-run-fmp4-1s.mp4",
+     "media/e12-coffee-run-h264-400k.mp4"
+    ],
+    "reason": "coverage 0.897/0.897 < 0.9",
+    "variants": [
+     "fmp4-1s",
+     "h264-400k"
+    ]
+   },
+   {
+    "pair": [
+     "media/e12-coffee-run-fmp4-2s.mp4",
+     "media/e12-coffee-run-h264-400k.mp4"
+    ],
+    "reason": "coverage 0.897/0.897 < 0.9",
+    "variants": [
+     "fmp4-2s",
+     "h264-400k"
+    ]
+   },
+   {
+    "pair": [
+     "media/e14-sintel-fmp4-1s.mp4",
+     "media/e14-sintel-h264-400k.mp4"
+    ],
+    "reason": "coverage 0.774/0.774 < 0.9",
+    "variants": [
+     "fmp4-1s",
+     "h264-400k"
+    ]
+   },
+   {
+    "pair": [
+     "media/e14-sintel-fmp4-2s.mp4",
+     "media/e14-sintel-h264-400k.mp4"
+    ],
+    "reason": "coverage 0.774/0.774 < 0.9",
+    "variants": [
+     "fmp4-2s",
+     "h264-400k"
+    ]
+   },
+   {
+    "pair": [
+     "media/e14-sintel-h264-3m.mp4",
+     "media/e14-sintel-h264-400k.mp4"
+    ],
+    "reason": "coverage 0.817/0.817 < 0.9",
+    "variants": [
+     "h264-3m",
+     "h264-400k"
+    ]
+   },
+   {
+    "pair": [
+     "media/e14-sintel-h264-400k.mp4",
+     "media/e14-sintel-remux.mkv"
+    ],
+    "reason": "coverage 0.817/0.817 < 0.9",
+    "variants": [
+     "h264-400k",
+     "remux-mkv"
+    ]
+   }
+  ],
+  "negatives_by_class": {
+   "negative_half": {
+    "linked": 0,
+    "pairs": 120
+   },
+   "negative_shift30": {
+    "linked": 0,
+    "pairs": 120
+   },
+   "negative_vs_negative": {
+    "linked": 0,
+    "pairs": 20
+   },
+   "other_excerpt": {
+    "linked": 0,
+    "pairs": 12160
+   }
+  },
+  "override": {
+   "max_gap": 5,
+   "phase_tolerance_s": 0.5,
+   "s_mean": 0.7,
+   "s_seg": 0.7,
+   "vote_floor": 0.6
+  }
+ },
+ "seconds": {
+  "grid": 4730,
+  "heldout": 12,
+  "heldout_per_pair_ms": 0.932
+ },
+ "selected": {
+  "max_gap": 5,
+  "phase_tolerance_s": 0.5,
+  "s_mean": 0.7,
+  "s_seg": 0.7,
+  "vote_floor": 0.6
+ },
+ "selected_tune": {
+  "closest_negative_by_rejecting_rule": {
+   "coverage": {
+    "min_coverage": 0.8407,
+    "pair": [
+     "media/t00-sintel-remux.mkv",
+     "media/t07-sintel-shift30.mp4"
+    ],
+    "reason": "coverage 0.841/0.905 < 0.9"
+   },
+   "no": {
+    "min_coverage": 0.0,
+    "pair": [
+     "media/t00-sintel-fmp4-1s.mp4",
+     "media/t01-elephants-dream-fmp4-1s.mp4"
+    ],
+    "reason": "no qualifying run"
+   }
+  },
+  "confusion": {
+   "fn": 0,
+   "fp": 0,
+   "precision": 1.0,
+   "precision_wilson95": [
+    0.9874,
+    1.0
+   ],
+   "recall": 1.0,
+   "recall_wilson95": [
+    0.9874,
+    1.0
+   ],
+   "tn": 12420,
+   "tp": 300
+  },
+  "misses": [],
+  "negatives_by_class": {
+   "negative_half": {
+    "linked": 0,
+    "pairs": 120
+   },
+   "negative_shift30": {
+    "linked": 0,
+    "pairs": 120
+   },
+   "negative_vs_negative": {
+    "linked": 0,
+    "pairs": 20
+   },
+   "other_excerpt": {
+    "linked": 0,
+    "pairs": 12160
+   }
+  },
+  "override": {
+   "max_gap": 5,
+   "phase_tolerance_s": 0.5,
+   "s_mean": 0.7,
+   "s_seg": 0.7,
+   "vote_floor": 0.6
+  }
+ },
+ "selection": "max E-TUNE recall at zero E-TUNE false links; ties -> higher s_seg, smaller max_gap, smaller phase_tolerance_s",
+ "tune": [
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8053,
+     "pair": [
+      "media/t00-sintel-vp9.webm",
+      "media/t07-sintel-vp9.webm"
+     ],
+     "reason": "coverage 0.805/0.867 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 87,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9823,
+     1.0
+    ],
+    "recall": 0.71,
+    "recall_wilson95": [
+     0.6563,
+     0.7584
+    ],
+    "tn": 12420,
+    "tp": 213
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 1,
+    "phase_tolerance_s": 0.5,
+    "s_mean": 0.8,
+    "s_seg": 0.8,
+    "vote_floor": 0.7
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8142,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t07-sintel-fmp4-1s.mp4"
+     ],
+     "reason": "coverage 0.814/0.867 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 87,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9823,
+     1.0
+    ],
+    "recall": 0.71,
+    "recall_wilson95": [
+     0.6563,
+     0.7584
+    ],
+    "tn": 12420,
+    "tp": 213
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 1,
+    "phase_tolerance_s": 1.0,
+    "s_mean": 0.8,
+    "s_seg": 0.8,
+    "vote_floor": 0.7
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8142,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t07-sintel-fmp4-1s.mp4"
+     ],
+     "reason": "coverage 0.814/0.867 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 109,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9803,
+     1.0
+    ],
+    "recall": 0.6367,
+    "recall_wilson95": [
+     0.5808,
+     0.689
+    ],
+    "tn": 12420,
+    "tp": 191
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 1,
+    "phase_tolerance_s": 2.5,
+    "s_mean": 0.8,
+    "s_seg": 0.8,
+    "vote_floor": 0.7
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8053,
+     "pair": [
+      "media/t00-sintel-vp9.webm",
+      "media/t07-sintel-vp9.webm"
+     ],
+     "reason": "coverage 0.805/0.867 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 38,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9855,
+     1.0
+    ],
+    "recall": 0.8733,
+    "recall_wilson95": [
+     0.8309,
+     0.9063
+    ],
+    "tn": 12420,
+    "tp": 262
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 2,
+    "phase_tolerance_s": 0.5,
+    "s_mean": 0.8,
+    "s_seg": 0.8,
+    "vote_floor": 0.7
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8142,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t07-sintel-fmp4-1s.mp4"
+     ],
+     "reason": "coverage 0.814/0.867 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 50,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9849,
+     1.0
+    ],
+    "recall": 0.8333,
+    "recall_wilson95": [
+     0.787,
+     0.8712
+    ],
+    "tn": 12420,
+    "tp": 250
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 2,
+    "phase_tolerance_s": 1.0,
+    "s_mean": 0.8,
+    "s_seg": 0.8,
+    "vote_floor": 0.7
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8142,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t07-sintel-fmp4-1s.mp4"
+     ],
+     "reason": "coverage 0.814/0.867 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 85,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9824,
+     1.0
+    ],
+    "recall": 0.7167,
+    "recall_wilson95": [
+     0.6632,
+     0.7647
+    ],
+    "tn": 12420,
+    "tp": 215
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 2,
+    "phase_tolerance_s": 2.5,
+    "s_mean": 0.8,
+    "s_seg": 0.8,
+    "vote_floor": 0.7
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8053,
+     "pair": [
+      "media/t00-sintel-vp9.webm",
+      "media/t07-sintel-vp9.webm"
+     ],
+     "reason": "coverage 0.805/0.867 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 26,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9862,
+     1.0
+    ],
+    "recall": 0.9133,
+    "recall_wilson95": [
+     0.876,
+     0.9402
+    ],
+    "tn": 12420,
+    "tp": 274
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 5,
+    "phase_tolerance_s": 0.5,
+    "s_mean": 0.8,
+    "s_seg": 0.8,
+    "vote_floor": 0.7
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8142,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t07-sintel-fmp4-1s.mp4"
+     ],
+     "reason": "coverage 0.814/0.867 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 42,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9853,
+     1.0
+    ],
+    "recall": 0.86,
+    "recall_wilson95": [
+     0.8162,
+     0.8947
+    ],
+    "tn": 12420,
+    "tp": 258
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 5,
+    "phase_tolerance_s": 1.0,
+    "s_mean": 0.8,
+    "s_seg": 0.8,
+    "vote_floor": 0.7
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8142,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t07-sintel-fmp4-1s.mp4"
+     ],
+     "reason": "coverage 0.814/0.867 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 81,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9828,
+     1.0
+    ],
+    "recall": 0.73,
+    "recall_wilson95": [
+     0.6771,
+     0.7771
+    ],
+    "tn": 12420,
+    "tp": 219
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 5,
+    "phase_tolerance_s": 2.5,
+    "s_mean": 0.8,
+    "s_seg": 0.8,
+    "vote_floor": 0.7
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8361,
+     "pair": [
+      "media/t03-spring-h264-3m.mp4",
+      "media/t17-spring-shift30.mp4"
+     ],
+     "reason": "coverage 0.836/0.836 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 42,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9853,
+     1.0
+    ],
+    "recall": 0.86,
+    "recall_wilson95": [
+     0.8162,
+     0.8947
+    ],
+    "tn": 12420,
+    "tp": 258
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 1,
+    "phase_tolerance_s": 0.5,
+    "s_mean": 0.75,
+    "s_seg": 0.75,
+    "vote_floor": 0.65
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.828,
+     "pair": [
+      "media/t02-tears-of-steel-fmp4-1s.mp4",
+      "media/t09-tears-of-steel-fmp4-1s.mp4"
+     ],
+     "reason": "coverage 0.835/0.828 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 42,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9853,
+     1.0
+    ],
+    "recall": 0.86,
+    "recall_wilson95": [
+     0.8162,
+     0.8947
+    ],
+    "tn": 12420,
+    "tp": 258
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 1,
+    "phase_tolerance_s": 1.0,
+    "s_mean": 0.75,
+    "s_seg": 0.75,
+    "vote_floor": 0.65
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.823,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.823/0.886 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 76,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9831,
+     1.0
+    ],
+    "recall": 0.7467,
+    "recall_wilson95": [
+     0.6945,
+     0.7926
+    ],
+    "tn": 12420,
+    "tp": 224
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 1,
+    "phase_tolerance_s": 2.5,
+    "s_mean": 0.75,
+    "s_seg": 0.75,
+    "vote_floor": 0.65
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8361,
+     "pair": [
+      "media/t03-spring-h264-3m.mp4",
+      "media/t17-spring-shift30.mp4"
+     ],
+     "reason": "coverage 0.836/0.836 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 14,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9867,
+     1.0
+    ],
+    "recall": 0.9533,
+    "recall_wilson95": [
+     0.9232,
+     0.972
+    ],
+    "tn": 12420,
+    "tp": 286
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 2,
+    "phase_tolerance_s": 0.5,
+    "s_mean": 0.75,
+    "s_seg": 0.75,
+    "vote_floor": 0.65
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.828,
+     "pair": [
+      "media/t02-tears-of-steel-fmp4-1s.mp4",
+      "media/t09-tears-of-steel-fmp4-1s.mp4"
+     ],
+     "reason": "coverage 0.835/0.828 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 24,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9863,
+     1.0
+    ],
+    "recall": 0.92,
+    "recall_wilson95": [
+     0.8837,
+     0.9457
+    ],
+    "tn": 12420,
+    "tp": 276
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 2,
+    "phase_tolerance_s": 1.0,
+    "s_mean": 0.75,
+    "s_seg": 0.75,
+    "vote_floor": 0.65
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.823,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.823/0.886 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 59,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9843,
+     1.0
+    ],
+    "recall": 0.8033,
+    "recall_wilson95": [
+     0.7546,
+     0.8444
+    ],
+    "tn": 12420,
+    "tp": 241
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 2,
+    "phase_tolerance_s": 2.5,
+    "s_mean": 0.75,
+    "s_seg": 0.75,
+    "vote_floor": 0.65
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8361,
+     "pair": [
+      "media/t03-spring-h264-3m.mp4",
+      "media/t17-spring-shift30.mp4"
+     ],
+     "reason": "coverage 0.836/0.836 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 6,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9871,
+     1.0
+    ],
+    "recall": 0.98,
+    "recall_wilson95": [
+     0.9571,
+     0.9908
+    ],
+    "tn": 12420,
+    "tp": 294
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 5,
+    "phase_tolerance_s": 0.5,
+    "s_mean": 0.75,
+    "s_seg": 0.75,
+    "vote_floor": 0.65
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.828,
+     "pair": [
+      "media/t02-tears-of-steel-fmp4-1s.mp4",
+      "media/t09-tears-of-steel-fmp4-1s.mp4"
+     ],
+     "reason": "coverage 0.835/0.828 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 19,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9865,
+     1.0
+    ],
+    "recall": 0.9367,
+    "recall_wilson95": [
+     0.9032,
+     0.9591
+    ],
+    "tn": 12420,
+    "tp": 281
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 5,
+    "phase_tolerance_s": 1.0,
+    "s_mean": 0.75,
+    "s_seg": 0.75,
+    "vote_floor": 0.65
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.823,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.823/0.886 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 58,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9844,
+     1.0
+    ],
+    "recall": 0.8067,
+    "recall_wilson95": [
+     0.7582,
+     0.8474
+    ],
+    "tn": 12420,
+    "tp": 242
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 5,
+    "phase_tolerance_s": 2.5,
+    "s_mean": 0.75,
+    "s_seg": 0.75,
+    "vote_floor": 0.65
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 21,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9864,
+     1.0
+    ],
+    "recall": 0.93,
+    "recall_wilson95": [
+     0.8954,
+     0.9538
+    ],
+    "tn": 12420,
+    "tp": 279
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 1,
+    "phase_tolerance_s": 0.5,
+    "s_mean": 0.7,
+    "s_seg": 0.7,
+    "vote_floor": 0.6
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 19,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9865,
+     1.0
+    ],
+    "recall": 0.9367,
+    "recall_wilson95": [
+     0.9032,
+     0.9591
+    ],
+    "tn": 12420,
+    "tp": 281
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 1,
+    "phase_tolerance_s": 1.0,
+    "s_mean": 0.7,
+    "s_seg": 0.7,
+    "vote_floor": 0.6
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 62,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9841,
+     1.0
+    ],
+    "recall": 0.7933,
+    "recall_wilson95": [
+     0.7439,
+     0.8353
+    ],
+    "tn": 12420,
+    "tp": 238
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 1,
+    "phase_tolerance_s": 2.5,
+    "s_mean": 0.7,
+    "s_seg": 0.7,
+    "vote_floor": 0.6
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 4,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9872,
+     1.0
+    ],
+    "recall": 0.9867,
+    "recall_wilson95": [
+     0.9662,
+     0.9948
+    ],
+    "tn": 12420,
+    "tp": 296
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 2,
+    "phase_tolerance_s": 0.5,
+    "s_mean": 0.7,
+    "s_seg": 0.7,
+    "vote_floor": 0.6
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 13,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9868,
+     1.0
+    ],
+    "recall": 0.9567,
+    "recall_wilson95": [
+     0.9273,
+     0.9745
+    ],
+    "tn": 12420,
+    "tp": 287
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 2,
+    "phase_tolerance_s": 1.0,
+    "s_mean": 0.7,
+    "s_seg": 0.7,
+    "vote_floor": 0.6
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 58,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9844,
+     1.0
+    ],
+    "recall": 0.8067,
+    "recall_wilson95": [
+     0.7582,
+     0.8474
+    ],
+    "tn": 12420,
+    "tp": 242
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 2,
+    "phase_tolerance_s": 2.5,
+    "s_mean": 0.7,
+    "s_seg": 0.7,
+    "vote_floor": 0.6
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 0,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9874,
+     1.0
+    ],
+    "recall": 1.0,
+    "recall_wilson95": [
+     0.9874,
+     1.0
+    ],
+    "tn": 12420,
+    "tp": 300
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 5,
+    "phase_tolerance_s": 0.5,
+    "s_mean": 0.7,
+    "s_seg": 0.7,
+    "vote_floor": 0.6
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 8,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.987,
+     1.0
+    ],
+    "recall": 0.9733,
+    "recall_wilson95": [
+     0.9483,
+     0.9864
+    ],
+    "tn": 12420,
+    "tp": 292
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 5,
+    "phase_tolerance_s": 1.0,
+    "s_mean": 0.7,
+    "s_seg": 0.7,
+    "vote_floor": 0.6
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 57,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9844,
+     1.0
+    ],
+    "recall": 0.81,
+    "recall_wilson95": [
+     0.7618,
+     0.8504
+    ],
+    "tn": 12420,
+    "tp": 243
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 5,
+    "phase_tolerance_s": 2.5,
+    "s_mean": 0.7,
+    "s_seg": 0.7,
+    "vote_floor": 0.6
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 9,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.987,
+     1.0
+    ],
+    "recall": 0.97,
+    "recall_wilson95": [
+     0.944,
+     0.9841
+    ],
+    "tn": 12420,
+    "tp": 291
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 1,
+    "phase_tolerance_s": 0.5,
+    "s_mean": 0.65,
+    "s_seg": 0.65,
+    "vote_floor": 0.55
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 13,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9868,
+     1.0
+    ],
+    "recall": 0.9567,
+    "recall_wilson95": [
+     0.9273,
+     0.9745
+    ],
+    "tn": 12420,
+    "tp": 287
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 1,
+    "phase_tolerance_s": 1.0,
+    "s_mean": 0.65,
+    "s_seg": 0.65,
+    "vote_floor": 0.55
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 58,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9844,
+     1.0
+    ],
+    "recall": 0.8067,
+    "recall_wilson95": [
+     0.7582,
+     0.8474
+    ],
+    "tn": 12420,
+    "tp": 242
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 1,
+    "phase_tolerance_s": 2.5,
+    "s_mean": 0.65,
+    "s_seg": 0.65,
+    "vote_floor": 0.55
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 4,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9872,
+     1.0
+    ],
+    "recall": 0.9867,
+    "recall_wilson95": [
+     0.9662,
+     0.9948
+    ],
+    "tn": 12420,
+    "tp": 296
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 2,
+    "phase_tolerance_s": 0.5,
+    "s_mean": 0.65,
+    "s_seg": 0.65,
+    "vote_floor": 0.55
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 2,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9873,
+     1.0
+    ],
+    "recall": 0.9933,
+    "recall_wilson95": [
+     0.976,
+     0.9982
+    ],
+    "tn": 12420,
+    "tp": 298
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 2,
+    "phase_tolerance_s": 1.0,
+    "s_mean": 0.65,
+    "s_seg": 0.65,
+    "vote_floor": 0.55
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 56,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9845,
+     1.0
+    ],
+    "recall": 0.8133,
+    "recall_wilson95": [
+     0.7654,
+     0.8534
+    ],
+    "tn": 12420,
+    "tp": 244
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 2,
+    "phase_tolerance_s": 2.5,
+    "s_mean": 0.65,
+    "s_seg": 0.65,
+    "vote_floor": 0.55
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 0,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9874,
+     1.0
+    ],
+    "recall": 1.0,
+    "recall_wilson95": [
+     0.9874,
+     1.0
+    ],
+    "tn": 12420,
+    "tp": 300
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 5,
+    "phase_tolerance_s": 0.5,
+    "s_mean": 0.65,
+    "s_seg": 0.65,
+    "vote_floor": 0.55
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 1,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9873,
+     1.0
+    ],
+    "recall": 0.9967,
+    "recall_wilson95": [
+     0.9814,
+     0.9994
+    ],
+    "tn": 12420,
+    "tp": 299
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 5,
+    "phase_tolerance_s": 1.0,
+    "s_mean": 0.65,
+    "s_seg": 0.65,
+    "vote_floor": 0.55
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 55,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9846,
+     1.0
+    ],
+    "recall": 0.8167,
+    "recall_wilson95": [
+     0.769,
+     0.8564
+    ],
+    "tn": 12420,
+    "tp": 245
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 5,
+    "phase_tolerance_s": 2.5,
+    "s_mean": 0.65,
+    "s_seg": 0.65,
+    "vote_floor": 0.55
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8551,
+     "pair": [
+      "media/t17-spring-shift30.mp4",
+      "media/t24-spring-shift30.mp4"
+     ],
+     "reason": "coverage 0.967/0.855 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 5,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9871,
+     1.0
+    ],
+    "recall": 0.9833,
+    "recall_wilson95": [
+     0.9616,
+     0.9929
+    ],
+    "tn": 12420,
+    "tp": 295
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 1,
+    "phase_tolerance_s": 0.5,
+    "s_mean": 0.6,
+    "s_seg": 0.6,
+    "vote_floor": 0.5
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 6,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9871,
+     1.0
+    ],
+    "recall": 0.98,
+    "recall_wilson95": [
+     0.9571,
+     0.9908
+    ],
+    "tn": 12420,
+    "tp": 294
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 1,
+    "phase_tolerance_s": 1.0,
+    "s_mean": 0.6,
+    "s_seg": 0.6,
+    "vote_floor": 0.5
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 58,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9844,
+     1.0
+    ],
+    "recall": 0.8067,
+    "recall_wilson95": [
+     0.7582,
+     0.8474
+    ],
+    "tn": 12420,
+    "tp": 242
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 1,
+    "phase_tolerance_s": 2.5,
+    "s_mean": 0.6,
+    "s_seg": 0.6,
+    "vote_floor": 0.5
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8551,
+     "pair": [
+      "media/t17-spring-shift30.mp4",
+      "media/t24-spring-shift30.mp4"
+     ],
+     "reason": "coverage 0.967/0.855 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 0,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9874,
+     1.0
+    ],
+    "recall": 1.0,
+    "recall_wilson95": [
+     0.9874,
+     1.0
+    ],
+    "tn": 12420,
+    "tp": 300
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 2,
+    "phase_tolerance_s": 0.5,
+    "s_mean": 0.6,
+    "s_seg": 0.6,
+    "vote_floor": 0.5
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 0,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9874,
+     1.0
+    ],
+    "recall": 1.0,
+    "recall_wilson95": [
+     0.9874,
+     1.0
+    ],
+    "tn": 12420,
+    "tp": 300
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 2,
+    "phase_tolerance_s": 1.0,
+    "s_mean": 0.6,
+    "s_seg": 0.6,
+    "vote_floor": 0.5
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 55,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9846,
+     1.0
+    ],
+    "recall": 0.8167,
+    "recall_wilson95": [
+     0.769,
+     0.8564
+    ],
+    "tn": 12420,
+    "tp": 245
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 2,
+    "phase_tolerance_s": 2.5,
+    "s_mean": 0.6,
+    "s_seg": 0.6,
+    "vote_floor": 0.5
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8551,
+     "pair": [
+      "media/t17-spring-shift30.mp4",
+      "media/t24-spring-shift30.mp4"
+     ],
+     "reason": "coverage 0.967/0.855 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 0,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9874,
+     1.0
+    ],
+    "recall": 1.0,
+    "recall_wilson95": [
+     0.9874,
+     1.0
+    ],
+    "tn": 12420,
+    "tp": 300
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 5,
+    "phase_tolerance_s": 0.5,
+    "s_mean": 0.6,
+    "s_seg": 0.6,
+    "vote_floor": 0.5
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 0,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9874,
+     1.0
+    ],
+    "recall": 1.0,
+    "recall_wilson95": [
+     0.9874,
+     1.0
+    ],
+    "tn": 12420,
+    "tp": 300
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 5,
+    "phase_tolerance_s": 1.0,
+    "s_mean": 0.6,
+    "s_seg": 0.6,
+    "vote_floor": 0.5
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 55,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9846,
+     1.0
+    ],
+    "recall": 0.8167,
+    "recall_wilson95": [
+     0.769,
+     0.8564
+    ],
+    "tn": 12420,
+    "tp": 245
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 5,
+    "phase_tolerance_s": 2.5,
+    "s_mean": 0.6,
+    "s_seg": 0.6,
+    "vote_floor": 0.5
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8551,
+     "pair": [
+      "media/t17-spring-shift30.mp4",
+      "media/t24-spring-shift30.mp4"
+     ],
+     "reason": "coverage 0.967/0.855 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 4,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9872,
+     1.0
+    ],
+    "recall": 0.9867,
+    "recall_wilson95": [
+     0.9662,
+     0.9948
+    ],
+    "tn": 12420,
+    "tp": 296
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 1,
+    "phase_tolerance_s": 0.5,
+    "s_mean": 0.55,
+    "s_seg": 0.55,
+    "vote_floor": 0.45
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 4,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9872,
+     1.0
+    ],
+    "recall": 0.9867,
+    "recall_wilson95": [
+     0.9662,
+     0.9948
+    ],
+    "tn": 12420,
+    "tp": 296
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 1,
+    "phase_tolerance_s": 1.0,
+    "s_mean": 0.55,
+    "s_seg": 0.55,
+    "vote_floor": 0.45
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 57,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9844,
+     1.0
+    ],
+    "recall": 0.81,
+    "recall_wilson95": [
+     0.7618,
+     0.8504
+    ],
+    "tn": 12420,
+    "tp": 243
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 1,
+    "phase_tolerance_s": 2.5,
+    "s_mean": 0.55,
+    "s_seg": 0.55,
+    "vote_floor": 0.45
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8551,
+     "pair": [
+      "media/t17-spring-shift30.mp4",
+      "media/t24-spring-shift30.mp4"
+     ],
+     "reason": "coverage 0.967/0.855 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 0,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9874,
+     1.0
+    ],
+    "recall": 1.0,
+    "recall_wilson95": [
+     0.9874,
+     1.0
+    ],
+    "tn": 12420,
+    "tp": 300
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 2,
+    "phase_tolerance_s": 0.5,
+    "s_mean": 0.55,
+    "s_seg": 0.55,
+    "vote_floor": 0.45
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 0,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9874,
+     1.0
+    ],
+    "recall": 1.0,
+    "recall_wilson95": [
+     0.9874,
+     1.0
+    ],
+    "tn": 12420,
+    "tp": 300
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 2,
+    "phase_tolerance_s": 1.0,
+    "s_mean": 0.55,
+    "s_seg": 0.55,
+    "vote_floor": 0.45
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 55,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9846,
+     1.0
+    ],
+    "recall": 0.8167,
+    "recall_wilson95": [
+     0.769,
+     0.8564
+    ],
+    "tn": 12420,
+    "tp": 245
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 2,
+    "phase_tolerance_s": 2.5,
+    "s_mean": 0.55,
+    "s_seg": 0.55,
+    "vote_floor": 0.45
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8551,
+     "pair": [
+      "media/t17-spring-shift30.mp4",
+      "media/t24-spring-shift30.mp4"
+     ],
+     "reason": "coverage 0.967/0.855 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 0,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9874,
+     1.0
+    ],
+    "recall": 1.0,
+    "recall_wilson95": [
+     0.9874,
+     1.0
+    ],
+    "tn": 12420,
+    "tp": 300
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 5,
+    "phase_tolerance_s": 0.5,
+    "s_mean": 0.55,
+    "s_seg": 0.55,
+    "vote_floor": 0.45
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 0,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9874,
+     1.0
+    ],
+    "recall": 1.0,
+    "recall_wilson95": [
+     0.9874,
+     1.0
+    ],
+    "tn": 12420,
+    "tp": 300
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 5,
+    "phase_tolerance_s": 1.0,
+    "s_mean": 0.55,
+    "s_seg": 0.55,
+    "vote_floor": 0.45
+   }
+  },
+  {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8407,
+     "pair": [
+      "media/t00-sintel-remux.mkv",
+      "media/t07-sintel-shift30.mp4"
+     ],
+     "reason": "coverage 0.841/0.905 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 55,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9846,
+     1.0
+    ],
+    "recall": 0.8167,
+    "recall_wilson95": [
+     0.769,
+     0.8564
+    ],
+    "tn": 12420,
+    "tp": 245
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 5,
+    "phase_tolerance_s": 2.5,
+    "s_mean": 0.55,
+    "s_seg": 0.55,
+    "vote_floor": 0.45
+   }
+  }
+ ]
+}

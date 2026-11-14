@@ -1,0 +1,2733 @@
+{
+ "benchmark": "P10-EQUIV-TUNE",
+ "grid": {
+  "max_gap": [
+   1,
+   2
+  ],
+  "phase_tolerance_s": [
+   2.5,
+   5.0
+  ],
+  "s_seg": [
+   0.8,
+   0.75,
+   0.7,
+   0.65,
+   0.6,
+   0.55
+  ]
+ },
+ "heldout": {
+  "equiv_v1": {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.76,
+     "pair": [
+      "media/e18-sprite-fright-fmp4-1s.mp4",
+      "media/e18-sprite-fright-shift30.mp4"
+     ],
+     "reason": "coverage 0.760/0.760 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/e00-sintel-fmp4-1s.mp4",
+      "media/e01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 72,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9834,
+     1.0
+    ],
+    "recall": 0.76,
+    "recall_wilson95": [
+     0.7086,
+     0.8048
+    ],
+    "tn": 12420,
+    "tp": 228
+   },
+   "misses": [
+    {
+     "pair": [
+      "media/e02-tears-of-steel-fmp4-1s.mp4",
+      "media/e02-tears-of-steel-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.750/0.750 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e02-tears-of-steel-fmp4-1s.mp4",
+      "media/e02-tears-of-steel-vp9.webm"
+     ],
+     "reason": "coverage 0.750/0.750 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e02-tears-of-steel-fmp4-2s.mp4",
+      "media/e02-tears-of-steel-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.750/0.750 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e02-tears-of-steel-fmp4-2s.mp4",
+      "media/e02-tears-of-steel-vp9.webm"
+     ],
+     "reason": "coverage 0.750/0.750 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e02-tears-of-steel-h264-3m.mp4",
+      "media/e02-tears-of-steel-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.800/0.800 < 0.9",
+     "variants": [
+      "h264-3m",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e02-tears-of-steel-h264-3m.mp4",
+      "media/e02-tears-of-steel-vp9.webm"
+     ],
+     "reason": "coverage 0.850/0.850 < 0.9",
+     "variants": [
+      "h264-3m",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e02-tears-of-steel-h264-400k.mp4",
+      "media/e02-tears-of-steel-remux.mkv"
+     ],
+     "reason": "coverage 0.800/0.800 < 0.9",
+     "variants": [
+      "h264-400k",
+      "remux-mkv"
+     ]
+    },
+    {
+     "pair": [
+      "media/e02-tears-of-steel-h264-400k.mp4",
+      "media/e02-tears-of-steel-vp9.webm"
+     ],
+     "reason": "coverage 0.850/0.850 < 0.9",
+     "variants": [
+      "h264-400k",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e02-tears-of-steel-remux.mkv",
+      "media/e02-tears-of-steel-vp9.webm"
+     ],
+     "reason": "coverage 0.850/0.850 < 0.9",
+     "variants": [
+      "remux-mkv",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e05-coffee-run-fmp4-1s.mp4",
+      "media/e05-coffee-run-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.667/0.667 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e05-coffee-run-fmp4-1s.mp4",
+      "media/e05-coffee-run-vp9.webm"
+     ],
+     "reason": "coverage 0.778/0.778 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e05-coffee-run-fmp4-2s.mp4",
+      "media/e05-coffee-run-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.667/0.667 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e05-coffee-run-fmp4-2s.mp4",
+      "media/e05-coffee-run-vp9.webm"
+     ],
+     "reason": "coverage 0.778/0.778 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e05-coffee-run-h264-3m.mp4",
+      "media/e05-coffee-run-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.778/0.778 < 0.9",
+     "variants": [
+      "h264-3m",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e05-coffee-run-h264-3m.mp4",
+      "media/e05-coffee-run-vp9.webm"
+     ],
+     "reason": "coverage 0.889/0.889 < 0.9",
+     "variants": [
+      "h264-3m",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e05-coffee-run-h264-400k.mp4",
+      "media/e05-coffee-run-remux.mkv"
+     ],
+     "reason": "coverage 0.778/0.778 < 0.9",
+     "variants": [
+      "h264-400k",
+      "remux-mkv"
+     ]
+    },
+    {
+     "pair": [
+      "media/e05-coffee-run-h264-400k.mp4",
+      "media/e05-coffee-run-vp9.webm"
+     ],
+     "reason": "coverage 0.889/0.889 < 0.9",
+     "variants": [
+      "h264-400k",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e05-coffee-run-remux.mkv",
+      "media/e05-coffee-run-vp9.webm"
+     ],
+     "reason": "coverage 0.889/0.889 < 0.9",
+     "variants": [
+      "remux-mkv",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e06-hero-fmp4-1s.mp4",
+      "media/e06-hero-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.895/0.895 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e06-hero-fmp4-1s.mp4",
+      "media/e06-hero-vp9.webm"
+     ],
+     "reason": "coverage 0.842/0.842 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e06-hero-fmp4-2s.mp4",
+      "media/e06-hero-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.895/0.895 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e06-hero-fmp4-2s.mp4",
+      "media/e06-hero-vp9.webm"
+     ],
+     "reason": "coverage 0.842/0.842 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e06-hero-h264-3m.mp4",
+      "media/e06-hero-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.895/0.895 < 0.9",
+     "variants": [
+      "h264-3m",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e06-hero-h264-3m.mp4",
+      "media/e06-hero-vp9.webm"
+     ],
+     "reason": "coverage 0.842/0.842 < 0.9",
+     "variants": [
+      "h264-3m",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e06-hero-h264-400k.mp4",
+      "media/e06-hero-remux.mkv"
+     ],
+     "reason": "coverage 0.895/0.895 < 0.9",
+     "variants": [
+      "h264-400k",
+      "remux-mkv"
+     ]
+    },
+    {
+     "pair": [
+      "media/e06-hero-h264-400k.mp4",
+      "media/e06-hero-vp9.webm"
+     ],
+     "reason": "coverage 0.842/0.842 < 0.9",
+     "variants": [
+      "h264-400k",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e06-hero-remux.mkv",
+      "media/e06-hero-vp9.webm"
+     ],
+     "reason": "coverage 0.842/0.842 < 0.9",
+     "variants": [
+      "remux-mkv",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e07-sintel-fmp4-1s.mp4",
+      "media/e07-sintel-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.333/0.333 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e07-sintel-fmp4-1s.mp4",
+      "media/e07-sintel-vp9.webm"
+     ],
+     "reason": "coverage 0.444/0.444 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e07-sintel-fmp4-2s.mp4",
+      "media/e07-sintel-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.333/0.333 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e07-sintel-fmp4-2s.mp4",
+      "media/e07-sintel-vp9.webm"
+     ],
+     "reason": "coverage 0.444/0.444 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e07-sintel-h264-3m.mp4",
+      "media/e07-sintel-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.333/0.333 < 0.9",
+     "variants": [
+      "h264-3m",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e07-sintel-h264-3m.mp4",
+      "media/e07-sintel-vp9.webm"
+     ],
+     "reason": "coverage 0.444/0.444 < 0.9",
+     "variants": [
+      "h264-3m",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e07-sintel-h264-400k.mp4",
+      "media/e07-sintel-remux.mkv"
+     ],
+     "reason": "coverage 0.333/0.333 < 0.9",
+     "variants": [
+      "h264-400k",
+      "remux-mkv"
+     ]
+    },
+    {
+     "pair": [
+      "media/e07-sintel-h264-400k.mp4",
+      "media/e07-sintel-vp9.webm"
+     ],
+     "reason": "coverage 0.722/0.722 < 0.9",
+     "variants": [
+      "h264-400k",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e07-sintel-remux.mkv",
+      "media/e07-sintel-vp9.webm"
+     ],
+     "reason": "coverage 0.444/0.444 < 0.9",
+     "variants": [
+      "remux-mkv",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e08-elephants-dream-fmp4-1s.mp4",
+      "media/e08-elephants-dream-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.500/0.500 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e08-elephants-dream-fmp4-2s.mp4",
+      "media/e08-elephants-dream-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.500/0.500 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e08-elephants-dream-h264-3m.mp4",
+      "media/e08-elephants-dream-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.500/0.500 < 0.9",
+     "variants": [
+      "h264-3m",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e08-elephants-dream-h264-400k.mp4",
+      "media/e08-elephants-dream-remux.mkv"
+     ],
+     "reason": "coverage 0.500/0.500 < 0.9",
+     "variants": [
+      "h264-400k",
+      "remux-mkv"
+     ]
+    },
+    {
+     "pair": [
+      "media/e08-elephants-dream-h264-400k.mp4",
+      "media/e08-elephants-dream-vp9.webm"
+     ],
+     "reason": "coverage 0.714/0.714 < 0.9",
+     "variants": [
+      "h264-400k",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e09-tears-of-steel-fmp4-1s.mp4",
+      "media/e09-tears-of-steel-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.467/0.467 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e09-tears-of-steel-fmp4-2s.mp4",
+      "media/e09-tears-of-steel-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.467/0.467 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e09-tears-of-steel-h264-3m.mp4",
+      "media/e09-tears-of-steel-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.867/0.867 < 0.9",
+     "variants": [
+      "h264-3m",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e09-tears-of-steel-h264-400k.mp4",
+      "media/e09-tears-of-steel-remux.mkv"
+     ],
+     "reason": "coverage 0.867/0.867 < 0.9",
+     "variants": [
+      "h264-400k",
+      "remux-mkv"
+     ]
+    },
+    {
+     "pair": [
+      "media/e11-sprite-fright-fmp4-1s.mp4",
+      "media/e11-sprite-fright-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.889/0.889 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e11-sprite-fright-fmp4-2s.mp4",
+      "media/e11-sprite-fright-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.889/0.889 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e11-sprite-fright-h264-3m.mp4",
+      "media/e11-sprite-fright-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.889/0.889 < 0.9",
+     "variants": [
+      "h264-3m",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e11-sprite-fright-h264-400k.mp4",
+      "media/e11-sprite-fright-remux.mkv"
+     ],
+     "reason": "coverage 0.889/0.889 < 0.9",
+     "variants": [
+      "h264-400k",
+      "remux-mkv"
+     ]
+    },
+    {
+     "pair": [
+      "media/e12-coffee-run-fmp4-1s.mp4",
+      "media/e12-coffee-run-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.889/0.889 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e12-coffee-run-fmp4-2s.mp4",
+      "media/e12-coffee-run-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.889/0.889 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e14-sintel-fmp4-1s.mp4",
+      "media/e14-sintel-h264-3m.mp4"
+     ],
+     "reason": "coverage 0.895/0.895 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "h264-3m"
+     ]
+    },
+    {
+     "pair": [
+      "media/e14-sintel-fmp4-1s.mp4",
+      "media/e14-sintel-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.579/0.579 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e14-sintel-fmp4-1s.mp4",
+      "media/e14-sintel-remux.mkv"
+     ],
+     "reason": "coverage 0.895/0.895 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "remux-mkv"
+     ]
+    },
+    {
+     "pair": [
+      "media/e14-sintel-fmp4-1s.mp4",
+      "media/e14-sintel-vp9.webm"
+     ],
+     "reason": "coverage 0.737/0.737 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e14-sintel-fmp4-2s.mp4",
+      "media/e14-sintel-h264-3m.mp4"
+     ],
+     "reason": "coverage 0.895/0.895 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "h264-3m"
+     ]
+    },
+    {
+     "pair": [
+      "media/e14-sintel-fmp4-2s.mp4",
+      "media/e14-sintel-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.579/0.579 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e14-sintel-fmp4-2s.mp4",
+      "media/e14-sintel-remux.mkv"
+     ],
+     "reason": "coverage 0.895/0.895 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "remux-mkv"
+     ]
+    },
+    {
+     "pair": [
+      "media/e14-sintel-fmp4-2s.mp4",
+      "media/e14-sintel-vp9.webm"
+     ],
+     "reason": "coverage 0.737/0.737 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e14-sintel-h264-3m.mp4",
+      "media/e14-sintel-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.579/0.579 < 0.9",
+     "variants": [
+      "h264-3m",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e14-sintel-h264-3m.mp4",
+      "media/e14-sintel-vp9.webm"
+     ],
+     "reason": "coverage 0.789/0.789 < 0.9",
+     "variants": [
+      "h264-3m",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e14-sintel-h264-400k.mp4",
+      "media/e14-sintel-remux.mkv"
+     ],
+     "reason": "coverage 0.579/0.579 < 0.9",
+     "variants": [
+      "h264-400k",
+      "remux-mkv"
+     ]
+    },
+    {
+     "pair": [
+      "media/e14-sintel-h264-400k.mp4",
+      "media/e14-sintel-vp9.webm"
+     ],
+     "reason": "coverage 0.737/0.737 < 0.9",
+     "variants": [
+      "h264-400k",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e14-sintel-remux.mkv",
+      "media/e14-sintel-vp9.webm"
+     ],
+     "reason": "coverage 0.789/0.789 < 0.9",
+     "variants": [
+      "remux-mkv",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e18-sprite-fright-fmp4-1s.mp4",
+      "media/e18-sprite-fright-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.680/0.680 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e18-sprite-fright-fmp4-2s.mp4",
+      "media/e18-sprite-fright-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.680/0.680 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e18-sprite-fright-h264-3m.mp4",
+      "media/e18-sprite-fright-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.680/0.680 < 0.9",
+     "variants": [
+      "h264-3m",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e18-sprite-fright-h264-400k.mp4",
+      "media/e18-sprite-fright-remux.mkv"
+     ],
+     "reason": "coverage 0.680/0.680 < 0.9",
+     "variants": [
+      "h264-400k",
+      "remux-mkv"
+     ]
+    },
+    {
+     "pair": [
+      "media/e19-coffee-run-fmp4-1s.mp4",
+      "media/e19-coffee-run-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.471/0.471 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e19-coffee-run-fmp4-2s.mp4",
+      "media/e19-coffee-run-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.471/0.471 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e19-coffee-run-h264-3m.mp4",
+      "media/e19-coffee-run-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.882/0.882 < 0.9",
+     "variants": [
+      "h264-3m",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e19-coffee-run-h264-400k.mp4",
+      "media/e19-coffee-run-remux.mkv"
+     ],
+     "reason": "coverage 0.882/0.882 < 0.9",
+     "variants": [
+      "h264-400k",
+      "remux-mkv"
+     ]
+    }
+   ],
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": null
+  },
+  "selected": {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.85,
+     "pair": [
+      "media/e06-hero-shift30.mp4",
+      "media/e13-hero-fmp4-1s.mp4"
+     ],
+     "reason": "coverage 0.895/0.850 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/e00-sintel-fmp4-1s.mp4",
+      "media/e01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 20,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9865,
+     1.0
+    ],
+    "recall": 0.9333,
+    "recall_wilson95": [
+     0.8993,
+     0.9564
+    ],
+    "tn": 12420,
+    "tp": 280
+   },
+   "misses": [
+    {
+     "pair": [
+      "media/e02-tears-of-steel-fmp4-1s.mp4",
+      "media/e02-tears-of-steel-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.850/0.850 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e02-tears-of-steel-fmp4-1s.mp4",
+      "media/e02-tears-of-steel-vp9.webm"
+     ],
+     "reason": "coverage 0.850/0.850 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e02-tears-of-steel-fmp4-2s.mp4",
+      "media/e02-tears-of-steel-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.850/0.850 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e02-tears-of-steel-fmp4-2s.mp4",
+      "media/e02-tears-of-steel-vp9.webm"
+     ],
+     "reason": "coverage 0.850/0.850 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e07-sintel-fmp4-1s.mp4",
+      "media/e07-sintel-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.389/0.389 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e07-sintel-fmp4-2s.mp4",
+      "media/e07-sintel-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.389/0.389 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e07-sintel-h264-3m.mp4",
+      "media/e07-sintel-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.444/0.444 < 0.9",
+     "variants": [
+      "h264-3m",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e07-sintel-h264-400k.mp4",
+      "media/e07-sintel-remux.mkv"
+     ],
+     "reason": "coverage 0.444/0.444 < 0.9",
+     "variants": [
+      "h264-400k",
+      "remux-mkv"
+     ]
+    },
+    {
+     "pair": [
+      "media/e08-elephants-dream-fmp4-1s.mp4",
+      "media/e08-elephants-dream-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.714/0.714 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e08-elephants-dream-fmp4-2s.mp4",
+      "media/e08-elephants-dream-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.714/0.714 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e08-elephants-dream-h264-3m.mp4",
+      "media/e08-elephants-dream-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.714/0.714 < 0.9",
+     "variants": [
+      "h264-3m",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e08-elephants-dream-h264-400k.mp4",
+      "media/e08-elephants-dream-remux.mkv"
+     ],
+     "reason": "coverage 0.714/0.714 < 0.9",
+     "variants": [
+      "h264-400k",
+      "remux-mkv"
+     ]
+    },
+    {
+     "pair": [
+      "media/e14-sintel-fmp4-1s.mp4",
+      "media/e14-sintel-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.789/0.789 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e14-sintel-fmp4-1s.mp4",
+      "media/e14-sintel-vp9.webm"
+     ],
+     "reason": "coverage 0.842/0.842 < 0.9",
+     "variants": [
+      "fmp4-1s",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e14-sintel-fmp4-2s.mp4",
+      "media/e14-sintel-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.789/0.789 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e14-sintel-fmp4-2s.mp4",
+      "media/e14-sintel-vp9.webm"
+     ],
+     "reason": "coverage 0.842/0.842 < 0.9",
+     "variants": [
+      "fmp4-2s",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e14-sintel-h264-3m.mp4",
+      "media/e14-sintel-h264-400k.mp4"
+     ],
+     "reason": "coverage 0.895/0.895 < 0.9",
+     "variants": [
+      "h264-3m",
+      "h264-400k"
+     ]
+    },
+    {
+     "pair": [
+      "media/e14-sintel-h264-3m.mp4",
+      "media/e14-sintel-vp9.webm"
+     ],
+     "reason": "coverage 0.842/0.842 < 0.9",
+     "variants": [
+      "h264-3m",
+      "vp9"
+     ]
+    },
+    {
+     "pair": [
+      "media/e14-sintel-h264-400k.mp4",
+      "media/e14-sintel-remux.mkv"
+     ],
+     "reason": "coverage 0.895/0.895 < 0.9",
+     "variants": [
+      "h264-400k",
+      "remux-mkv"
+     ]
+    },
+    {
+     "pair": [
+      "media/e14-sintel-remux.mkv",
+      "media/e14-sintel-vp9.webm"
+     ],
+     "reason": "coverage 0.842/0.842 < 0.9",
+     "variants": [
+      "remux-mkv",
+      "vp9"
+     ]
+    }
+   ],
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": {
+    "max_gap": 1,
+    "phase_tolerance_s": 2.5,
+    "s_mean": 0.65,
+    "s_seg": 0.65,
+    "vote_floor": 0.55
+   }
+  }
+ },
+ "heldout_set": {
+  "corpus": "E-SET",
+  "excerpts": 20,
+  "films": [
+   "coffee-run",
+   "elephants-dream",
+   "hero",
+   "sintel",
+   "spring",
+   "sprite-fright",
+   "tears-of-steel"
+  ],
+  "items": 160
+ },
+ "matching_params_2_1_digest": "377167ec707d48a9148811bde472b24e0eaed5773ce95f8ae8c302f56be29faf",
+ "rule_unchanged": {
+  "coverage": 0.9,
+  "max_duration_diff_frac": 0.02,
+  "max_duration_diff_s": 5.0,
+  "max_offset_s": 10.0
+ },
+ "seconds": 18,
+ "selected": {
+  "max_gap": 1,
+  "phase_tolerance_s": 2.5,
+  "s_mean": 0.65,
+  "s_seg": 0.65,
+  "vote_floor": 0.55
+ },
+ "selected_digest": "e8c9d0bb2f35cb69c0a966fcd6a03b9b6b9e930555943f9c7915649acb5d8b5e",
+ "selection": "max E-TUNE recall at zero E-TUNE false links; ties -> higher s_seg, smaller max_gap, smaller phase_tolerance_s",
+ "tune": {
+  "equiv_v1": {
+   "closest_negative_by_rejecting_rule": {
+    "coverage": {
+     "min_coverage": 0.8571,
+     "pair": [
+      "media/t03-spring-vp9.webm",
+      "media/t10-spring-shift30.mp4"
+     ],
+     "reason": "coverage 0.923/0.857 < 0.9"
+    },
+    "no": {
+     "min_coverage": 0.0,
+     "pair": [
+      "media/t00-sintel-fmp4-1s.mp4",
+      "media/t01-elephants-dream-fmp4-1s.mp4"
+     ],
+     "reason": "no qualifying run"
+    }
+   },
+   "confusion": {
+    "fn": 37,
+    "fp": 0,
+    "precision": 1.0,
+    "precision_wilson95": [
+     0.9856,
+     1.0
+    ],
+    "recall": 0.8767,
+    "recall_wilson95": [
+     0.8346,
+     0.9092
+    ],
+    "tn": 12420,
+    "tp": 263
+   },
+   "negatives_by_class": {
+    "negative_half": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_shift30": {
+     "linked": 0,
+     "pairs": 120
+    },
+    "negative_vs_negative": {
+     "linked": 0,
+     "pairs": 20
+    },
+    "other_excerpt": {
+     "linked": 0,
+     "pairs": 12160
+    }
+   },
+   "override": null
+  },
+  "grid": [
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 37,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.9856,
+      1.0
+     ],
+     "recall": 0.8767,
+     "recall_wilson95": [
+      0.8346,
+      0.9092
+     ],
+     "tn": 12420,
+     "tp": 263
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 1,
+     "phase_tolerance_s": 2.5,
+     "s_mean": 0.8,
+     "s_seg": 0.8,
+     "vote_floor": 0.7
+    }
+   },
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 39,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.9855,
+      1.0
+     ],
+     "recall": 0.87,
+     "recall_wilson95": [
+      0.8272,
+      0.9034
+     ],
+     "tn": 12420,
+     "tp": 261
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 1,
+     "phase_tolerance_s": 5.0,
+     "s_mean": 0.8,
+     "s_seg": 0.8,
+     "vote_floor": 0.7
+    }
+   },
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 37,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.9856,
+      1.0
+     ],
+     "recall": 0.8767,
+     "recall_wilson95": [
+      0.8346,
+      0.9092
+     ],
+     "tn": 12420,
+     "tp": 263
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 2,
+     "phase_tolerance_s": 2.5,
+     "s_mean": 0.8,
+     "s_seg": 0.8,
+     "vote_floor": 0.7
+    }
+   },
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 39,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.9855,
+      1.0
+     ],
+     "recall": 0.87,
+     "recall_wilson95": [
+      0.8272,
+      0.9034
+     ],
+     "tn": 12420,
+     "tp": 261
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 2,
+     "phase_tolerance_s": 5.0,
+     "s_mean": 0.8,
+     "s_seg": 0.8,
+     "vote_floor": 0.7
+    }
+   },
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 19,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.9865,
+      1.0
+     ],
+     "recall": 0.9367,
+     "recall_wilson95": [
+      0.9032,
+      0.9591
+     ],
+     "tn": 12420,
+     "tp": 281
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 1,
+     "phase_tolerance_s": 2.5,
+     "s_mean": 0.75,
+     "s_seg": 0.75,
+     "vote_floor": 0.65
+    }
+   },
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 21,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.9864,
+      1.0
+     ],
+     "recall": 0.93,
+     "recall_wilson95": [
+      0.8954,
+      0.9538
+     ],
+     "tn": 12420,
+     "tp": 279
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 1,
+     "phase_tolerance_s": 5.0,
+     "s_mean": 0.75,
+     "s_seg": 0.75,
+     "vote_floor": 0.65
+    }
+   },
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 19,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.9865,
+      1.0
+     ],
+     "recall": 0.9367,
+     "recall_wilson95": [
+      0.9032,
+      0.9591
+     ],
+     "tn": 12420,
+     "tp": 281
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 2,
+     "phase_tolerance_s": 2.5,
+     "s_mean": 0.75,
+     "s_seg": 0.75,
+     "vote_floor": 0.65
+    }
+   },
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 21,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.9864,
+      1.0
+     ],
+     "recall": 0.93,
+     "recall_wilson95": [
+      0.8954,
+      0.9538
+     ],
+     "tn": 12420,
+     "tp": 279
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 2,
+     "phase_tolerance_s": 5.0,
+     "s_mean": 0.75,
+     "s_seg": 0.75,
+     "vote_floor": 0.65
+    }
+   },
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 10,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.9869,
+      1.0
+     ],
+     "recall": 0.9667,
+     "recall_wilson95": [
+      0.9397,
+      0.9818
+     ],
+     "tn": 12420,
+     "tp": 290
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 1,
+     "phase_tolerance_s": 2.5,
+     "s_mean": 0.7,
+     "s_seg": 0.7,
+     "vote_floor": 0.6
+    }
+   },
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 10,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.9869,
+      1.0
+     ],
+     "recall": 0.9667,
+     "recall_wilson95": [
+      0.9397,
+      0.9818
+     ],
+     "tn": 12420,
+     "tp": 290
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 1,
+     "phase_tolerance_s": 5.0,
+     "s_mean": 0.7,
+     "s_seg": 0.7,
+     "vote_floor": 0.6
+    }
+   },
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 10,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.9869,
+      1.0
+     ],
+     "recall": 0.9667,
+     "recall_wilson95": [
+      0.9397,
+      0.9818
+     ],
+     "tn": 12420,
+     "tp": 290
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 2,
+     "phase_tolerance_s": 2.5,
+     "s_mean": 0.7,
+     "s_seg": 0.7,
+     "vote_floor": 0.6
+    }
+   },
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 10,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.9869,
+      1.0
+     ],
+     "recall": 0.9667,
+     "recall_wilson95": [
+      0.9397,
+      0.9818
+     ],
+     "tn": 12420,
+     "tp": 290
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 2,
+     "phase_tolerance_s": 5.0,
+     "s_mean": 0.7,
+     "s_seg": 0.7,
+     "vote_floor": 0.6
+    }
+   },
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 8,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.987,
+      1.0
+     ],
+     "recall": 0.9733,
+     "recall_wilson95": [
+      0.9483,
+      0.9864
+     ],
+     "tn": 12420,
+     "tp": 292
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 1,
+     "phase_tolerance_s": 2.5,
+     "s_mean": 0.65,
+     "s_seg": 0.65,
+     "vote_floor": 0.55
+    }
+   },
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 8,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.987,
+      1.0
+     ],
+     "recall": 0.9733,
+     "recall_wilson95": [
+      0.9483,
+      0.9864
+     ],
+     "tn": 12420,
+     "tp": 292
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 1,
+     "phase_tolerance_s": 5.0,
+     "s_mean": 0.65,
+     "s_seg": 0.65,
+     "vote_floor": 0.55
+    }
+   },
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 8,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.987,
+      1.0
+     ],
+     "recall": 0.9733,
+     "recall_wilson95": [
+      0.9483,
+      0.9864
+     ],
+     "tn": 12420,
+     "tp": 292
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 2,
+     "phase_tolerance_s": 2.5,
+     "s_mean": 0.65,
+     "s_seg": 0.65,
+     "vote_floor": 0.55
+    }
+   },
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 8,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.987,
+      1.0
+     ],
+     "recall": 0.9733,
+     "recall_wilson95": [
+      0.9483,
+      0.9864
+     ],
+     "tn": 12420,
+     "tp": 292
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 2,
+     "phase_tolerance_s": 5.0,
+     "s_mean": 0.65,
+     "s_seg": 0.65,
+     "vote_floor": 0.55
+    }
+   },
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 8,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.987,
+      1.0
+     ],
+     "recall": 0.9733,
+     "recall_wilson95": [
+      0.9483,
+      0.9864
+     ],
+     "tn": 12420,
+     "tp": 292
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 1,
+     "phase_tolerance_s": 2.5,
+     "s_mean": 0.6,
+     "s_seg": 0.6,
+     "vote_floor": 0.5
+    }
+   },
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 8,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.987,
+      1.0
+     ],
+     "recall": 0.9733,
+     "recall_wilson95": [
+      0.9483,
+      0.9864
+     ],
+     "tn": 12420,
+     "tp": 292
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 1,
+     "phase_tolerance_s": 5.0,
+     "s_mean": 0.6,
+     "s_seg": 0.6,
+     "vote_floor": 0.5
+    }
+   },
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 8,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.987,
+      1.0
+     ],
+     "recall": 0.9733,
+     "recall_wilson95": [
+      0.9483,
+      0.9864
+     ],
+     "tn": 12420,
+     "tp": 292
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 2,
+     "phase_tolerance_s": 2.5,
+     "s_mean": 0.6,
+     "s_seg": 0.6,
+     "vote_floor": 0.5
+    }
+   },
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 8,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.987,
+      1.0
+     ],
+     "recall": 0.9733,
+     "recall_wilson95": [
+      0.9483,
+      0.9864
+     ],
+     "tn": 12420,
+     "tp": 292
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 2,
+     "phase_tolerance_s": 5.0,
+     "s_mean": 0.6,
+     "s_seg": 0.6,
+     "vote_floor": 0.5
+    }
+   },
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 8,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.987,
+      1.0
+     ],
+     "recall": 0.9733,
+     "recall_wilson95": [
+      0.9483,
+      0.9864
+     ],
+     "tn": 12420,
+     "tp": 292
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 1,
+     "phase_tolerance_s": 2.5,
+     "s_mean": 0.55,
+     "s_seg": 0.55,
+     "vote_floor": 0.45
+    }
+   },
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 8,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.987,
+      1.0
+     ],
+     "recall": 0.9733,
+     "recall_wilson95": [
+      0.9483,
+      0.9864
+     ],
+     "tn": 12420,
+     "tp": 292
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 1,
+     "phase_tolerance_s": 5.0,
+     "s_mean": 0.55,
+     "s_seg": 0.55,
+     "vote_floor": 0.45
+    }
+   },
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 8,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.987,
+      1.0
+     ],
+     "recall": 0.9733,
+     "recall_wilson95": [
+      0.9483,
+      0.9864
+     ],
+     "tn": 12420,
+     "tp": 292
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 2,
+     "phase_tolerance_s": 2.5,
+     "s_mean": 0.55,
+     "s_seg": 0.55,
+     "vote_floor": 0.45
+    }
+   },
+   {
+    "closest_negative_by_rejecting_rule": {
+     "coverage": {
+      "min_coverage": 0.8571,
+      "pair": [
+       "media/t03-spring-vp9.webm",
+       "media/t10-spring-shift30.mp4"
+      ],
+      "reason": "coverage 0.923/0.857 < 0.9"
+     },
+     "no": {
+      "min_coverage": 0.0,
+      "pair": [
+       "media/t00-sintel-fmp4-1s.mp4",
+       "media/t01-elephants-dream-fmp4-1s.mp4"
+      ],
+      "reason": "no qualifying run"
+     }
+    },
+    "confusion": {
+     "fn": 8,
+     "fp": 0,
+     "precision": 1.0,
+     "precision_wilson95": [
+      0.987,
+      1.0
+     ],
+     "recall": 0.9733,
+     "recall_wilson95": [
+      0.9483,
+      0.9864
+     ],
+     "tn": 12420,
+     "tp": 292
+    },
+    "negatives_by_class": {
+     "negative_half": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_shift30": {
+      "linked": 0,
+      "pairs": 120
+     },
+     "negative_vs_negative": {
+      "linked": 0,
+      "pairs": 20
+     },
+     "other_excerpt": {
+      "linked": 0,
+      "pairs": 12160
+     }
+    },
+    "override": {
+     "max_gap": 2,
+     "phase_tolerance_s": 5.0,
+     "s_mean": 0.55,
+     "s_seg": 0.55,
+     "vote_floor": 0.45
+    }
+   }
+  ]
+ },
+ "tuning_set": {
+  "avoided": "/home/dhanush/anti_piracy/datasets/p10/e-set/manifest.json",
+  "corpus": "E-TUNE",
+  "excerpts": 20,
+  "films": [
+   "elephants-dream",
+   "sintel",
+   "spring",
+   "sprite-fright",
+   "tears-of-steel"
+  ],
+  "items": 160,
+  "seed": 9,
+  "skipped": [
+   "t05-coffee-run",
+   "t06-hero",
+   "t12-coffee-run",
+   "t13-hero",
+   "t19-coffee-run",
+   "t20-hero",
+   "t26-coffee-run",
+   "t27-hero"
+  ]
+ }
+}

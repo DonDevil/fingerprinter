@@ -1,0 +1,26 @@
+# P10-D3: the fingerprinter-owned vector index (design §4.1, §13.3, §15).
+# Development only: loopback ports, API key from the untracked .env next to
+# this file (FINGERPRINTER_INDEX__API_KEY), hard 1.5 GiB memory limit with no
+# swap, 2 CPUs. The index is derived state (ADR-028): deleting the volume
+# loses nothing that `python -m fingerprinter index rebuild` cannot restore.
+#
+#   sg docker -c "docker compose -f deploy/qdrant/compose.yaml --env-file deploy/qdrant/.env up -d"
+name: fingerprinter-index
+services:
+  qdrant:
+    # qdrant/qdrant:v1.15.1, pinned by digest
+    image: qdrant/qdrant@sha256:d122138f76868edba68d36cb0833139c1d1761f00f09e48e61f8314196e6a4c6
+    restart: unless-stopped
+    mem_limit: 1536m
+    memswap_limit: 1536m
+    cpus: 2
+    ports:
+      - "127.0.0.1:${FINGERPRINTER_INDEX_HTTP_PORT:-16333}:6333"
+      - "127.0.0.1:${FINGERPRINTER_INDEX_GRPC_PORT:-16334}:6334"
+    environment:
+      QDRANT__SERVICE__API_KEY: ${FINGERPRINTER_INDEX__API_KEY:?set FINGERPRINTER_INDEX__API_KEY in deploy/qdrant/.env}
+      QDRANT__TELEMETRY_DISABLED: "true"
+    volumes:
+      - qdrant-data:/qdrant/storage
+volumes:
+  qdrant-data: {}

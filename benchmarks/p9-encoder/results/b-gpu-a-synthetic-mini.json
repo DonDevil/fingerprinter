@@ -1,0 +1,114 @@
+{
+ "benchmark": "B-GPU-a",
+ "gate": "G-5: GPU inference \u2265 5\u00d7 CPU inference, same tensors, FP32",
+ "environment": {
+  "host": "Ubuntu-24-04",
+  "machine": "x86_64",
+  "cores": 12,
+  "python": "3.12.3",
+  "torch": "2.13.0+cu130",
+  "transformers": "5.15.1",
+  "numpy": "2.5.2",
+  "pillow": "12.3.0",
+  "cuda_available": true,
+  "cuda_runtime": "13.0",
+  "spec": "sha256:ddfc71c1ad8b31dc90de056b93500dd8aa4295273a37ebf4d04011c5ccc8098a",
+  "spec_fp16": "sha256:4dadb2a089e31bb4544d90ed2c0e94e755613f86e82f58dba67019c572913027",
+  "runtime_profile": "rt-1",
+  "measured_at": "2026-10-10T17:25:21.140552+00:00",
+  "cpu_model": "11th Gen Intel(R) Core(TM) i5-11400H @ 2.70GHz",
+  "ram_gib": 15.4,
+  "gpu": "NVIDIA GeForce RTX 2050",
+  "vram_total_mib": 3822,
+  "vram_free_mib_at_start": 3730,
+  "driver": "615.71.09",
+  "ffmpeg": "ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers"
+ },
+ "corpus": {
+  "name": "synthetic-60-seed7",
+  "items": 66,
+  "synthetic": true,
+  "manifest_sha256": "0dd52624e79240fcaf125d7ee2add40d4d247bab100047c0c59fdd523d3cd413",
+  "gate_eligible": false
+ },
+ "inputs": {
+  "frames": 256,
+  "sources": 27
+ },
+ "cpu_fp32": {
+  "batch": 8,
+  "frames": 256,
+  "reps": 3,
+  "frames_per_s": {
+   "n": 3,
+   "median": 6.91354597687692,
+   "p95": 6.985729938017681,
+   "min": 6.821712160814356,
+   "max": 6.985729938017681,
+   "small_sample": true
+  },
+  "s_per_frame_in_batch": {
+   "n": 96,
+   "median": 0.13838507693759539,
+   "p95": 0.17607465737489747,
+   "min": 0.13194583362496815,
+   "max": 0.2389126292499668,
+   "small_sample": false
+  },
+  "threads": 12,
+  "device": "cpu"
+ },
+ "cuda_fp32": {
+  "batch": 32,
+  "frames": 256,
+  "reps": 3,
+  "frames_per_s": {
+   "n": 3,
+   "median": 27.708838371311074,
+   "p95": 27.73867716567959,
+   "min": 27.596073682379973,
+   "max": 27.73867716567959,
+   "small_sample": true
+  },
+  "s_per_frame_in_batch": {
+   "n": 24,
+   "median": 0.03611552993749001,
+   "p95": 0.036304649437511216,
+   "min": 0.035890230062506134,
+   "max": 0.036397454625017645,
+   "small_sample": true
+  },
+  "device": "cuda",
+  "max_memory_allocated": 728607744
+ },
+ "cuda_fp16_gated_spec": {
+  "batch": 32,
+  "frames": 256,
+  "reps": 3,
+  "frames_per_s": {
+   "n": 3,
+   "median": 174.57551760021215,
+   "p95": 174.6121001742967,
+   "min": 174.368616314732,
+   "max": 174.6121001742967,
+   "small_sample": true
+  },
+  "s_per_frame_in_batch": {
+   "n": 24,
+   "median": 0.005712545999998042,
+   "p95": 0.0058030791875012255,
+   "min": 0.0056984263749768616,
+   "max": 0.005822863062491024,
+   "small_sample": true
+  },
+  "device": "cuda",
+  "note": "distinct gated spec; not usable for the gate unless enabled (D3)",
+  "max_memory_allocated": 376413696
+ },
+ "summary": {
+  "gpu_fp32_over_cpu_fp32": 4.01,
+  "threshold": 5.0,
+  "meets_threshold_on_these_inputs": false
+ },
+ "gate_status": "NOT MEASURED (input set is not C-PREC)"
+}

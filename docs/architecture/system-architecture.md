@@ -331,8 +331,13 @@ redirect hop, before that hop is fetched.
   `100.64.0.0/10` (RFC 6598 carrier-grade NAT space, not classified as
   private by the stdlib `ipaddress` module but never a legitimate public
   destination). A hostname with multiple A/AAAA records is rejected if
-  *any* resolved address is unsafe, since nothing here controls which
-  record the real HTTP connection ends up using.
+  *any* resolved address is unsafe.
+- **Connection pinning:** for the session created by `MediaAcquirer` when
+  private networks are disallowed (the default), its HTTP adapter resolves
+  and validates addresses when opening the socket, then connects directly
+  to one of those validated addresses. The URL hostname remains in the
+  HTTP `Host` header and TLS SNI/certificate verification. This prevents
+  DNS from changing the destination between the hop check and connection.
 - **Redirects re-checked, not trusted:** each hop re-resolves and
   re-validates independently — an externally-reachable URL that 302s to
   an internal address is rejected at the redirect hop, not followed.
@@ -342,21 +347,21 @@ redirect hop, before that hop is fetched.
   media.
 - **`allow_private_networks`** is a narrow, explicit constructor opt-out
   for test/dev fixtures. It must never be the production default and
-  `worker/main.py` never sets it.
+  `worker/main.py` never sets it. When this opt-out is enabled, the
+  default session is not given the pinning adapter.
+- **Caller-supplied sessions:** a `requests.Session` passed to
+  `MediaAcquirer` is left untouched, so the adapter cannot guarantee
+  connection pinning for that custom transport. Do not use one for
+  untrusted URLs unless it independently provides equivalent safeguards.
+- **Verification boundary:** `tests/test_acquisition_rebinding.py`
+  exercises a scripted DNS answer change and confirms the local internal
+  server receives no request. This is a deterministic regression test, not
+  live external-network validation.
 
-**Known, deliberately unsolved limitation — DNS rebinding / TOCTOU.**
-This module re-resolves DNS itself immediately before each connection
-attempt, but `requests`/urllib3 performs its own, independent resolution
-a moment later when it actually opens the socket. An attacker who
-controls DNS for the candidate's hostname and changes the answer between
-those two lookups is **not** defeated by this check alone. Fully closing
-that gap requires pinning the actual connection to the address validated
-here (a custom transport adapter) — a materially larger change,
-deliberately out of scope for the current implementation. Do not
-describe DNS rebinding as solved anywhere downstream of this document.
-See `acquisition/ssrf_guard.py`'s module docstring and
-`docs/architecture/phase-13-production-hardening.md`, "Phase 13A," for
-the full reasoning.
+The Phase 13A discussion in
+`docs/architecture/phase-13-production-hardening.md` records the earlier
+check-then-connect limitation before the pinned adapter was implemented;
+it is historical, not the current default-session behavior.
 
 ## 8. Observability
 

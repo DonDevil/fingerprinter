@@ -1,0 +1,186 @@
+{
+ "benchmark": "B-SOAK",
+ "gate": "G-8 soak (design \u00a713.3)",
+ "gate_eligible": false,
+ "gate_status": "NOT MEASURED (corpus is not SOAK-1000)",
+ "harness_result": "FAIL",
+ "criteria": {
+  "1_zero_uncontrolled_terminations": true,
+  "2_zero_lost_requests": true,
+  "3_controlled_exits_reported_and_recovered": true,
+  "4_single_item_oom_items_retryable": true,
+  "5_leases_released_or_expired": true,
+  "6_rss_vram_bounded": true,
+  "7_zero_orphans_zero_open_intents": true,
+  "8_expected_failures_no_crash": false
+ },
+ "started_at": "2026-10-10T17:17:29.252414+00:00",
+ "duration_s": 377.6,
+ "drain_s": 135.0,
+ "corpus": {
+  "name": "synthetic-60-seed7",
+  "items": 66,
+  "synthetic": true,
+  "manifest_sha256": "0dd52624e79240fcaf125d7ee2add40d4d247bab100047c0c59fdd523d3cd413"
+ },
+ "config": {
+  "devices": [
+   "cuda",
+   "cpu"
+  ],
+  "orphan_grace_s": 240.0,
+  "attempt_timeout_s": 180.0,
+  "attempt_lease_s": 60.0,
+  "max_rss_bytes": 4294967296,
+  "note": "orphan_grace_s and attempt_timeout_s shortened for observability (design \u00a713.3 #7)"
+ },
+ "environment": {
+  "host": "Ubuntu-24-04",
+  "cpu": "x86_64",
+  "cores": 12,
+  "torch": "2.13.0+cu130",
+  "cuda": "13.0",
+  "gpu": "NVIDIA GeForce RTX 2050",
+  "spec": "sha256:ddfc71c1ad8b31dc90de056b93500dd8aa4295273a37ebf4d04011c5ccc8098a",
+  "runtime_profile": "rt-1"
+ },
+ "requests": {
+  "READY": 61,
+  "FAILED": 5
+ },
+ "unexpected_outcomes": [
+  {
+   "file": "corrupt-00.webm",
+   "state": "READY",
+   "failure": null,
+   "expected": [
+    "decode_error",
+    "unsupported_format"
+   ]
+  }
+ ],
+ "exits": [
+  {
+   "host": "soak-cuda-0",
+   "pid": 121488,
+   "code": 0,
+   "kind": "normal",
+   "reason": "normal",
+   "reported": true,
+   "uptime_s": 135.0
+  },
+  {
+   "host": "soak-cpu-1",
+   "pid": 121489,
+   "code": 0,
+   "kind": "normal",
+   "reason": "normal",
+   "reported": true,
+   "uptime_s": 128.9
+  },
+  {
+   "host": "soak-cpu-1",
+   "pid": 121489,
+   "code": 0,
+   "kind": "normal",
+   "reason": "normal",
+   "reported": true,
+   "uptime_s": 130.9
+  },
+  {
+   "host": "soak-cpu-1",
+   "pid": 121489,
+   "code": 0,
+   "kind": "normal",
+   "reason": "normal",
+   "reported": true,
+   "uptime_s": 133.0
+  },
+  {
+   "host": "soak-cpu-1",
+   "pid": 121489,
+   "code": 0,
+   "kind": "normal",
+   "reason": "normal",
+   "reported": true,
+   "uptime_s": 135.0
+  }
+ ],
+ "restarts": {
+  "soak-cuda-0": 0,
+  "soak-cpu-1": 0
+ },
+ "oom_single": [],
+ "leases_left": [],
+ "rss": {
+  "soak-cuda-0": {
+   "samples": 65,
+   "peak": 1376526336,
+   "median_q2": 1349115904.0,
+   "median_q4": 1351417856,
+   "upward_trend": false
+  },
+  "soak-cpu-1": {
+   "samples": 62,
+   "peak": 1346531328,
+   "median_q2": 1318998016,
+   "median_q4": 1321304064,
+   "upward_trend": false
+  }
+ },
+ "vram": {
+  "soak-cuda-0": {
+   "samples": 64,
+   "peak": 3353346048,
+   "median_q2": 555745280.0,
+   "median_q4": 555745280.0,
+   "upward_trend": false
+  }
+ },
+ "sweep": {
+  "kept": 61,
+  "deleted": 0,
+  "skipped_intent": 0,
+  "skipped_active": 0,
+  "aborted_uploads": 0
+ },
+ "open_intents": 0,
+ "unreferenced_objects": [],
+ "events_acked": 66,
+ "reconcile_runs": [
+  {
+   "t": 2,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 33,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 64,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 94,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  },
+  {
+   "t": 125,
+   "completed": 0,
+   "held": 0,
+   "repairs": {}
+  }
+ ],
+ "stats": {
+  "representations": 61,
+  "objects": 61
+ }
+}

@@ -1,0 +1,7 @@
+{
+ "bump": true,
+ "bump_of_failed_rejected": true,
+ "claim_first": true,
+ "claim_second": false,
+ "stale_completion_rejected": true
+}

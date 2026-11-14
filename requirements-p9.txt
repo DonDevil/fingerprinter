@@ -1,0 +1,15 @@
+# P9 (fingerprinter V2 package `fingerprinter/`) direct dependencies — P9-D12.
+# Installed ON TOP of the existing environment without upgrading anything:
+#   env/bin/pip freeze > /tmp/before.txt
+#   env/bin/pip install -c /tmp/before.txt -r requirements-p9.txt
+# The full pinned set that realises runtime profile rt-1 is requirements-p9.lock.
+# torch/transformers/numpy/Pillow/ffmpeg versions are identity-relevant (spec
+# runtime profile rt-1, design §3.5): never upgrade them without the runtime
+# compatibility gate (a new profile) or a new spec + backfill.
+scylla-driver==3.29.12
+minio==7.2.15
+pydantic==2.13.5
+prometheus-client==0.26.0
+pytest-cov==7.0.0
+# shared P1 contract package (ADR-007), installed from crawler2's checkout:
+#   env/bin/pip install ~/anti_piracy/crawler2/contracts   (antipiracy-contracts 1.1.0)

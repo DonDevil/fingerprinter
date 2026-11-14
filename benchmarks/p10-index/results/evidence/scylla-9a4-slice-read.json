@@ -1,0 +1,6 @@
+{
+ "after_ack_insert": true,
+ "after_unknown_outcome": true,
+ "consistency": "9",
+ "unknown_outcomes_observed": 8
+}
