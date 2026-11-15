@@ -32,8 +32,29 @@ umask 077; printf 'FINGERPRINTER_INDEX__API_KEY=%s\n' "$(head -c 24 /dev/urandom
 sg docker -c "docker compose -f deploy/qdrant/compose.yaml --env-file deploy/qdrant/.env up -d"
 ```
 
-`deploy/qdrant/.env` is untracked (`.gitignore`). The index is derived
-state: deleting the volume loses nothing an `index rebuild` cannot restore.
+`deploy/qdrant/.env` is untracked (`.gitignore`: `.env`). An earlier revision
+(`3018d7b`) had committed this file by mistake, so **that key must be treated as
+disclosed**; it was rotated on 2026-11-15 (the index was empty, nothing to
+re-key; to rotate again, write a new `.env` and re-run `up -d`, which recreates
+the container). The index is derived state: deleting the volume loses nothing
+an `index rebuild` cannot restore.
+
+Verify (2026-11-15, Qdrant 1.15.1 `af7ab5b`, image pinned by digest):
+
+```bash
+set -a; . deploy/qdrant/.env; set +a
+curl -s -o /dev/null -w '%{http_code}\n' localhost:16333/healthz                          # 200 (no key needed)
+curl -s -o /dev/null -w '%{http_code}\n' localhost:16333/collections                      # 401 without a key
+curl -s -o /dev/null -w '%{http_code}\n' -H 'api-key: wrong' localhost:16333/collections  # 401
+curl -s -H "api-key: $FINGERPRINTER_INDEX__API_KEY" localhost:16333/collections            # 200
+docker inspect -f '{{.State.Health.Status}}' fingerprinter-index-qdrant-1                  # healthy
+```
+
+The container has a health check (`bash` `/dev/tcp` GET `/healthz`, 10 s
+interval; the image ships neither curl nor wget). Ports are bound to
+127.0.0.1 only; persistence is the named volume `fingerprinter-index_qdrant-data`;
+the 1.5 GiB limit is the design value (E-R1 evidence, validation §13.5/§13.32),
+measured at 42 MiB resident with the Blast collection loaded (1,700 × 768).
 
 ## 3. Configuration
 

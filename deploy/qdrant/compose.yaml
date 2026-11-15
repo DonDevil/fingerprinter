@@ -22,5 +22,12 @@ services:
       QDRANT__TELEMETRY_DISABLED: "true"
     volumes:
       - qdrant-data:/qdrant/storage
+    # The image ships no curl/wget; /healthz needs no API key.
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/6333 && printf 'GET /healthz HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 volumes:
   qdrant-data: {}
