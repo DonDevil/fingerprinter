@@ -1946,3 +1946,19 @@ Final runs (2026-10-21/22, alone on the host after the E-R1 measurements):
   file deleted; the scratch worktree of `bbe9284` used for the pre-fix runs
   removed (`git worktree remove`). Test vectors of the density experiment
   stay outside git (`~/anti_piracy/datasets/p10/vectors/*-dense1`, 80 MB).
+
+### 13.34 Live dev keyspace: Blast index and self-match (2026-11-15) — infrastructure check, no gate changes
+
+Executed on the real keyspace `fingerprinter` (dev stack, Qdrant 1.15.1 by digest, authenticated,
+loopback). Full procedure and numbers: [`docs/p10-matcher.md`](../../p10-matcher.md) §10.
+
+- Both roles indexed from the existing, digest-verified Blast representation (1,700 × 768, spec
+  `dinov2-seg/2`): exact count 1,700 per role, manifest digests equal, 0 stale/orphan/short.
+- Production matcher run: `media_vs_targets` and `target_vs_media` for Blast `DONE`, 0 candidates —
+  the N-13 own-content exclusion working as designed, **not** a detection result.
+- Technique 2.1 registered on this keyspace: `UNAVAILABLE`. `match.found` is therefore neither built nor
+  published; this blocks P10-T8/O-3 exactly as before and **no gate is passed by this run**. A positive
+  decision (a distinct copy of Blast ingested through crawler2's media registry) is NOT TESTED.
+- Operational finding fixed in the repository: `deploy/qdrant/.env` (API key) had been committed in
+  `3018d7b` although this document and `deploy/qdrant/compose.yaml` say it is untracked. It is now untracked
+  and ignored, the key was rotated, and the compose file has a health check.

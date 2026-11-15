@@ -203,3 +203,66 @@ content or credentials are logged.
 - *Rebuild stays CATCHING_UP with `CAPACITY_BLOCKED` and `blocked_rows`*: subjects beyond the generation's admission could not reserve ledger capacity; free capacity (retire an old generation, `index drop --generation`, let the audit run) and rerun the build — never promoted with blocked rows.
 - *`lowinfo` refresh BLOCKED*: it failed `matching.lowinfo_max_attempts` times in a row (it is still retried); read `last_error`, fix the index/storage cause, or run `lowinfo refresh --spec D`. Matching is unaffected while the filter is disabled.
 - *`match publish-held` refused*: the technique version is not CALIBRATED (2.1 is UNAVAILABLE, validation §13.3).
+
+## 10. Live dev keyspace: Blast index and self-match (2026-11-15)
+
+Evidence of the real (non-test) keyspace `fingerprinter` on the dev stack. It
+shows that the **index and matcher work on a real representation**; it does
+**not** show detection accuracy and does not change any gate (M3 stays not
+passed, technique 2.1 stays `UNAVAILABLE`).
+
+Procedure (the first-time setup of §7, in this order; environment =
+`scripts/p9-env.sh` with `FINGERPRINTER_SCYLLA__KEYSPACE=fingerprinter`, the
+default Redis prefix and bucket names unset, plus `deploy/qdrant/.env` and
+`FINGERPRINTER_INDEX__URL=http://127.0.0.1:16333`):
+
+```bash
+python -m fingerprinter matcher migrate                              # P10 tables; match.found.v1 registry row (held)
+python -m fingerprinter match params-register --version 2.1 --from benchmarks/p10-index/results/tune-eval.json   # → UNAVAILABLE
+python -m fingerprinter index init --spec sha256:a4df3d19…           # dinov2-seg/2
+python -m fingerprinter index rebuild --spec sha256:a4df3d19… --role target --promote
+python -m fingerprinter index rebuild --spec sha256:a4df3d19… --role media  --promote
+python -m fingerprinter index check   --spec sha256:a4df3d19… --role target
+python -m fingerprinter matcher reconcile --once                     # creates the two tasks
+timeout -s TERM 40 python -m fingerprinter matcher run               # SIGTERM exits 124 from `timeout`; the tasks finish
+python -m fingerprinter match summary
+```
+
+| Item | Verified result |
+|---|---|
+| Target / content | `tgt_01a1dfb096c67b3fab003ec6677832e7` (Blast, v1, READY) / `cnt_798f244f5a0f87fa8b9e89ad25473dff` |
+| Representations | media `rep_d49d1dc52c6783978c47c10609ab7f90`; target `rep_3da89b5fef2584cb9550966f6d46cdb0`; spec `dinov2-seg/2` (`sha256:a4df3d19…`) |
+| Collection | `fp_a4df3d192528_target_g1` (and `…_media_g1`): 768-d, **Dot** on L2-normalised vectors (= cosine), int8 scalar quantisation `always_ram`, HNSW m 32 / ef_construct 200, vectors and payload on disk |
+| Indexed points | **1,700 expected = 1,700 exact (per role)**; `index check`: manifest digest equal to the artifact-only digest, 0 stale / orphans / short |
+| Indexing duration | `index rebuild --promote` ≈ 127 s wall per role (dominated by the build/validation state machine, not by Qdrant; CPU 2.7 s) |
+| Retrieval | `matcher reconcile --once` 2.3 s; both tasks `DONE` in the 40 s matcher window. Direct diagnostic (not a matching decision): one stored Blast vector as query, `hnsw_ef` 384, 20 repeats: median 0.8 ms, max 1.2 ms; top hit score 1.000000 (the vector itself), next four 0.559–0.459; point payload carries `tid`/`trep`/`rep`/`cid` of Blast |
+| Matcher outcome | `media_vs_targets` and `target_vs_media` for Blast: **DONE, 0 candidates, no match row** |
+| Resources | Qdrant 42 MiB of 1.5 GiB after both roles |
+
+**Why zero candidates is the correct self-match result.** Design N-13: a
+target's own reference content is also a media subject, and direction A drops
+hits whose payload content id is its own (direction B excludes it symmetrically);
+without that rule every reference "matched" itself. So the matcher *did* find
+and ignore Blast's own 1,700 vectors. The index-retrieval chain is verified;
+a positive **matching decision** needs a *different* media content that is a
+copy of Blast, which has not been ingested (NOT TESTED).
+
+Distinguish: indexing success (verified) · retrieval success (verified, direct
+diagnostic and matcher run) · matching decision (none: self excluded) ·
+calibration acceptance (**not accepted**: 2.1 `UNAVAILABLE`, validation §13.3,
+O-3). Even a legitimate positive would be stored with `published_at = null`:
+`match.found` is built and published only for a CALIBRATED technique
+(`matching.py`), and `match publish-held` refuses otherwise.
+
+Event wiring performed on this keyspace (consumers belong to crawler2):
+`crawler2-intel feedback run` (group `crawl-feedback`) and
+`crawler2-evidence collect run` (group `evidence-collector`) created their
+groups on `events:match.found.v1`; the groups were then registered with
+`publisher register-consumer --stream match.found.v1 --group …` (both) and
+`target.registered.v1` / `target.retired.v1` (`crawl-feedback`). `target.registered.v1`
+for Blast (`evt_01a1dfb8…`, held since registration) was then published by
+`reconcile run`, delivered to `crawl-feedback` (pending 0, lag 0), and crawler2's
+`targets` projection now holds Blast. The envelope has `correlation_id: null`
+(operator-originated, no causing event). The P9 streams `representation.ready.v1`
+and `encode.failed.v1` stay held until crawler2's `media-registry` group exists
+(created by `crawler2-media representations run`).
