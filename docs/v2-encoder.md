@@ -263,6 +263,36 @@ C-PREC, L-PAIRS or SOAK-1000. For any other corpus the report says
   relabelled from one to the other.
 - `spec enable` refuses unless the evidence shows both gates as `PASS`.
 
+### 8.1 GPU smoke test, RTX 2050 (2026-11-15, bounded; **not** a soak)
+
+Environment: driver 615.71.09, torch 2.13.0+cu130 (`cuda.is_available()` true),
+RTX 2050 4 GiB, model `facebook/dinov2-base@f9e44c8…`, spec `dinov2-seg/2`
+(FP32). Input: the first 64 segment frames of the real Blast file through the
+production `media.decode` and `media.preprocess` (`[64,3,224,224]`). Same input
+on both devices; one warm-up batch; 0.5 s sampling of `nvidia-smi`, package
+temperature and `/proc/meminfo`.
+
+| Run | frames/s | batch latency (median) | VRAM (nvidia-smi max) | GPU util / temp max | CPU pkg max | RAM used |
+|---|---|---|---|---|---|---|
+| CPU, batch 8 (all threads) | 8.9 | 896 ms | – | 0 % / 48 °C | **96 °C** (start 90 °C) | 5.5 GiB |
+| CUDA, batch 8 | **40.7** | 195 ms | **608 MiB** | 100 % (mean 76) / 61 °C | 86 °C | 5.7 GiB |
+| CUDA, batch 32 | 27.5 | 1,162 ms | 1,006 MiB | 100 % / 61 °C | 91 °C | 5.7 GiB |
+| CUDA, batch 64 | 26.6 | 2,409 ms | 1,638 MiB | 100 % / 61 °C | 84 °C | 5.7 GiB |
+
+CUDA vs CPU embeddings (all three batch sizes): finite, shape `[64,768]`, norms
+0.99999994–1.0, **cosine min 0.99999988** (accepted: ≥ 0.999 CUDA golden bound,
+`encoder.py` `GOLDEN_MIN_COS`; the CPU bound is 0.9999 and also holds), max
+abs component difference 1.6e-6. No CUDA OOM or error. Throughput is
+≈ 4.5× CPU at batch 8; larger batches were slower on this GPU (the encoder's
+own calibration chooses the batch; `FINGERPRINTER_ENCODER__MAX_BATCH` bounds it).
+
+Limits of this evidence: each GPU run lasted 1.5–2.4 s; sustained GPU thermals
+over hours are **not measured**; the CPU temperatures include heat soak from the
+preceding run (idle package temperature was 54 °C). The `cuda` runtime-profile
+variant is **not admitted** (`runtime check --device cuda` → refused); run
+`python -m fingerprinter runtime admit-cuda` (recorded in Scylla) before
+`encoder run --device cuda`. Production configuration was not switched.
+
 ## 9. Known limitations and deferred work
 
 The complete list is in crawler2's `exit.md` §6. The ones you are most likely
