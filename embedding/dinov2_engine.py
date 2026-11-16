@@ -28,6 +28,7 @@ from PIL import Image, UnidentifiedImageError
 from transformers import AutoImageProcessor, AutoModel
 
 from acquisition.artifact import MediaArtifact
+from fingerprinter.hub_offline import hub_offline
 from embedding.config import IMAGE_SAMPLING_CONFIG, PreprocessingConfig, SamplingConfig, SegmentSamplingConfig
 from embedding.errors import (
     DeviceUnavailableError,
@@ -110,12 +111,15 @@ class DINOv2EmbeddingEngine:
 
         load_start = time.monotonic()
         try:
-            self._processor = AutoImageProcessor.from_pretrained(
-                model_id, revision=model_revision, local_files_only=local_files_only
-            )
-            self._model = AutoModel.from_pretrained(
-                model_id, revision=model_revision, local_files_only=local_files_only
-            )
+            # local_files_only alone still lets huggingface_hub fetch its agent-detection
+            # registry while building request headers; see fingerprinter/hub_offline.py.
+            with hub_offline(local_files_only):
+                self._processor = AutoImageProcessor.from_pretrained(
+                    model_id, revision=model_revision, local_files_only=local_files_only
+                )
+                self._model = AutoModel.from_pretrained(
+                    model_id, revision=model_revision, local_files_only=local_files_only
+                )
         except (OSError, ValueError) as exc:
             hint = (
                 " (local_files_only=True and weights are not cached locally — "

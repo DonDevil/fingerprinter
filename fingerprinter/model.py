@@ -13,14 +13,13 @@ switch to CPU ever happens here.
 
 from __future__ import annotations
 
-import contextlib
-import os
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
 
 from fingerprinter.errors import DeviceError, FingerprinterError
+from fingerprinter.hub_offline import hub_offline as _hub_offline  # noqa: F401 (re-export used by tests)
 from fingerprinter.spec import MODEL_ID, MODEL_REVISION
 
 
@@ -34,37 +33,6 @@ class CudaUnavailableError(FingerprinterError):
 
 class OutOfMemory(FingerprinterError):  # noqa: N818 - mirrors torch's name
     pass
-
-
-@contextlib.contextmanager
-def _hub_offline(enabled: bool) -> Iterator[None]:
-    """Make huggingface_hub fully offline for the duration of a model load.
-
-    ``local_files_only=True`` only stops *file resolution* from hitting the Hub.
-    huggingface_hub >= 1.x additionally builds a User-Agent for every request
-    helper, which (unless ``HF_HUB_OFFLINE`` is set) fetches
-    ``GET {endpoint}/api/agent-harnesses`` (AI-agent detection registry) -- an
-    unintended network dependency observed in the 2026-11-16 Blast test. The
-    flag is read from ``huggingface_hub.constants`` at import time, so both the
-    env var and the already-imported constant are set, then restored.
-    """
-    if not enabled:
-        yield
-        return
-    from huggingface_hub import constants
-
-    old_env = os.environ.get("HF_HUB_OFFLINE")
-    old_const = constants.HF_HUB_OFFLINE
-    os.environ["HF_HUB_OFFLINE"] = "1"
-    constants.HF_HUB_OFFLINE = True
-    try:
-        yield
-    finally:
-        constants.HF_HUB_OFFLINE = old_const
-        if old_env is None:
-            os.environ.pop("HF_HUB_OFFLINE", None)
-        else:
-            os.environ["HF_HUB_OFFLINE"] = old_env
 
 
 def l2(v: np.ndarray) -> np.ndarray:

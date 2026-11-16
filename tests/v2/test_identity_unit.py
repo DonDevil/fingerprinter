@@ -207,7 +207,10 @@ def test_preprocess_vs_hf_bit_image_processor_tolerance():
 
     from fingerprinter.spec import MODEL_ID, MODEL_REVISION
 
-    proc = AutoImageProcessor.from_pretrained(MODEL_ID, revision=MODEL_REVISION, local_files_only=True)
+    from fingerprinter.hub_offline import hub_offline
+
+    with hub_offline(True):
+        proc = AutoImageProcessor.from_pretrained(MODEL_ID, revision=MODEL_REVISION, local_files_only=True)
     rng = np.random.default_rng(7)
     diffs = []
     for h, w in ((240, 320), (720, 1280)):
