@@ -2165,3 +2165,21 @@ No source change is needed for A or B.
 (2) Expected vector count for the 121.1 s copy is 25, not 24 (segments of 5 s from the first decoded pts, 1 frame each) (I).
 
 **Not tested:** everything past the read-only checks above. **Readiness: BLOCKED pending the owner's decision between A and B.**
+
+### 13.37 Distinct-copy Blast test executed in an isolated keyspace (2026-11-16/17) — PASS (experimental matching path)
+
+Executed as designed in §13.36 option B. Labels: V verified. Full report, commands, monitoring series and snapshots (outside git): `artifacts/live-validation/blast-distinct-copy/20261116T130218Z/` (`REPORT.md`). Technique 2.1 remains `UNAVAILABLE`; this validates neither calibrated detection, `match.found` publication nor evidence.
+
+**Isolation (V).** Keyspace `fingerprinter_blast_20261116`, Redis prefix `fpblast20261116:`, Qdrant prefix `fpblast1116`, buckets `fp-blast20261116-*`, ledger instance `blast-20261116`; the live keyspace (47 tables, row digests), live Qdrant collections and live buckets are identical before and after. `redis.stream_prefix` is a single setting that carries intake input and all outputs, so it had to stay `events:`; output isolation is two independent holds: `publish_if_calibrated` returns before building any event for an UNAVAILABLE version (every `match.found` path uses it), and the isolated `stream_registry` row for `match.found.v1` has no required consumer (held). `XLEN events:match.found.v1` 0 before, during (30 s sampling) and after. The isolated target's own `representation.ready` stays held (no reconciler was run); only the copy's ready event was published.
+
+**Pipeline (V).** Original re-registered as `tgt_01a1e475…` (CPU, ~10 min): 1,700 segments, 768-d, norms 1±1.2e-7, artifact SHA-256 read-back equal. `intake init --from-now` (once, before the stream existed): 0 gaps. Copy: `med_d254ad5c…`, `cnt_ba949f10…` (≠ `cnt_798f…`; N-13 did not exclude it), `rep_85482584…`: 25 segments × 768, artifact digest verified. Indexes: target 1,700 pts, media 1,725 pts, manifests equal, 0 orphans/stale.
+
+**Temporal alignment (V).** `temporal/v2` derives offset modes from `pts_s`, so the zero-based remuxed excerpt aligns without absolute timestamps; it recovered media 0.104 s ↔ target 1,200.0 s.
+
+**Matcher (V).** Task `media_vs_targets` DONE: 25 queries, 21 hits, 1 candidate, search complete; verdict `confirmed`, score 5.9579 (τ_c 3.80); runs (0.104→1200.0, 35 s), (45.104→1245.0, 30 s), (95.104→1295.0, 25 s). Row `mat_d29fdb91…`, `confidence`/`calibration_id`/`event_id`/`published_at` null, provenance `calibration_status=UNAVAILABLE`; `match summary` unpublished 1. A stream-copy excerpt is the easy case: this says nothing about recall on re-encodes.
+
+**Resources (V).** CPU 95 °C sustained during the CPU target encode, 97 °C in one sample (never 5 consecutive); MemAvailable ≥ 10 GiB; GPU unused; 0 restarts.
+
+**Anomalies.** The CPU encoder made an outbound HTTPS request to huggingface.co at model load despite `encoder.local_files_only=true` (U: not investigated). `~6 h` of the run was idle because of an operator wait-condition error, with no data effect.
+
+**Reproduce.** Source `test-env.sh` from the artifact directory (isolated names), then `migrate`, `runtime init-profile`, `spec add --builtin dinov2-seg/2` + `set-default`, `matcher migrate`, `match params-register --version 2.1 --from benchmarks/p10-index/results/tune-eval.json` (status UNAVAILABLE), `index init`, `target register`, `encoder run --device cpu`, `index rebuild --role target|media --promote`, `intake init --from-now` before the crawl, then crawler2 roles per its §12, `intake run`, `scheduler run`, `encoder run` (loopback exemption on that process only), `matcher reconcile --once`, `matcher run --until-idle`. Never `publish-held`.
