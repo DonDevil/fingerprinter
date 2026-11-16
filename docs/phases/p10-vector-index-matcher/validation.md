@@ -2107,3 +2107,61 @@ Points 1–4 can be exercised now; 5–9 are blocked by calibration (or an owner
 Source-code changes: **none justified by the evidence.** `equiv/v1` vs `v2` and 1 s sampling are O-2 and independent of 2.1.
 
 **Readiness: REMEDIATION REQUIRED** (root cause established; data work and owner decisions remain).
+
+### 13.36 Distinct-copy Blast test: safety investigation of intake, SSRF, held decisions (2026-11-16) — read-only, nothing executed
+
+Labels: **V** verified in code or by a read-only command this pass; **I** inferred; **U** unverified. No state was changed: no intake
+init, no seed, no service, no match row, no event, no calibration or source change. The only artefact created is the distinct copy
+(outside git; see the crawler2 P14 `validation.md` §11 for its identity and the seed/scope findings).
+
+**Intake initialisation (`intake.py` `Intake.init`).**
+- V: it writes one Scylla row, `intake_state` (reader `encode-requested`, keyspace `fingerprinter`) with `IF NOT EXISTS`: `owner null, epoch 0,
+  cursor_id, consumed_ordinal, mode RUNNING, initialized_at, init_mode`, plus an audit row. `--from-now` additionally writes one `intake_gaps` row
+  (state `CLOSED_ACCEPTED`) **only if** the stream already holds entries (`ordinal > 0`). The cursor is **groupless** and per reader (ADR-025); no Redis
+  consumer group is created and no other consumer, stream or keyspace is touched. It reads `events:encode.requested.v1` only.
+- V (read-only): that stream does **not exist** in Redis today; `intake_state` has 0 rows, `intake_gaps` 0 rows. So `--from-now` would store
+  `cursor null, ordinal 0`, record **no gap** and skip nothing; it is equivalent to `--from-start` here (the stream's first entry will be read).
+- V: not reversible through the CLI: a second `init` is refused (`already initialized`); `reinit` works only from `HALTED(stream_reset)`; there is no
+  delete command. Removing the row by hand is outside the allowed operations. Consequence to accept: the keyspace's intake stays initialised.
+- Isolation: a second keyspace has its own `intake_state` row, but see "Isolation options" for why it is not free.
+- Verdict: **SAFE** for the live keyspace (additive, one row, skips no events), **irreversible** by supported means.
+
+**SSRF settings (verified in-process with `env -i`, no service).**
+- V: `CRAWLER2_WORKERS__FETCH__SSRF_ALLOWED_NETWORKS=127.0.0.1/32` → `workers.fetch.ssrf_allowed_networks`; `CRAWLER2_MEDIA__SSRF_ALLOWED_NETWORKS=127.0.0.1/32` →
+  `media.ssrf_allowed_networks`; `FINGERPRINTER_ACQUIRE__SSRF_ALLOW_CIDRS=127.0.0.1/32` → `Settings.acquire.ssrf_allow_cidrs` (`config.py`: `FINGERPRINTER_` + `__` path,
+  comma-split for list fields, depth ≤ 2). Defaults are empty. crawler2 with `CRAWLER2_ENVIRONMENT=prod` and a non-empty list is **rejected** at start-up
+  (`settings.py:596-605`). Exemption is a per-process environment value; no file is read or written; `crawler2/.env` contains none of the names, and
+  `scripts/p9-env.sh` sources that file, so nothing leaks unless exported. `127.0.0.1/32` does not cover `::1`, `localhost` by IPv6 or `127.0.0.2`.
+- V (caveat, **not NOT-VERIFIED but a gap**): the fingerprinter has **no environment concept and no production rejection** of `acquire.ssrf_allow_cidrs`; the only protection is
+  that it is not set. It must be set only on the one acquiring process (the encoder).
+- Verdict: **VERIFIED**.
+
+**Held decisions can be released later (`matching.py`, `confidence.py`, `p10db.py`).**
+- V: `matches` PK = `(content_id, target_id, target_version, media_spec_digest, target_spec_digest, technique_name, technique_version)`; the row stores
+  `verifier_params_digest` and `exclusion_digest` but **no calibration record and no status**: `confidence`/`calibration_id` are written at publication time
+  (`UPDATE … IF calibration_id = null`).
+- V: `publish_if_calibrated` and `publish_held` test the **current** `Technique.status` of that version, read from `verifier_params` (mutable column
+  `calibration_status`; parameters immutable). So a held 2.1 decision **becomes publishable if 2.1 is later set to CALIBRATED** (`set_calibration`, an audited LWT; **no CLI
+  calls it**, only code/the remediation plan) by `match publish-held --version 2.1`, by the reconciler's `match_intents` pass (`resolve_intent`) or by a re-commit.
+  Confidence would then be computed from the then-current calibrator for a decision made earlier.
+- V: a **new** version (2.2, new parameters) gives new `match_id`s; 2.1 rows then stay held (`publish_held` filters on the version; nothing calls it for 2.1 unless 2.1 is
+  CALIBRATED).
+- V: no experimental/test/non-publishable classification exists (grep). `match summary` reports only an `unpublished` count; `match show` returns raw rows with
+  `verdict` (can read `confirmed`) and `score`, `confidence` null. crawler2 never reads the fingerprinter keyspace; its feedback and evidence consumers act only on
+  `match.found.v1` events, so no crawler2 report can show an unpublished decision. The fingerprinter CLI labelling gap is a **documentation/UX issue, not changed**.
+- V: live Redis already has consumer groups `crawl-feedback` and `evidence-collector` on `events:match.found.v1` (§10 of `p10-matcher.md`), so the "no group" hold would **not** stop a release.
+- Verdict for the live keyspace: **UNSAFE as a permanent state unless the owner accepts the residual risk** (the stored decision for a loopback copy of Blast could be released by a
+  future calibration of the same version); **SAFE today** (2.1 UNAVAILABLE; nothing publishes).
+
+**Isolation options (supported mechanisms only; none executed).**
+| Option | What | Effect on the residual risk | Cost / caveat |
+|---|---|---|---|
+| A live keyspace `fingerprinter` | as the P14 §10 design | decision stays releasable by a later 2.1 calibration | cheapest; reuses the verified Blast index (1,700 vectors); needs owner acceptance |
+| B throw-away fingerprinter keyspace (as `fingerprinter_it_*` tests do) with own `collection_prefix`, MinIO buckets, Redis `prefix`; no consumer registered; 2.1 registered UNAVAILABLE there | decision can never be released by anything run against the live keyspace; `publish-held` there refuses and no consumer group exists | needs the Blast **target registered again** in that keyspace (encodes the whole file again: 1 frame per 5 s segment ⇒ ~1,700 frames, I: minutes of CPU inference plus a full HEVC decode of 8,495 s, U: not timed); the original target and index are untouched but are not the ones retrieved; stream prefix must stay `events:` for intake to read crawler2's `encode.requested.v1` (**I**), so the isolated publisher would share the `events:` stream names but is held by its own registry |
+| C a new version (2.2) | none for this test | creates no release path for 2.1 rows; changes parameters or calibration inputs, so it is a calibration/matcher change | not allowed by the test rules |
+No source change is needed for A or B.
+
+**Corrections to the earlier plan.** (1) A relay is required: `crawler2-storage relay` (outbox → `events:*`); the resolver also waits `events.relay_settle_s` (10 min) before it reads a bucket (I).
+(2) Expected vector count for the 121.1 s copy is 25, not 24 (segments of 5 s from the first decoded pts, 1 frame each) (I).
+
+**Not tested:** everything past the read-only checks above. **Readiness: BLOCKED pending the owner's decision between A and B.**
