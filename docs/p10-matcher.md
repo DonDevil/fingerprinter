@@ -266,3 +266,13 @@ for Blast (`evt_01a1dfb8…`, held since registration) was then published by
 (operator-originated, no causing event). The P9 streams `representation.ready.v1`
 and `encode.failed.v1` stay held until crawler2's `media-registry` group exists
 (created by `crawler2-media representations run`).
+
+## 11. Why technique 2.1 is `UNAVAILABLE` (investigation 2026-11-16)
+
+Root cause, requirement table, dataset audit, acceptance points and remediation plan:
+[`validation.md` §13.35](phases/p10-vector-index-matcher/validation.md) (the canonical record). Summary: the status is
+persisted at `match params-register` from `results/tune-eval.json`; 4 of 5 reliability bins fail the §3.3 film-level
+bootstrap check on a population with 1 false confirmation in 877. The 0.760 equivalence recall is a separate gate
+(P10-T4) and does not influence it. UNAVAILABLE does not stop the matcher deciding: decisions are stored with
+`published_at = null`; only `match.found` is held. Not tested: any positive decision on a distinct copy.
+

@@ -1962,3 +1962,148 @@ loopback). Full procedure and numbers: [`docs/p10-matcher.md`](../../p10-matcher
 - Operational finding fixed in the repository: `deploy/qdrant/.env` (API key) had been committed in
   `3018d7b` although this document and `deploy/qdrant/compose.yaml` say it is untracked. It is now untracked
   and ignored, the key was rotated, and the compose file has a health check.
+
+### 13.35 Root cause of technique 2.1 `UNAVAILABLE`; dataset audit; remediation plan (2026-11-16) — investigation only
+
+Read-only investigation at fingerprinter `05a45bd`. **No source, threshold, dataset, calibration record, index or
+keyspace was changed; nothing was re-run; no gate changes.** Labels: **V** verified in this pass (code read, stored
+result read, or read-only query), **I** inferred from code/docs, **U** untested, **H** hypothesis.
+
+#### 13.35.1 Exact availability decision path (V)
+
+1. `benchmarks/p10-index/tune_eval.py` computes the status once, offline:
+   `status = "CALIBRATED" if fitted and rel.get("pass") else "UNAVAILABLE"` (`fitted` = method is isotonic/Platt;
+   `rel` = `reliability()` on the pooled **outer held-out** predictions). It is written to
+   `results/tune-eval.json` → `calibration.status`.
+2. `python -m fingerprinter match params-register --version 2.1 --from results/tune-eval.json` →
+   `confidence.params_from_tune_eval()` copies `calibration.status` verbatim and `Techniques.register()` inserts the
+   immutable `verifier_params` row (`IF NOT EXISTS`) with `calibration_status`, `calibration_id`.
+3. The status is **persisted state, not recomputed at run time**. Live read (read-only CQL, keyspace `fingerprinter`):
+   `dinov2-seg-temporal 2.1`, `calibration_status = UNAVAILABLE`, `calibration_id = null`, params digest
+   `377167ec707d48a9…` (equal to `tune-eval.json`), registered 2026-11-15 16:10:53 UTC by the operator. `matches`
+   holds 0 rows.
+4. Enforcement is in exactly one place: `matching.py` `publish_if_calibrated()` (and `publish_held()`):
+   `if tech.status != CALIBRATED: … return "held_uncalibrated"`. `Technique.confidence()` returns `None` unless
+   CALIBRATED, so no probability is fabricated. Only `set_calibration()` (audited, `IF calibration_status = expected`)
+   can change the row.
+5. **Correction to a common reading:** UNAVAILABLE does **not** stop the matcher from deciding. `commit()` persists
+   the verified decision in `matches` (`published_at = null`) and *then* calls `publish_if_calibrated()`. What cannot
+   exist is a *confidence* and a **published `match.found`**. The index, runtime profile, registry and indexer play no
+   part in the decision.
+
+#### 13.35.2 Availability requirements (only those that exist)
+
+| Requirement | Expected | Actual | Source | Result |
+|---|---|---|---|---|
+| Calibration status | `CALIBRATED` | `UNAVAILABLE`, `calibration_id` null | live `verifier_params`; `results/tune-eval.json` | **FAIL** |
+| Isotonic data minimum (§3.3) | ≥ 50 +, ≥ 50 −, ≥ 5 films, ≥ 10 − above τ_p | 1,078 +, 2,104 −, 7 films, 20 − above τ_p | `tune-eval.json` `calibration.final_data` | PASS |
+| Brier ≤ constant-prevalence predictor | ≤ 0.22401 | 0.08022 | `outer_reliability` | PASS |
+| Brier ≤ min-max raw score | ≤ 0.29716 | 0.08022 | `outer_reliability` | PASS |
+| Every bin with ≥ 10 examples: observed ∈ film-bootstrap 95 % CI of mean predicted | all bins | **4 of 5 fail** (below) | `outer_reliability.bins` | **FAIL — the gate** |
+| ECE | no universal threshold (§3.3) | 0.0956 | `outer_reliability` | informational |
+| Equivalence recall (P10-T4) | not an input | 0.760 | — | **not a condition** (see §13.35.4) |
+| Dataset availability | inputs of `tune_eval.py` | `l-pairs`, `reel` manifests present and **hash-equal** to the recorded ones; `soak-1000/manifest.json` **absent** locally; `vectors/soak-1000` present (1,000 `.npz`) | `datasets/` vs `manifests_sha256` | re-run blocked here (not the cause of the status) |
+| Technique configuration / runtime / matcher admission | registered, digest verifies | registered; digest verifies | live row | PASS |
+
+Failing bins (outer held-out pooled, n = 3,182 proposed pairs, 5 equal-mass bins): mean predicted / observed /
+bootstrap interval of mean predicted: 0.1144 / 0.0848 / [0.10, 0.1429] **fail**; 0.2221 / 0.0502 / [0.1429, 0.25]
+**fail**; 0.2723 / 0.0912 / [0.25, 0.2857] **fail**; 0.564 / 0.4701 / [0.4597, 0.8143] pass; 0.9999 / 0.9984 /
+[0.9995, 1.0] **fail**.
+
+#### 13.35.3 Blocker classification
+
+- **Primary (V): calibration metric below acceptance — reliability bins.** Everything else in §13.35.2 passes. This
+  is a property of the labelled calibration population, not of the matcher, index or any threshold.
+- **Cause of the primary blocker (V, from §13.22/§13.28 and the stored bins):** the calibration map is fitted over
+  *all* proposed, verified pairs, whose predictions fall in the low bins (0.11–0.27) where observed frequencies
+  are 0.05–0.09; the population has 1 false confirmation among 877 confirmed decisions, so there is no signal to
+  calibrate the confidence that would be published. Final τ_c = τ_p = 1.0 (no training negative forms a
+  qualifying run). Only 7 films, all animated, one reel.
+- **Observation (V, from the stored bins), not a recommendation:** the top bin fails by 0.0011 (observed 0.9984,
+  interval lower bound 0.9995) because the film-level bootstrap interval of a near-1.0 mean is nearly degenerate.
+  Whether the acceptance statistic should treat this bin differently is an owner decision (O-3); changing it would
+  change the gate and is **not proposed here**. Even if that bin passed, three low bins still fail.
+- **Secondary (V): evidence not reproducible on this machine** — `soak-1000/manifest.json` is not local
+  (`tune_eval.py` `load_nsoak` needs it; its SHA-256 is recorded as `ed3bfd8d…8213`). It is a small file; the large media
+  were moved, the vectors are here. Not a cause of `UNAVAILABLE`.
+- **Not blockers (V):** missing datasets for the persisted status, invalid manifests, stale output, version/schema
+  mismatch, missing configuration, runtime incompatibility, matcher admission, software defect (the check
+  implements §3.3 literally and reproduced bit-identical, §13.22).
+- **Open meaning (O-3):** "proposed, verified match" = all verified candidates (current) or confirmed decisions only
+  (diagnostic restriction: 877 decisions, 876 true; Brier 0.0088 vs constant 0.0011 — also fails). Needs an owner decision.
+
+#### 13.35.4 The 0.760 equivalence recall is a different gate (V)
+
+`228/300 = 0.760` is `equiv/v1` level-5 equivalence recall on **E-SET** (160 items, 20 excerpts × 8 variants;
+300 equivalent pairs, 12,420 negatives; 0 false links), reproduced from stored outputs
+(`results/e-set-offline.json`, `e-set.json`: offline and live both 228/300, Wilson 0.709–0.805). The metric is
+computed correctly. It gates **P10-T4** (M3), not technique 2.1: `confidence.py` has no equivalence input, and
+equivalence runs as a separate task kind (`KIND_EQ`). It cannot make 2.1 UNAVAILABLE and fixing it would not make 2.1
+CALIBRATED. Misses are a data/sampling-density limit, not a threshold: every miss fails the ≥ 0.90 coverage rule;
+recall by variant: `h264-400k` 0.52, `vp9` 0.74, `fmp4-1s/2s` 0.82, `h264-3m` 0.83, `remux-mkv` 0.83; 63 of 72
+misses involve `h264-400k`/VP9; scene-cut straddling after fMP4 remux is removed at 1 s sampling. Best measured: `equiv/v2`
+280/300 (0.933), 1 s test spec 286/300 (0.953); none reaches 1.0 (§13.19, §13.27; owner decision O-2). Per-pair
+miss lists are in the (outside git) run logs; per-pair attribution beyond the variant table was **not** re-derived.
+
+#### 13.35.5 Dataset suitability (V: manifests/indices read; no media decoded, nothing counted by decoding)
+
+| Dataset (under `~/anti_piracy/datasets/`) | Available | Relevant to 2.1 calibration | Labels | Manifest | Classification | Missing |
+|---|---|---|---|---|---|---|
+| `p9/l-pairs` (real, 187 items, 7 S-SRC films; 480 pairs / 150 + in tune-eval) | yes | yes — calibration population | provenance (`l-pairs.csv`) | valid, hash-equal | **Suitable as-is** (already used) | hard negatives reaching confirmation; film diversity |
+| `p9/reel`, `p9/s-src` | yes | source/provenance | provenance | valid, hash-equal (reel) | Suitable as-is (provenance inputs) | — |
+| `p10/vectors/soak-1000` (6,092 pairs, 929 +) | vectors yes; media moved off; **manifest absent** | yes — N-SOAK population | derived from provenance | **absent locally** | **Suitable after a defined step**: restore `p9/soak-1000/manifest.json` (hash `ed3bfd8d…`) | the manifest file |
+| `p9/c-prec` (63 items, encoder-precision matrix) | yes | no (P9 encoder precision) | no pair labels for 2.1 | valid | Useful only for diagnostics | — |
+| `p9/synthetic-mini` (66 items) | yes | no | synthetic | valid | Not suitable (synthetic; must not enter real evaluation) | — |
+| `p10/e-set` + `vectors/e-set` (160 items, 300 eq / 12,420 non-eq pairs) | yes | equivalence (P10-T4) only | provenance | valid | Suitable as-is for T4; **not for 2.1** (no matching-confirmation negatives) | — |
+| `p10/e-tune` + `vectors/e-tune` (160 items, 5 films, disjoint from E-SET) | yes | equivalence tuning only | provenance | valid (`avoided` field holds the other machine's path: provenance text only) | Suitable for T4 tuning only | — |
+| `p10/p8-set` (5 items, 10 pairs) | yes | no | provenance | valid | Useful only for diagnostics | — |
+| `vectors/*-dense1` | yes | test spec (1 s), not production spec | — | — | Diagnostics only | — |
+
+**Combination:** the film-grouped calibration population (L-PAIRS ∪ N-SOAK) and E-SET/E-TUNE all derive from the
+same 7 openly licensed films, so they are **not independent**: merging them adds no new film (the grouping unit) and
+would leak across folds if E-SET excerpts were placed in different groups than their source film. They use the
+same spec (`dinov2-seg/2`, 768-d, L2-normalised), so there is no embedding mismatch. Synthetic must stay out.
+**The existing data cannot satisfy the reliability check** (that needs data that does not exist: hard negatives that
+reach confirmation; more films; live action). That is the exact additional data required; none was generated.
+
+#### 13.35.6 Calibration pipeline and commands (V from CLI/code; **not executed** here)
+
+| Command | Reads | Writes | Destructive | Cost / safe here |
+|---|---|---|---|---|
+| `env/bin/python benchmarks/p10-index/tune_eval.py --data ~/anti_piracy/datasets/p9 --vectors ~/anti_piracy/datasets/p10/vectors --out <new path>` | manifests, cached vectors (no Qdrant/GPU) | the `--out` JSON only (**use a new path; do not overwrite `results/tune-eval.json`**) | no, if `--out` is new | ~203 s, CPU (`OMP_NUM_THREADS=1`); ~0.3 GB vectors; **fails today** on the missing soak manifest |
+| `match params-register --version <new> --from <json>` | JSON | one immutable `verifier_params` row (new version ⇒ new `match_id`s) | no (insert-only) | trivial; changes live state ⇒ approval |
+| `match status|summary|show` | Scylla | nothing | no | trivial |
+| `match publish-held --version V` | `matches` | publishes held rows | **outward-facing** | refused unless CALIBRATED |
+
+Selection and calibration are film-grouped nested leave-one-film-out (§3.1); train/validation/test separation is by
+film; the result is persisted by `params-register`; status is set at registration (§13.35.1).
+
+#### 13.35.7 Positive-match acceptance points (V from code; none exercised on a copy)
+
+Separate points, each verified independently:
+
+| # | Point | Expected state | How to verify |
+|---|---|---|---|
+| 1 | Candidate retrieved | direction A task for the copy's rep: candidates > 0 with Blast target | `match show --content <cnt>`; task `DONE`, candidate rows |
+| 2 | Preliminary filtering | hit's payload `cid` ≠ own content id (N-13 holds for a different content id), floor/min-hits met | candidate state `VERIFIED` |
+| 3 | Calibrated-technique verification (`temporal/v2`: s_seg 0.80, s_mean 0.85, L 2, phase 2.5 s, gap 1) | verdict `confirmed` | `matches.verdict`, `score`, `alignment` |
+| 4 | Match row persisted | `matches` row, `published_at` null while UNAVAILABLE | `match summary` → `unpublished` |
+| 5 | `match.found.v1` built/published | **only when CALIBRATED** (envelope + `event_id` + `published_at`) | `events:match.found.v1` length; row `published_at` |
+| 6 | Delivered to crawler2 | groups `crawl-feedback`, `evidence-collector`: pending 0, lag 0 | `XINFO GROUPS` |
+| 7–9 | Evidence triggered / metadata persisted / object stored and integrity-verified | crawler2 side: see crawler2 `docs/phases/p14-production-hardening/validation.md` §10.4 | `crawler2-evidence show/validate` |
+
+Points 1–4 can be exercised now; 5–9 are blocked by calibration (or an owner decision).
+
+#### 13.35.8 Remediation (nothing started; each item needs approval where marked)
+
+| Pri | Category | Action | Dependency | Outcome | Risk |
+|---|---|---|---|---|---|
+| 1 | Owner decision | O-3: calibration population meaning; whether the §3.3 acceptance rule stands as written | none | unblocks choosing 2 vs 3 | altering the gate is a threshold change — explicit approval |
+| 2 | Data | restore `soak-1000/manifest.json` (hash `ed3bfd8d…`) from the off-machine copy | access | `tune_eval.py` reproducible locally | none (read-only file) |
+| 3 | Data | new labelled data: hard negatives that reach confirmation, additional films incl. live action, licences recorded | owner; licence review | a population that can calibrate | effort; correlated clips |
+| 4 | Calibration | re-run `tune_eval.py` to a **new** `--out`, register a **new** technique version | 2, 3 | 2.1 stays as is; new version gets its own status | new `match_id`s; held rows of 2.1 are not carried |
+| 5 | Integration | distinct-copy test (crawler2 doc), points 1–4 now, 5–9 after 4 | crawler2 §10 | stored positive decision | the stored decision for the test copy is append-only and cannot be deleted; if 2.1's status were ever changed to CALIBRATED (only via the audited `set_calibration`, an owner decision), `publish-held --version 2.1` would release it as a real `match.found` — run it only where that is acceptable |
+
+Source-code changes: **none justified by the evidence.** `equiv/v1` vs `v2` and 1 s sampling are O-2 and independent of 2.1.
+
+**Readiness: REMEDIATION REQUIRED** (root cause established; data work and owner decisions remain).
