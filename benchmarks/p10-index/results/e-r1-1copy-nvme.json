@@ -1,0 +1,167 @@
+{
+ "N": 104443,
+ "P_test": 1330000,
+ "R_req": 234109,
+ "base_vectors": 104443,
+ "benchmark": "E-R1",
+ "copies": 1,
+ "error_count": 0,
+ "errors": [],
+ "gate_eligible": true,
+ "host": "<host>",
+ "live_write_latency_ms": {
+  "n": 1418,
+  "p50": 10.207,
+  "p95": 35.598,
+  "p99": 67.744
+ },
+ "measured_max_resident_total": 234222,
+ "memory": {
+  "anon_peak_bytes": 469069824,
+  "anon_peak_gib": 0.4369,
+  "by_phase": {
+   "1-build-g1": {
+    "anon_peak": 350638080,
+    "current_peak": 1610612736,
+    "file_peak": 1242746880
+   },
+   "2-warm": {
+    "anon_peak": 223535104,
+    "current_peak": 1109405696,
+    "file_peak": 855613440
+   },
+   "3-rebuild": {
+    "anon_peak": 469069824,
+    "current_peak": 1610612736,
+    "file_peak": 1275514880
+   },
+   "5-steady": {
+    "anon_peak": 222064640,
+    "current_peak": 772435968,
+    "file_peak": 529108992
+   }
+  },
+  "limit_bytes": 1610612736,
+  "memory_peak_bytes": 1610842112,
+  "oom_kill": 0
+ },
+ "memory_limit_is_gate_limit": true,
+ "pass": false,
+ "pass_rules": {
+  "anon_peak_le_1_35_gib": true,
+  "completed": true,
+  "exact_counts_equal_at_boundaries": true,
+  "no_oom_kill": true,
+  "phase3_reached_R_req": true,
+  "query_p95_le_10ms_phases_2_3_5": false
+ },
+ "phases": {
+  "1": {
+   "boundary": {
+    "equal": true,
+    "exact": {
+     "g1": 104443,
+     "media": 10000
+    },
+    "harness": {
+     "g1": 104443,
+     "media": 10000
+    },
+    "total": 114443
+   },
+   "du_bytes": 1284671193,
+   "index_green_s": 6.0,
+   "ingest_s": 50.9
+  },
+  "2": {
+   "boundary": {
+    "equal": true,
+    "exact": {
+     "g1": 104443,
+     "media": 10000
+    },
+    "harness": {
+     "g1": 104443,
+     "media": 10000
+    },
+    "total": 114443
+   },
+   "seconds": 13.6
+  },
+  "3": {
+   "boundary": {
+    "equal": true,
+    "exact": {
+     "g1": 112111,
+     "g2": 112111,
+     "media": 10000
+    },
+    "harness": {
+     "g1": 112111,
+     "g2": 112111,
+     "media": 10000
+    },
+    "total": 234222
+   },
+   "du_bytes": 1633171657,
+   "g2_green_s": 8.0,
+   "g2_ingest_s": 55.1,
+   "reached_R_req": true,
+   "resident_reached": 234222,
+   "seconds": 709.0
+  },
+  "4": {
+   "boundary": {
+    "equal": true,
+    "exact": {
+     "g2": 112111,
+     "media": 10000
+    },
+    "harness": {
+     "g2": 112111,
+     "media": 10000
+    },
+    "total": 122111
+   },
+   "du_bytes": 942824069
+  },
+  "5": {
+   "boundary": {
+    "equal": true,
+    "exact": {
+     "g2": 112111,
+     "media": 10000
+    },
+    "harness": {
+     "g2": 112111,
+     "media": 10000
+    },
+    "total": 122111
+   },
+   "seconds": 300.0
+  }
+ },
+ "qdrant_version": "1.15.1",
+ "queries": 760,
+ "query_latency": {
+  "2-warm": {
+   "n_after_warmup": 0,
+   "p50_ms": null,
+   "p95_ms": null,
+   "p99_ms": null
+  },
+  "3-rebuild": {
+   "n_after_warmup": 6482,
+   "p50_ms": 9.179,
+   "p95_ms": 23.3,
+   "p99_ms": 37.8
+  },
+  "5-steady": {
+   "n_after_warmup": 2402,
+   "p50_ms": 8.553,
+   "p95_ms": 10.111,
+   "p99_ms": 10.803
+  }
+ },
+ "samples": 1081
+}
