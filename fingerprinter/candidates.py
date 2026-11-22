@@ -33,6 +33,12 @@ from fingerprinter.verify import Vectors
 from fingerprinter.vindex import TARGET, SearchRequest
 
 
+# FP-05: the only payload keys a candidate-search hit is read for (grouping, spec/own-subject filtering, Group.meta,
+# per-hit low-information exclusion). The stored payload also holds "t" and "lowinfo_rev", which no consumer of
+# a search hit reads; they are simply not returned. Missing keys are tolerated (readers use ``.get``).
+CANDIDATE_PAYLOAD_FIELDS: tuple[str, ...] = ("rep", "cid", "trep", "tid", "tver", "seq", "k", "spec", "lowinfo")
+
+
 class SearchStepAbandonedError(Exception):
     """The step's deadline passed before every query was sent; repeat it with a fresh pointer."""
 
@@ -113,7 +119,8 @@ class Searcher:
         while active:
             if time.monotonic() > deadline:
                 raise SearchStepAbandonedError(f"search step past its deadline after {queries} queries")
-            reqs = [SearchRequest(vector=query.vectors[i], limit=k) for i in active]
+            reqs = [SearchRequest(vector=query.vectors[i], limit=k, payload_fields=CANDIDATE_PAYLOAD_FIELDS)
+                    for i in active]
             self.hook("searcher.before_round", kind=kind, k=k, generation=ptr.generation)
             remaining = max(deadline - time.monotonic(), 0.001)
             hits = self.p.index.search_batch(ptr.collection, reqs, hnsw_ef=max(k, ix.search_ef or 0) or None,

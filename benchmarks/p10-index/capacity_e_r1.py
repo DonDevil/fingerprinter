@@ -120,6 +120,9 @@ class Harness:
         self.query_lat: list[tuple[str, float, float]] = []   # (phase, t, seconds)
         self.write_lat: list[tuple[str, float, float]] = []
         self.errors: list[str] = []
+        # FP-05: ``--payload-fields`` limits the payload keys returned by every query; unset = the original
+        # methodology (qdrant-client default, whole payload). Stored payloads and all thresholds are unchanged.
+        self.payload_kw: dict = {}
 
     def log(self, **kw) -> None:
         kw["t"] = time.time()
@@ -195,7 +198,8 @@ class Harness:
             q = Q[int(rng.integers(len(Q)))]
             t0 = time.time()
             try:
-                self.client.query_points(names_of(), query=q.tolist(), limit=100, search_params=params)
+                self.client.query_points(names_of(), query=q.tolist(), limit=100, search_params=params,
+                                         **self.payload_kw)
                 self.query_lat.append((phase_of(), t0, time.time() - t0))
             except Exception as exc:  # noqa: BLE001 - recorded
                 self.errors.append(f"query: {type(exc).__name__}: {exc}"[:300])
@@ -269,6 +273,8 @@ def main() -> None:
     ap.add_argument("--steady-s", type=float, default=300.0)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--samples", type=Path, required=True, help="per-second samples (JSONL, outside git)")
+    ap.add_argument("--payload-fields", help="FP-05 trial: comma-separated payload keys returned by queries "
+                                             "(default: whole payload, the original E-R1 methodology)")
     ap.add_argument("--subset", type=int, help="first N base vectors only: harness check, never a gate")
     a = ap.parse_args()
 
@@ -287,11 +293,14 @@ def main() -> None:
               @ rotation(768, 998)).astype(np.float32)
     req = r_req(N)
     h = Harness(a)
+    if a.payload_fields:
+        h.payload_kw = {"with_payload": [f for f in a.payload_fields.split(",") if f]}
     sampler = Sampler(a.cgroup)
     sampler.start()
     report: dict = {"benchmark": "E-R1", "gate_eligible": not a.subset, "copies": a.copies, "N": N,
                     "base_vectors": len(base), "R_req": req,
-                    "P_test": P_TEST, "queries": len(Q), "qdrant_version": None, "phases": {}}
+                    "P_test": P_TEST, "queries": len(Q), "qdrant_version": None, "phases": {},
+                    "query_payload": a.payload_fields or "whole payload (original methodology)"}
     phase = {"name": "1-build-g1"}
     routed: list[str] = []
     phase_of = lambda: phase["name"]  # noqa: E731
@@ -312,7 +321,7 @@ def main() -> None:
         for _ in range(3):
             for q in Q:
                 s = time.time()
-                h.client.query_points("g1", query=q.tolist(), limit=100, search_params=params)
+                h.client.query_points("g1", query=q.tolist(), limit=100, search_params=params, **h.payload_kw)
                 h.query_lat.append(("2-warm", s, time.time() - s))
         report["phases"]["2"] = {"seconds": round(time.time() - t0, 1), "boundary": h.boundary("2")}
 

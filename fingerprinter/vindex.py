@@ -125,6 +125,9 @@ class SearchRequest:
     ignore_quantization: bool = False
     score_threshold: float | None = None
     must_not: list[dict[str, Any]] = field(default_factory=list)
+    # FP-05: payload keys Qdrant returns with each hit. None = the whole stored payload (legacy behaviour);
+    # a tuple selects only those keys (the stored payload is untouched — this only trims the response).
+    payload_fields: tuple[str, ...] | None = None
 
 
 class VectorIndex(Protocol):
@@ -307,7 +310,8 @@ class QdrantIndex:
             if hnsw_ef is not None and not r.exact:
                 params["hnsw_ef"] = int(hnsw_ef)
             s: dict[str, Any] = {"vector": np.asarray(r.vector, dtype=np.float32).tolist(),
-                                 "limit": int(r.limit), "params": params, "with_payload": True}
+                                 "limit": int(r.limit), "params": params,
+                                 "with_payload": True if r.payload_fields is None else list(r.payload_fields)}
             if r.score_threshold is not None:
                 s["score_threshold"] = float(r.score_threshold)
             if r.must_not:
