@@ -116,6 +116,22 @@ E-R1 rebenchmark (`capacity_e_r1.py --payload-fields …`, same gate) passes; re
 `crawler2/docs/benchmarks/wp1/followup-a15.md`. Methodology note: E-R1 queries over gRPC (`qdrant-client`), production
 `vindex.py` uses REST — a known difference, not changed here.
 
+### 5.2 FP-05 step 2 — floor pushed into Qdrant; CPU reserved for search during rebuild (2026-11-23)
+
+*Previous:* candidate searches fetched `limit` hits (with payload) and the grouping discarded those below `policy.floor`; the E-R1
+rebuild phase let Qdrant use both container CPUs for HNSW building. *New:* (a) `candidates.py` sends
+`score_threshold=policy.floor` (field already in `SearchRequest`/`vindex.py`), so Qdrant returns, and reads payload for, only hits at/above the floor.
+Recall is unchanged: the grouping already `break`s at the first hit below the floor, and the escalation test
+`len(h) >= k and h[-1].score >= floor` is equivalent (all returned hits are ≥ floor). `hits` in the stats/`P10_ANN_HITS` now counts only hits
+≥ floor (it equals `hits_above_floor`). (b) E-R1 harness only (no production default changed): optional `--score-threshold`,
+`--indexing-threads N` (HNSW `max_indexing_threads` and optimizer `max_optimization_threads`). *Evidence:* idle screening at 1× (2 workers × 5 q/s,
+60 s, 2 reps): payload on disk vs `on_disk_payload=false` identical (steady p95 9.7–10.0 vs 9.8–10.0 ms) → the payload cost (≈3.5 ms of ≈7 ms per 100-hit query)
+is per-point CPU work, not I/O; `no payload` p95 3.9 ms; the 0.6 floor removes only ≈10 of 100 hits on this workload (89.7 hits ≥ 0.6) so (a) is worth ≈0.3–0.6 ms.
+*Trade-off:* (b) halves rebuild build parallelism (ingest+green unchanged within noise at 1×: 47.5 s + 6 s). *Tests:*
+`tests/p10/test_fp05_payload_fields.py::test_candidate_search_pushes_the_policy_floor…` (fake index emulating the threshold; asserts threshold sent, escalation 4→8, candidates), live
+`test_r24_qdrant_semantics.py` (threshold semantics, 11 passed with the dev Qdrant). *Rollback:* revert the one-line `score_threshold=` argument; no data migration (stored payloads and collections unchanged).
+*Status:* **FP-05 EXIT GATE NOT MET** — results and the remaining bottleneck in `crawler2/docs/benchmarks/wp1/followup-a15.md` §5.1.
+
 ## 6. Modules
 
 | Module | Responsibility (design §) |
