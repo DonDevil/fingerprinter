@@ -119,7 +119,8 @@ class Searcher:
         while active:
             if time.monotonic() > deadline:
                 raise SearchStepAbandonedError(f"search step past its deadline after {queries} queries")
-            reqs = [SearchRequest(vector=query.vectors[i], limit=k, payload_fields=CANDIDATE_PAYLOAD_FIELDS)
+            reqs = [SearchRequest(vector=query.vectors[i], limit=k, payload_fields=CANDIDATE_PAYLOAD_FIELDS,
+                                  score_threshold=policy.floor)
                     for i in active]
             self.hook("searcher.before_round", kind=kind, k=k, generation=ptr.generation)
             remaining = max(deadline - time.monotonic(), 0.001)
