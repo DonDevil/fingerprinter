@@ -2,3 +2,7 @@ env/
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# secrets / machine-local configuration
+.env
+!.env.example
