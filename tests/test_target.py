@@ -215,7 +215,9 @@ def test_registry_and_cache_work_independently(tmp_path):
         def exists(self, *a, **k):
             return False
 
-    r = Redis.from_url(os.environ.get("FINGERPRINTER_TEST_REDIS_URL", "redis://localhost:6379/15"), decode_responses=True)
+    url = os.environ.get("FINGERPRINTER_TEST_REDIS_URL", "redis://127.0.0.1:16380/15")
+    assert not url.split("/")[2].endswith((":6379", ":16379")), "refusing to FLUSHDB a shared Redis"
+    r = Redis.from_url(url, decode_responses=True)
     r.flushdb()
     try:
         reg = TargetRegistry(r, _NullCache())

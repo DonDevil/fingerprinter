@@ -28,7 +28,7 @@ from target.cli import main
 
 @pytest.fixture(autouse=True)
 def cli_env(monkeypatch, tmp_path, redis_client):
-    redis_url = os.environ.get("FINGERPRINTER_TEST_REDIS_URL", "redis://localhost:6379/15")
+    redis_url = os.environ.get("FINGERPRINTER_TEST_REDIS_URL", "redis://127.0.0.1:16380/15")
     monkeypatch.setenv("REDIS_URL", redis_url)
     monkeypatch.setenv("TARGET_CACHE_PATH", str(tmp_path / "target_cache"))
     monkeypatch.delenv("SHARED_ARTIFACT_STORE_PATH", raising=False)
