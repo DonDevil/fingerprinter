@@ -122,6 +122,37 @@ only with distinct `FINGERPRINTER_INDEX__COLLECTION_PREFIX` values (design
 Exact command lines are in `validation.md` §13. Vector caches, per-pair logs
 and per-second samples stay outside git in `~/anti_piracy/datasets/p10/`.
 
+### 5.1 FP-05 — payload fields returned by searches (approved trial, owner decision 2026-11-22)
+
+*What:* `SearchRequest.payload_fields` (new, default `None` = whole payload as before). `QdrantIndex.search_batch` sends
+`with_payload: [<keys>]` instead of `true` when it is set. Candidate search (`candidates.py`) requests
+`CANDIDATE_PAYLOAD_FIELDS = rep, cid, trep, tid, tver, seq, k, spec, lowinfo`; the low-information witness enumeration
+(`lowinfo.py`) requests `LOWINFO_WITNESS_FIELDS = tid, trep, tver, k`. *Why:* E-R1 diagnostics (§13.20) showed payload
+retrieval as the large per-query cost (all pre-2026-11-22 E-R1 runs were on a USB HDD; the first SSD-class runs are the A15 ones in `crawler2/docs/benchmarks/wp1/followup-a15.md`). *Previous:* every hit returned all 11 stored keys (also `t`, `lowinfo_rev`). *New:* only
+the keys listed above are returned; `t` and `lowinfo_rev` are not read by any search consumer. *Unchanged:* stored payloads,
+collection/index configuration, `index.max_points` (250,000), similarity/acceptance thresholds, the E-R1 gate, `scroll` and
+`retrieve` (still full payload). Missing keys are tolerated (`payload.get`, `or {}`). *Production config:* none changed; the
+default for other callers is unchanged. *Tests:* `tests/p10/test_fp05_payload_fields.py`. *Status:* **FP-05 stays open** until the
+E-R1 rebenchmark (`capacity_e_r1.py --payload-fields …`, same gate) passes; results in
+`crawler2/docs/benchmarks/wp1/followup-a15.md`. Methodology note: E-R1 queries over gRPC (`qdrant-client`), production
+`vindex.py` uses REST — a known difference, not changed here.
+
+### 5.2 FP-05 step 2 — floor pushed into Qdrant; CPU reserved for search during rebuild (2026-11-23)
+
+*Previous:* candidate searches fetched `limit` hits (with payload) and the grouping discarded those below `policy.floor`; the E-R1
+rebuild phase let Qdrant use both container CPUs for HNSW building. *New:* (a) `candidates.py` sends
+`score_threshold=policy.floor` (field already in `SearchRequest`/`vindex.py`), so Qdrant returns, and reads payload for, only hits at/above the floor.
+Recall is unchanged: the grouping already `break`s at the first hit below the floor, and the escalation test
+`len(h) >= k and h[-1].score >= floor` is equivalent (all returned hits are ≥ floor). `hits` in the stats/`P10_ANN_HITS` now counts only hits
+≥ floor (it equals `hits_above_floor`). (b) E-R1 harness only (no production default changed): optional `--score-threshold`,
+`--indexing-threads N` (HNSW `max_indexing_threads` and optimizer `max_optimization_threads`). *Evidence:* idle screening at 1× (2 workers × 5 q/s,
+60 s, 2 reps): payload on disk vs `on_disk_payload=false` identical (steady p95 9.7–10.0 vs 9.8–10.0 ms) → the payload cost (≈3.5 ms of ≈7 ms per 100-hit query)
+is per-point CPU work, not I/O; `no payload` p95 3.9 ms; the 0.6 floor removes only ≈10 of 100 hits on this workload (89.7 hits ≥ 0.6) so (a) is worth ≈0.3–0.6 ms.
+*Trade-off:* (b) halves rebuild build parallelism (ingest+green unchanged within noise at 1×: 47.5 s + 6 s). *Tests:*
+`tests/p10/test_fp05_payload_fields.py::test_candidate_search_pushes_the_policy_floor…` (fake index emulating the threshold; asserts threshold sent, escalation 4→8, candidates), live
+`test_r24_qdrant_semantics.py` (threshold semantics, 11 passed with the dev Qdrant). *Rollback:* revert the one-line `score_threshold=` argument; no data migration (stored payloads and collections unchanged).
+*Status:* **FP-05 EXIT GATE NOT MET** — results and the remaining bottleneck in `crawler2/docs/benchmarks/wp1/followup-a15.md` §5.1. Baseline pin and the two planned investigations (A: sidecar subject map, B: rebuild memory — neither implemented): `workspace/benchmarks/fp05/` (sibling repository `../workspace`).
+
 ## 6. Modules
 
 | Module | Responsibility (design §) |

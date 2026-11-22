@@ -117,8 +117,10 @@ source .venv/bin/activate
 python -m pytest -q
 ```
 
-Prerequisites: reachable Redis (`redis://localhost:6379/15` by default —
-see `docs/installation.md`, "Database / namespace conventions"), `ffmpeg`/
+Prerequisites: a **disposable** Redis on port 16380 (the test default is now `redis://127.0.0.1:16380/15`;
+`docker run -d --rm --name fp-test-redis -p 127.0.0.1:16380:6379 redis:7.4.2-alpine`). The fixtures `FLUSHDB`, so
+`tests/conftest.py` aborts the run if `FINGERPRINTER_TEST_REDIS_URL` points at port 6379 or 16379 (system / dev-stack Redis;
+WP1 Run 3 incident A-10). `ffmpeg`/
 `ffprobe` on `PATH`, and the DINOv2 model weights pre-cached locally
 (`local_files_only=True` — see `docs/installation.md`). No network access
 is required or attempted by the test suite itself once weights are

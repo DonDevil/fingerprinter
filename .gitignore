@@ -3,5 +3,6 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
-# secrets (deploy/qdrant/.env holds the Qdrant API key)
+# secrets / machine-local configuration
 .env
+!.env.example

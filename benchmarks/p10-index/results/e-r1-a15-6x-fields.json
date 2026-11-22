@@ -1,0 +1,166 @@
+{
+ "N": 626658,
+ "P_test": 1330000,
+ "R_req": 1304649,
+ "base_vectors": 104443,
+ "benchmark": "E-R1",
+ "copies": 6,
+ "error_count": 247,
+ "errors": [
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"Stream removed (Socket closed)\"\n\tdebug_error_string = \"UNAVAILABLE:Stream removed (Socket closed)\"\n>",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"Stream removed (Socket closed)\"\n\tdebug_error_string = \"UNAVAILABLE:Stream removed (Socket closed)\"\n>",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al",
+  "query: _InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"failed to connect to all addresses; last error: UNAVAILABLE: ipv4:127.0.0.1:26334: recvmsg:Connection reset by peer (104)\"\n\tdebug_error_string = \"UNAVAILABLE:failed to connect to al"
+ ],
+ "failure": {
+  "error": "_InactiveRpcError: <_InactiveRpcError of RPC that terminated with:\n\tstatus = StatusCode.UNAVAILABLE\n\tdetails = \"Stream removed (Socket closed)\"\n\tdebug_error_string = \"UNAVAILABLE:Stream removed (Socket closed)\"\n>",
+  "phase": "3-rebuild"
+ },
+ "gate_eligible": false,
+ "host": "Dhanush-Ubuntu",
+ "live_write_latency_ms": {
+  "n": 590,
+  "p50": 26.955,
+  "p95": 195.98,
+  "p99": 299.002
+ },
+ "measured_max_resident_total": 636658,
+ "memory": {
+  "anon_peak_bytes": 1536847872,
+  "anon_peak_gib": 1.4313,
+  "by_phase": {
+   "1-build-g1": {
+    "anon_peak": 947826688,
+    "current_peak": 1610616832,
+    "file_peak": 1265176576
+   },
+   "2-warm": {
+    "anon_peak": 807268352,
+    "current_peak": 1610608640,
+    "file_peak": 894824448
+   },
+   "3-rebuild": {
+    "anon_peak": 1536847872,
+    "current_peak": 1610969088,
+    "file_peak": 833847296
+   }
+  },
+  "limit_bytes": null,
+  "memory_peak_bytes": 1611583488,
+  "oom_kill": 0
+ },
+ "memory_limit_is_gate_limit": false,
+ "pass": false,
+ "pass_rules": {
+  "anon_peak_le_1_35_gib": false,
+  "completed": false,
+  "exact_counts_equal_at_boundaries": true,
+  "no_oom_kill": true,
+  "phase3_reached_R_req": false,
+  "query_p95_le_10ms_phases_2_3_5": false
+ },
+ "phases": {
+  "1": {
+   "boundary": {
+    "equal": true,
+    "exact": {
+     "g1": 626658,
+     "media": 10000
+    },
+    "harness": {
+     "g1": 626658,
+     "media": 10000
+    },
+    "total": 636658
+   },
+   "du_bytes": 3335361968,
+   "index_green_s": 14.0,
+   "ingest_s": 287.0
+  },
+  "2": {
+   "boundary": {
+    "equal": true,
+    "exact": {
+     "g1": 626658,
+     "media": 10000
+    },
+    "harness": {
+     "g1": 626658,
+     "media": 10000
+    },
+    "total": 636658
+   },
+   "seconds": 78.0
+  }
+ },
+ "qdrant_version": null,
+ "queries": 760,
+ "query_latency": {
+  "2-warm": {
+   "n_after_warmup": 506,
+   "p50_ms": 36.214,
+   "p95_ms": 50.606,
+   "p99_ms": 54.036
+  },
+  "3-rebuild": {
+   "n_after_warmup": 2125,
+   "p50_ms": 201.004,
+   "p95_ms": 311.769,
+   "p99_ms": 382.137
+  },
+  "5-steady": {
+   "n_after_warmup": 0,
+   "p50_ms": null,
+   "p95_ms": null,
+   "p99_ms": null
+  }
+ },
+ "query_payload": "rep,cid,trep,tid,tver,seq,k,spec,lowinfo",
+ "samples": 641
+}

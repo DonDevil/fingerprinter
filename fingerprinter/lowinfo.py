@@ -46,6 +46,8 @@ RULE = "lowinfo/v1"
 COMPLETE, PARTIAL = "COMPLETE", "PARTIAL"
 MAX_WITNESSES = 4
 MAX_PAGES = 8   # exact queries per segment while enumerating past a truncated (size-L) result
+# FP-05: payload keys the witness enumeration reads from a hit (tid, trep, tver, k).
+LOWINFO_WITNESS_FIELDS: tuple[str, ...] = ("tid", "trep", "tver", "k")
 log = logging.getLogger("fingerprinter.lowinfo")
 
 
@@ -198,7 +200,8 @@ class LowInfo:
         def request(v: np.ndarray, tids: list[str]) -> SearchRequest:
             return SearchRequest(vector=v, limit=m.lowinfo_limit, exact=True, ignore_quantization=True,
                                  score_threshold=m.lowinfo_threshold,
-                                 must_not=[{"key": "tid", "match": {"any": tids}}])
+                                 must_not=[{"key": "tid", "match": {"any": tids}}],
+                                 payload_fields=LOWINFO_WITNESS_FIELDS)
 
         def search(reqs: list[SearchRequest]) -> list[list[Any]]:
             return self.p.index.search_batch(ptr.collection, reqs, hnsw_ef=None, oversampling=1.0,

@@ -98,7 +98,7 @@ def test_full_cli_command_cycle_never_imports_torch(redis_client, tmp_path):
     real test Redis, and assert on the child's own sys.modules."""
     media = tmp_path / "movie.mp4"
     media.write_bytes(b"hello world")
-    redis_url = os.environ.get("FINGERPRINTER_TEST_REDIS_URL", "redis://localhost:6379/15")
+    redis_url = os.environ.get("FINGERPRINTER_TEST_REDIS_URL", "redis://127.0.0.1:16380/15")
 
     code = f"""
 import sys
