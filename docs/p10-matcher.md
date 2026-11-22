@@ -107,7 +107,7 @@ and per-second samples stay outside git in `~/anti_piracy/datasets/p10/`.
 `with_payload: [<keys>]` instead of `true` when it is set. Candidate search (`candidates.py`) requests
 `CANDIDATE_PAYLOAD_FIELDS = rep, cid, trep, tid, tver, seq, k, spec, lowinfo`; the low-information witness enumeration
 (`lowinfo.py`) requests `LOWINFO_WITNESS_FIELDS = tid, trep, tver, k`. *Why:* E-R1 diagnostics (§13.20) showed payload
-retrieval as the large per-query cost. *Previous:* every hit returned all 11 stored keys (also `t`, `lowinfo_rev`). *New:* only
+retrieval as the large per-query cost (all pre-2026-11-22 E-R1 runs were on a USB HDD; the first SSD-class runs are the A15 ones in `crawler2/docs/benchmarks/wp1/followup-a15.md`). *Previous:* every hit returned all 11 stored keys (also `t`, `lowinfo_rev`). *New:* only
 the keys listed above are returned; `t` and `lowinfo_rev` are not read by any search consumer. *Unchanged:* stored payloads,
 collection/index configuration, `index.max_points` (250,000), similarity/acceptance thresholds, the E-R1 gate, `scroll` and
 `retrieve` (still full payload). Missing keys are tolerated (`payload.get`, `or {}`). *Production config:* none changed; the
