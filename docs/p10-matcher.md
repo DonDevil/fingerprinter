@@ -130,7 +130,7 @@ is per-point CPU work, not I/O; `no payload` p95 3.9 ms; the 0.6 floor removes o
 *Trade-off:* (b) halves rebuild build parallelism (ingest+green unchanged within noise at 1×: 47.5 s + 6 s). *Tests:*
 `tests/p10/test_fp05_payload_fields.py::test_candidate_search_pushes_the_policy_floor…` (fake index emulating the threshold; asserts threshold sent, escalation 4→8, candidates), live
 `test_r24_qdrant_semantics.py` (threshold semantics, 11 passed with the dev Qdrant). *Rollback:* revert the one-line `score_threshold=` argument; no data migration (stored payloads and collections unchanged).
-*Status:* **FP-05 EXIT GATE NOT MET** — results and the remaining bottleneck in `crawler2/docs/benchmarks/wp1/followup-a15.md` §5.1.
+*Status:* **FP-05 EXIT GATE NOT MET** — results and the remaining bottleneck in `crawler2/docs/benchmarks/wp1/followup-a15.md` §5.1. Baseline pin and the two planned investigations (A: sidecar subject map, B: rebuild memory — neither implemented): `workspace/benchmarks/fp05/` (sibling repository `../workspace`).
 
 ## 6. Modules
 
