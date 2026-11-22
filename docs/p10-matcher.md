@@ -101,6 +101,21 @@ only with distinct `FINGERPRINTER_INDEX__COLLECTION_PREFIX` values (design
 Exact command lines are in `validation.md` §13. Vector caches, per-pair logs
 and per-second samples stay outside git in `~/anti_piracy/datasets/p10/`.
 
+### 5.1 FP-05 — payload fields returned by searches (approved trial, owner decision 2026-11-22)
+
+*What:* `SearchRequest.payload_fields` (new, default `None` = whole payload as before). `QdrantIndex.search_batch` sends
+`with_payload: [<keys>]` instead of `true` when it is set. Candidate search (`candidates.py`) requests
+`CANDIDATE_PAYLOAD_FIELDS = rep, cid, trep, tid, tver, seq, k, spec, lowinfo`; the low-information witness enumeration
+(`lowinfo.py`) requests `LOWINFO_WITNESS_FIELDS = tid, trep, tver, k`. *Why:* E-R1 diagnostics (§13.20) showed payload
+retrieval as the large per-query cost. *Previous:* every hit returned all 11 stored keys (also `t`, `lowinfo_rev`). *New:* only
+the keys listed above are returned; `t` and `lowinfo_rev` are not read by any search consumer. *Unchanged:* stored payloads,
+collection/index configuration, `index.max_points` (250,000), similarity/acceptance thresholds, the E-R1 gate, `scroll` and
+`retrieve` (still full payload). Missing keys are tolerated (`payload.get`, `or {}`). *Production config:* none changed; the
+default for other callers is unchanged. *Tests:* `tests/p10/test_fp05_payload_fields.py`. *Status:* **FP-05 stays open** until the
+E-R1 rebenchmark (`capacity_e_r1.py --payload-fields …`, same gate) passes; results in
+`crawler2/docs/benchmarks/wp1/followup-a15.md`. Methodology note: E-R1 queries over gRPC (`qdrant-client`), production
+`vindex.py` uses REST — a known difference, not changed here.
+
 ## 6. Modules
 
 | Module | Responsibility (design §) |

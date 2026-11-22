@@ -1,0 +1,68 @@
+{
+ "benchmark": "P10-E-R1-DIAG",
+ "build_seconds": 52.6,
+ "caps": {
+  "1536m": {
+   "memory_after": {
+    "anon": 145924096,
+    "current": 597487616,
+    "file": 434147328,
+    "max": "1610612736",
+    "oom_kill": 0
+   },
+   "memory_before": {
+    "anon": 162037760,
+    "current": 612126720,
+    "file": 434147328,
+    "max": "1610612736",
+    "oom_kill": 0
+   },
+   "modes": {
+    "rescore=False,payload=False": {
+     "disk_reads_per_query": 0.0,
+     "kib_read_per_query": 0.0,
+     "p50_ms": 2.31,
+     "p95_ms": 2.72,
+     "p99_ms": 3.02,
+     "queries": 300
+    },
+    "rescore=False,payload=True": {
+     "disk_reads_per_query": 0.0,
+     "kib_read_per_query": 0.0,
+     "p50_ms": 5.83,
+     "p95_ms": 6.46,
+     "p99_ms": 6.86,
+     "queries": 300
+    },
+    "rescore=True,payload=False": {
+     "disk_reads_per_query": 0.0,
+     "kib_read_per_query": 0.0,
+     "p50_ms": 2.44,
+     "p95_ms": 2.84,
+     "p99_ms": 3.02,
+     "queries": 300
+    },
+    "rescore=True,payload=True": {
+     "disk_reads_per_query": 0.0,
+     "kib_read_per_query": 0.0,
+     "p50_ms": 5.89,
+     "p95_ms": 6.42,
+     "p99_ms": 6.89,
+     "queries": 300
+    }
+   }
+  }
+ },
+ "container": "qdrant-e-r1d",
+ "cpus": 2,
+ "device": "nvme0n1",
+ "device_info": "NAME    ROTA MODEL                         TRAN\nnvme0n1    0 WD PC SN740 SDDPNQD-512G-1102 nvme",
+ "host": {
+  "kernel": "7.0.0-43-generic",
+  "nproc": 16
+ },
+ "image": "qdrant/qdrant@sha256:d122138f76868edba68d36cb0833139c1d1761f00f09e48e61f8314196e6a4c6",
+ "points": 104443,
+ "qdrant_version": "1.15.1",
+ "volume_bytes": 1021052333
+}
