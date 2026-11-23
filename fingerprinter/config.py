@@ -153,6 +153,10 @@ class IndexConfig(_Section):
     build_lease_s: float = Field(default=300.0, gt=0)
     verify_cycle_s: float = Field(default=3600.0, gt=0)
     probe_queries: int = Field(default=8, ge=0)
+    subject_map_dir: str | None = None
+    """FP-05 Investigation A (experimental, default off): directory of the per-generation sidecar subject maps.
+    When set, candidate searches ask Qdrant for ids and scores only and resolve the metadata from the map."""
+    subject_map_mmap: bool = False
 
 
 class MatchingConfig(_Section):

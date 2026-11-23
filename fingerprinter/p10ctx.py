@@ -25,6 +25,7 @@ from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from fingerprinter.artifact import load as load_artifact
@@ -141,6 +142,11 @@ class P10:
         self.index = index
         self.hook = hook
         self.artifacts = Artifacts(objects, settings.matching.artifact_cache_bytes)
+        from fingerprinter.subjectmap import SubjectMaps  # FP-05 Investigation A (off unless index.subject_map_dir)
+
+        ix = settings.index
+        self.subject_maps = SubjectMaps(None if ix.subject_map_dir is None else Path(ix.subject_map_dir),
+                                        mmap=ix.subject_map_mmap)
 
     @classmethod
     def from_services(cls, svc: Any, index: VectorIndex | None = None, **kw: Any) -> P10:

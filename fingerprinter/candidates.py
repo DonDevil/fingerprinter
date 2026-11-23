@@ -97,6 +97,7 @@ class Searcher:
         self.p = p10
         self.gens = gens
         self.hook = p10.hook
+        self.maps = getattr(p10, "subject_maps", None)  # FP-05 Investigation A; None/disabled = Qdrant payloads
 
     def search(self, spec: str, kind: str, query: Vectors, policy: Policy, *, skip_query: set[int],
                exclude_key: str | None, hit_excluded: Callable[[dict[str, Any]], bool] | None) -> SearchOutcome:
@@ -107,6 +108,16 @@ class Searcher:
         if ptr is None:
             raise NoActiveGenerationError(spec, role)
         deadline = ptr.read_mono + self.p.settings.matching.search_timeout_s
+        # FP-05 Investigation A: a verified map of exactly this generation lets Qdrant return ids and scores only
+        sm = None
+        if self.maps is not None and self.maps.enabled:
+            sm = self.maps.resolve(ptr.collection, spec=spec, role=role, generation=ptr.generation,
+                                   count_fn=self.p.index.count)
+        map_misses = 0
+
+        def fetch_missing(ids: list[str]) -> dict[str, dict[str, Any]]:
+            got = self.p.index.retrieve(ptr.collection, ids, with_vector=False)
+            return {p.id: {k2: v for k2, v in p.payload.items() if k2 in CANDIDATE_PAYLOAD_FIELDS} for p in got}
         ix = self.p.settings.index
         segs = [i for i in range(len(query)) if int(query.segment_index[i]) not in skip_query]
         results: dict[int, list] = {}
@@ -119,13 +130,16 @@ class Searcher:
         while active:
             if time.monotonic() > deadline:
                 raise SearchStepAbandonedError(f"search step past its deadline after {queries} queries")
-            reqs = [SearchRequest(vector=query.vectors[i], limit=k, payload_fields=CANDIDATE_PAYLOAD_FIELDS,
+            reqs = [SearchRequest(vector=query.vectors[i], limit=k, payload_fields=() if sm is not None else CANDIDATE_PAYLOAD_FIELDS,
                                   score_threshold=policy.floor)
                     for i in active]
             self.hook("searcher.before_round", kind=kind, k=k, generation=ptr.generation)
             remaining = max(deadline - time.monotonic(), 0.001)
             hits = self.p.index.search_batch(ptr.collection, reqs, hnsw_ef=max(k, ix.search_ef or 0) or None,
                                              oversampling=ix.oversampling, timeout_s=remaining)
+            if sm is not None:
+                for hl in hits:
+                    map_misses += sm.resolve_hits(hl, fetch_missing)
             queries += len(reqs)
             rounds += 1
             nxt = []
@@ -181,7 +195,7 @@ class Searcher:
                  "queries": queries, "rounds": rounds, "hits": n_hits, "hits_above_floor": above,
                  "lowinfo_excluded_hits": excluded_hits, "foreign_hits": foreign, "groups": len(groups),
                  "candidates": len(eligible), "stored": len(stored), "truncated": truncated, "saturated": saturated,
-                 "policy": policy.document(), "rank_threshold": None if not truncated else
+                 "subject_map": None if sm is None else {"misses": map_misses}, "policy": policy.document(), "rank_threshold": None if not truncated else
                  [len(stored[-1].segments), round(stored[-1].best, 6)],
                  "seconds": round(time.monotonic() - t0, 3)}
         return SearchOutcome(ptr, stored, truncated, saturated, stats)

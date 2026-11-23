@@ -60,6 +60,7 @@ from fingerprinter.generations import (
 from fingerprinter.objects import IntegrityError, ObjectMissingError
 from fingerprinter.p10ctx import BUCKETS, P10, Subject
 from fingerprinter.recovery import Recovery
+from fingerprinter.subjectmap import SubjectMapError
 from fingerprinter.vindex import (
     MEDIA,
     SUBJECT_FIELD,
@@ -289,16 +290,23 @@ class Indexer:
             name = g["collection"]
             t0 = time.monotonic()
             try:
+                sm = self.p.subject_maps.get(name) if self.p.subject_maps.enabled else None
                 if op == UPSERT:
+                    if sm is not None:   # write-ahead: the map is a superset of Qdrant at every instant
+                        sm.record_many(((pt.id, pt.payload) for pt in points), SUBJECT_FIELD[role])
                     batch = self.p.settings.index.upsert_batch
                     for i in range(0, len(points), batch):
                         self.p.index.upsert(name, points[i:i + batch])
                     self.hook("indexer.after_upsert", subject=sid, seq=s, generation=g["generation"])
                     self.p.index.delete_by_filter(name, subject_seq_lt(role, sid, s))
+                    if sm is not None:
+                        sm.remove_subject(sid, seq_lt=s)
                     metrics.P10_UPSERT_POINTS.labels(role=role).inc(len(points))
                 else:
                     self.hook("indexer.before_delete", subject=sid, seq=s, generation=g["generation"])
                     self.p.index.delete_by_filter(name, subject_seq_lte(role, sid, s))
+                    if sm is not None:
+                        sm.remove_subject(sid, seq_lte=s)
             except IndexMissingError:
                 state = (self.gens.row(row["spec_digest"], role, g["generation"]) or {}).get("state")
                 if state in (RETIRED, FAILED):
@@ -471,6 +479,8 @@ class Builder:
             raise RuntimeError("generation create lost a race under the build lease")
         row = self.gens.row(spec, role, g)
         self.p.index.create_collection(row["collection"], params, role)
+        if self.p.subject_maps.enabled:
+            self.p.subject_maps.create(row["collection"], spec=spec, role=role, generation=g)
         self.gens.transition(spec, role, g, CREATED, BUILDING, build_epoch=epoch)
         return g
 
@@ -483,6 +493,8 @@ class Builder:
                 if not self.p.index.collection_exists(row["collection"]):
                     self.p.index.create_collection(row["collection"], GenerationParams.from_document(
                         json.loads(row["params"])), role)
+                if self.p.subject_maps.enabled and self.p.subject_maps.get(row["collection"]) is None:
+                    self.p.subject_maps.create(row["collection"], spec=spec, role=role, generation=g)
                 self.gens.transition(spec, role, g, CREATED, BUILDING, build_epoch=epoch)
             elif state == BUILDING:
                 self._bulk(spec, role, g, row, epoch)
@@ -651,6 +663,11 @@ class Builder:
         # exceed its admission holder by points that live writes reserved separately (§13.3, N-16).
         exact = self.p.index.count(name)
         warnings: list[str] = []
+        if self.p.subject_maps.enabled:   # FP-05 Investigation A: no generation is READY without a sealed, verified map
+            try:
+                self.p.subject_maps.seal(self.p.index, name, spec=spec, role=role, generation=g, exact=exact)
+            except SubjectMapError as exc:
+                failures.append(f"subject_map: {exc}")
         if exact > int(row["reserved_points"] or 0):
             resident = 0
             for sp in self.p.indexed_specs():
@@ -808,6 +825,7 @@ class Checker:
             if res.get("short"):
                 return False  # occurrences opened; retire after they are repaired (repair confirmed by RETIRED)
         self.p.index.delete_collection(row["collection"])
+        self.p.subject_maps.drop(row["collection"])
         return self.gens.transition(spec, role, g, DRAINING, RETIRED, build_epoch=None)
 
 

@@ -126,7 +126,8 @@ class SearchRequest:
     score_threshold: float | None = None
     must_not: list[dict[str, Any]] = field(default_factory=list)
     # FP-05: payload keys Qdrant returns with each hit. None = the whole stored payload (legacy behaviour);
-    # a tuple selects only those keys (the stored payload is untouched — this only trims the response).
+    # a tuple selects only those keys (the stored payload is untouched — this only trims the response);
+    # an empty tuple returns no payload at all (FP-05 Investigation A: the metadata comes from the subject map).
     payload_fields: tuple[str, ...] | None = None
 
 
@@ -311,7 +312,7 @@ class QdrantIndex:
                 params["hnsw_ef"] = int(hnsw_ef)
             s: dict[str, Any] = {"vector": np.asarray(r.vector, dtype=np.float32).tolist(),
                                  "limit": int(r.limit), "params": params,
-                                 "with_payload": True if r.payload_fields is None else list(r.payload_fields)}
+                                 "with_payload": True if r.payload_fields is None else (list(r.payload_fields) or False)}
             if r.score_threshold is not None:
                 s["score_threshold"] = float(r.score_threshold)
             if r.must_not:
