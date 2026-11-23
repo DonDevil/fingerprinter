@@ -6,3 +6,6 @@ __pycache__/
 # secrets / machine-local configuration
 .env
 !.env.example
+
+# real-film evaluation data (large, regenerable; manifests are committed elsewhere)
+local-data/
