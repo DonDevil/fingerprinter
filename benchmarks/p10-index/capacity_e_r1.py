@@ -136,15 +136,27 @@ class Harness:
         self.client.create_collection(
             name,
             vectors_config=m.VectorParams(size=768, distance=m.Distance.DOT, on_disk=True),
-            hnsw_config=m.HnswConfigDiff(m=32, ef_construct=200, **({"max_indexing_threads": self.a.indexing_threads} if self.a.indexing_threads else {})),
-            quantization_config=m.ScalarQuantization(scalar=m.ScalarQuantizationConfig(type=m.ScalarType.INT8,
-                                                                                         always_ram=True)),
+            hnsw_config=m.HnswConfigDiff(m=32, ef_construct=200, **({"max_indexing_threads": self.a.indexing_threads} if self.a.indexing_threads else {}),
+                                         **({"on_disk": True} if self.a.variant == "hnsw-disk" else {})),
+            quantization_config=m.ScalarQuantization(scalar=m.ScalarQuantizationConfig(
+                type=m.ScalarType.INT8, always_ram=self.a.variant != "quant-mmap")),
             on_disk_payload=True, **self.layout_kw)
         fields = ("rep", "cid", "spec") if role == "media" else ("rep", "trep", "cid", "tid", "spec")
         for f in fields:
-            self.client.create_payload_index(name, f, m.PayloadSchemaType.KEYWORD, wait=True)
-        self.client.create_payload_index(name, "seq", m.PayloadSchemaType.INTEGER, wait=True)
+            self.client.create_payload_index(name, f, self._kw_schema(), wait=True)
+        self.client.create_payload_index(name, "seq", self._int_schema(), wait=True)
         self.resident[name] = 0
+
+    def _kw_schema(self):
+        # FP-05 Investigation B variant "payload-disk": keyword payload indexes memory-mapped instead of in RAM.
+        if self.a.variant == "payload-disk":
+            return self.m.KeywordIndexParams(type=self.m.KeywordIndexType.KEYWORD, on_disk=True)
+        return self.m.PayloadSchemaType.KEYWORD
+
+    def _int_schema(self):
+        if self.a.variant == "payload-disk":
+            return self.m.IntegerIndexParams(type=self.m.IntegerIndexType.INTEGER, on_disk=True)
+        return self.m.PayloadSchemaType.INTEGER
 
     def payload(self, role: str, subject: str, seq: int, k: int) -> dict:
         p = {"rep": "rep:" + subject, "cid": "cnt:" + subject, "spec": "sha256:e-r1", "k": k, "t": 5.0 * k, "seq": seq}
@@ -281,6 +293,10 @@ def main() -> None:
                                                           "production candidate search now does (policy floor)")
     ap.add_argument("--indexing-threads", type=int, help="FP-05: hnsw max_indexing_threads and optimizer "
                                                          "max_optimization_threads (default: Qdrant auto)")
+    ap.add_argument("--variant", default="none", choices=["none", "quant-mmap", "hnsw-disk", "payload-disk"],
+                    help="FP-05 Investigation B: ONE collection-layout change per run (default none = original "
+                         "§13.3 configuration): quant-mmap = scalar quantization always_ram=false; hnsw-disk = "
+                         "hnsw on_disk=true; payload-disk = payload indexes on_disk=true")
     ap.add_argument("--subset", type=int, help="first N base vectors only: harness check, never a gate")
     a = ap.parse_args()
 
@@ -311,7 +327,7 @@ def main() -> None:
                     "base_vectors": len(base), "R_req": req,
                     "P_test": P_TEST, "queries": len(Q), "qdrant_version": None, "phases": {},
                     "query_payload": a.payload_fields or "whole payload (original methodology)",
-                    "score_threshold": a.score_threshold, "indexing_threads": a.indexing_threads}
+                    "score_threshold": a.score_threshold, "indexing_threads": a.indexing_threads, "variant": a.variant}
     phase = {"name": "1-build-g1"}
     routed: list[str] = []
     phase_of = lambda: phase["name"]  # noqa: E731
