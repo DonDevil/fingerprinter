@@ -1,0 +1,312 @@
+{
+ "N": 208886,
+ "P_test": 1330000,
+ "R_req": 448217,
+ "base_vectors": 104443,
+ "benchmark": "E-R1",
+ "copies": 2,
+ "equality_g1": {
+  "collection": "g1",
+  "hits": 66045,
+  "mismatched_queries": 0,
+  "queries": 760
+ },
+ "equality_g2": {
+  "collection": "g2",
+  "hits": 66046,
+  "mismatched_queries": 0,
+  "queries": 760
+ },
+ "error_count": 0,
+ "errors": [],
+ "gate_eligible": true,
+ "host": "Dhanush-Ubuntu",
+ "indexing_threads": 1,
+ "live_write_latency_ms": {
+  "n": 1898,
+  "p50": 9.263,
+  "p95": 50.048,
+  "p99": 77.559
+ },
+ "map_events": {
+  "g1": {
+   "disk_bytes": 8144038,
+   "entries": 208886,
+   "load_s": 0.044,
+   "nbytes_after_load": 19078838,
+   "nbytes_before_save": 43518500,
+   "save_s": 0.157
+  },
+  "g2": {
+   "disk_bytes": 8550469,
+   "entries": 219146,
+   "save_s": 0.185
+  }
+ },
+ "map_lookup_latency": {
+  "2-warm": {
+   "n": 2280,
+   "p50_us": 351.1,
+   "p95_us": 459.2,
+   "p99_us": 489.3
+  },
+  "3-rebuild": {
+   "n": 9488,
+   "p50_us": 400.1,
+   "p95_us": 5315.1,
+   "p99_us": 6265.9
+  },
+  "5-steady": {
+   "n": 3002,
+   "p50_us": 406.8,
+   "p95_us": 1001.8,
+   "p99_us": 1309.1
+  }
+ },
+ "map_miss_or_other_errors": 0,
+ "measured_max_resident_total": 448292,
+ "memory": {
+  "anon_peak_bytes": 627744768,
+  "anon_peak_gib": 0.5846,
+  "by_phase": {
+   "1-build-g1": {
+    "anon_peak": 411369472,
+    "current_peak": 1610428416,
+    "file_peak": 1208569856
+   },
+   "2-warm": {
+    "anon_peak": 321077248,
+    "current_peak": 1176068096,
+    "file_peak": 841785344
+   },
+   "3-rebuild": {
+    "anon_peak": 627744768,
+    "current_peak": 1610612736,
+    "file_peak": 1154994176
+   },
+   "5-steady": {
+    "anon_peak": 377585664,
+    "current_peak": 1041952768,
+    "file_peak": 743751680
+   }
+  },
+  "limit_bytes": 1610612736,
+  "memory_peak_bytes": 1611280384,
+  "oom_kill": 0
+ },
+ "memory_limit_is_gate_limit": true,
+ "pass": false,
+ "pass_rules": {
+  "anon_peak_le_1_35_gib": true,
+  "completed": true,
+  "exact_counts_equal_at_boundaries": true,
+  "no_oom_kill": true,
+  "phase3_reached_R_req": true,
+  "query_p95_le_10ms_phases_2_3_5": false
+ },
+ "phases": {
+  "1": {
+   "boundary": {
+    "equal": true,
+    "exact": {
+     "g1": 208886,
+     "media": 10000
+    },
+    "harness": {
+     "g1": 208886,
+     "media": 10000
+    },
+    "map_counts": {
+     "g1": 208886,
+     "media": 10000
+    },
+    "map_equal": true,
+    "total": 218886
+   },
+   "du_bytes": 1411177930,
+   "index_green_s": 10.0,
+   "ingest_s": 93.7
+  },
+  "2": {
+   "boundary": {
+    "equal": true,
+    "exact": {
+     "g1": 208886,
+     "media": 10000
+    },
+    "harness": {
+     "g1": 208886,
+     "media": 10000
+    },
+    "map_counts": {
+     "g1": 208886,
+     "media": 10000
+    },
+    "map_equal": true,
+    "total": 218886
+   },
+   "seconds": 8.5
+  },
+  "3": {
+   "boundary": {
+    "equal": true,
+    "exact": {
+     "g1": 219146,
+     "g2": 219146,
+     "media": 10000
+    },
+    "harness": {
+     "g1": 219146,
+     "g2": 219146,
+     "media": 10000
+    },
+    "map_counts": {
+     "g1": 219146,
+     "g2": 219146,
+     "media": 10000
+    },
+    "map_equal": true,
+    "total": 448292
+   },
+   "du_bytes": 2722033471,
+   "g2_green_s": 12.0,
+   "g2_ingest_s": 96.6,
+   "reached_R_req": true,
+   "resident_reached": 448292,
+   "seconds": 949.2
+  },
+  "4": {
+   "boundary": {
+    "equal": true,
+    "exact": {
+     "g2": 219146,
+     "media": 10000
+    },
+    "harness": {
+     "g2": 219146,
+     "media": 10000
+    },
+    "map_counts": {
+     "g2": 219146,
+     "media": 10000
+    },
+    "map_equal": true,
+    "total": 229146
+   },
+   "du_bytes": 1490072088
+  },
+  "5": {
+   "boundary": {
+    "equal": true,
+    "exact": {
+     "g2": 219146,
+     "media": 10000
+    },
+    "harness": {
+     "g2": 219146,
+     "media": 10000
+    },
+    "map_counts": {
+     "g2": 219146,
+     "media": 10000
+    },
+    "map_equal": true,
+    "total": 229146
+   },
+   "seconds": 300.0
+  }
+ },
+ "proc_start": {
+  "proc_anon_kb": 1718596,
+  "proc_cpu_ticks": 1728,
+  "proc_rss_kb": 1749868
+ },
+ "qdrant_version": "1.15.1",
+ "queries": 760,
+ "query_latency": {
+  "2-warm": {
+   "n_after_warmup": 0,
+   "p50_ms": null,
+   "p95_ms": null,
+   "p99_ms": null
+  },
+  "3-rebuild": {
+   "n_after_warmup": 8888,
+   "p50_ms": 6.081,
+   "p95_ms": 38.61,
+   "p99_ms": 68.457
+  },
+  "5-steady": {
+   "n_after_warmup": 2402,
+   "p50_ms": 4.895,
+   "p95_ms": 7.765,
+   "p99_ms": 11.68
+  }
+ },
+ "query_payload": "rep,cid,trep,tid,tver,seq,k,spec,lowinfo",
+ "resources": {
+  "1-build-g1": {
+   "client_anon_peak_MB": 1679.0,
+   "client_cpu_cores_avg": 0.791,
+   "client_rss_peak_MB": 1712.3,
+   "host_mem_available_min_GB": 9.83,
+   "map_bytes_peak_MB": 43.49,
+   "qdrant_cpu_cores_avg": 1.042,
+   "qdrant_cpu_throttled_s": 0.0,
+   "qdrant_io_read_MB": 436.0,
+   "qdrant_io_read_ops_per_s": 33.9,
+   "qdrant_io_write_MB": 4206.9,
+   "qdrant_io_write_ops_per_s": 361.6,
+   "seconds": 107.3
+  },
+  "2-warm": {
+   "client_anon_peak_MB": 1558.7,
+   "client_cpu_cores_avg": 0.511,
+   "client_rss_peak_MB": 1593.0,
+   "host_mem_available_min_GB": 9.92,
+   "map_bytes_peak_MB": 20.18,
+   "qdrant_cpu_cores_avg": 0.613,
+   "qdrant_cpu_throttled_s": 0.0,
+   "qdrant_io_read_MB": 56.3,
+   "qdrant_io_read_ops_per_s": 959.1,
+   "qdrant_io_write_MB": 0.0,
+   "qdrant_io_write_ops_per_s": 0.1,
+   "seconds": 15.0
+  },
+  "3-rebuild": {
+   "client_anon_peak_MB": 1592.7,
+   "client_cpu_cores_avg": 0.131,
+   "client_rss_peak_MB": 1627.2,
+   "host_mem_available_min_GB": 9.54,
+   "map_bytes_peak_MB": 65.76,
+   "qdrant_cpu_cores_avg": 0.186,
+   "qdrant_cpu_throttled_s": 0.01,
+   "qdrant_io_read_MB": 2896.4,
+   "qdrant_io_read_ops_per_s": 572.9,
+   "qdrant_io_write_MB": 6344.4,
+   "qdrant_io_write_ops_per_s": 96.7,
+   "seconds": 948.8
+  },
+  "5-steady": {
+   "client_anon_peak_MB": 1601.8,
+   "client_cpu_cores_avg": 0.041,
+   "client_rss_peak_MB": 1636.4,
+   "host_mem_available_min_GB": 9.77,
+   "map_bytes_peak_MB": 21.08,
+   "qdrant_cpu_cores_avg": 0.045,
+   "qdrant_cpu_throttled_s": 0.0,
+   "qdrant_io_read_MB": 376.4,
+   "qdrant_io_read_ops_per_s": 311.5,
+   "qdrant_io_write_MB": 1.2,
+   "qdrant_io_write_ops_per_s": 0.9,
+   "seconds": 309.4
+  }
+ },
+ "samples": 1362,
+ "score_threshold": 0.6,
+ "subject_map": "memory",
+ "throughput_qps": {
+  "3-rebuild": 10.0,
+  "5-steady": 10.01
+ }
+}

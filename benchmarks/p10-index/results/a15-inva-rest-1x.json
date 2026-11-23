@@ -1,0 +1,80 @@
+{
+ "corpus": 104443,
+ "ingest_s": 45.7,
+ "identity_queries": 200,
+ "identity_mismatches": 0,
+ "windows": [
+  {
+   "mode": "base",
+   "n": 1200,
+   "p50_ms": 3.953,
+   "p95_ms": 4.952,
+   "p99_ms": 5.226,
+   "lookup_p95_ms": null,
+   "resp_bytes_mean": 18808,
+   "errors": [],
+   "error_count": 0,
+   "round": 0
+  },
+  {
+   "mode": "map",
+   "n": 1200,
+   "p50_ms": 3.254,
+   "p95_ms": 4.246,
+   "p99_ms": 4.84,
+   "lookup_p95_ms": 0.389,
+   "resp_bytes_mean": 6735,
+   "errors": [],
+   "error_count": 0,
+   "round": 0
+  },
+  {
+   "mode": "map",
+   "n": 1200,
+   "p50_ms": 3.289,
+   "p95_ms": 4.266,
+   "p99_ms": 4.771,
+   "lookup_p95_ms": 0.388,
+   "resp_bytes_mean": 6735,
+   "errors": [],
+   "error_count": 0,
+   "round": 1
+  },
+  {
+   "mode": "base",
+   "n": 1200,
+   "p50_ms": 3.998,
+   "p95_ms": 4.972,
+   "p99_ms": 5.519,
+   "lookup_p95_ms": null,
+   "resp_bytes_mean": 18808,
+   "errors": [],
+   "error_count": 0,
+   "round": 1
+  },
+  {
+   "mode": "base",
+   "n": 1200,
+   "p50_ms": 3.989,
+   "p95_ms": 5.06,
+   "p99_ms": 5.63,
+   "lookup_p95_ms": null,
+   "resp_bytes_mean": 18808,
+   "errors": [],
+   "error_count": 0,
+   "round": 2
+  },
+  {
+   "mode": "map",
+   "n": 1200,
+   "p50_ms": 3.154,
+   "p95_ms": 4.231,
+   "p99_ms": 4.711,
+   "lookup_p95_ms": 0.391,
+   "resp_bytes_mean": 6735,
+   "errors": [],
+   "error_count": 0,
+   "round": 2
+  }
+ ]
+}
