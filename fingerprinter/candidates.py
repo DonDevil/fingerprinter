@@ -195,7 +195,9 @@ class Searcher:
                  "queries": queries, "rounds": rounds, "hits": n_hits, "hits_above_floor": above,
                  "lowinfo_excluded_hits": excluded_hits, "foreign_hits": foreign, "groups": len(groups),
                  "candidates": len(eligible), "stored": len(stored), "truncated": truncated, "saturated": saturated,
-                 "subject_map": None if sm is None else {"misses": map_misses}, "policy": policy.document(), "rank_threshold": None if not truncated else
+                 "policy": policy.document(), "rank_threshold": None if not truncated else
                  [len(stored[-1].segments), round(stored[-1].best, 6)],
                  "seconds": round(time.monotonic() - t0, 3)}
+        if sm is not None:   # only when the map was used: the default (map off) ann_stats document is unchanged
+            stats["subject_map"] = {"misses": map_misses}
         return SearchOutcome(ptr, stored, truncated, saturated, stats)

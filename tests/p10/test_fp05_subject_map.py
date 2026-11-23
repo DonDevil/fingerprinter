@@ -342,11 +342,11 @@ def test_a_missing_entry_is_fetched_from_qdrant_and_counted_not_dropped(tmp_path
     sm._base_dead.add(int(victim.replace("-", ""), 16))                # lose one entry (count now short)
     # count would now disagree -> the registry refuses the map and the baseline path runs
     out = run_search(fake_p10(ix, maps))
-    assert out.stats["subject_map"] is None and candidates_view(out)[:3] == candidates_view(baseline)[:3]
+    assert "subject_map" not in out.stats and candidates_view(out)[:3] == candidates_view(baseline)[:3]
     # a map that passes the count check but lacks an id Qdrant returns (one extra, one missing): resolved via retrieve
     sm.record(point_id("ghost", 1, 0), target_payload("ghost", 1, 0), "trep")
     out = run_search(fake_p10(ix, maps))
-    assert out.stats["subject_map"] is not None and out.stats["subject_map"]["misses"] >= 1
+    assert out.stats["subject_map"]["misses"] >= 1
     assert candidates_view(out)[:3] == candidates_view(baseline)[:3]
 
 
