@@ -83,6 +83,17 @@ def pct(xs, p):
     return round(float(np.percentile(xs, p)) * 1000, 3) if xs else None
 
 
+def tie_recall(row_scores: np.ndarray, returned: list[float]) -> float | None:
+    """Tie-aware recall@100 of one query: the exact top-k (k = min(100, #points >= threshold)) is a SCORE target, so
+    equal-scored duplicate vectors are interchangeable. recall = hits scoring >= (exact k-th score - 1e-4) / k."""
+    m = int((row_scores >= THRESH).sum())
+    if m == 0:
+        return None
+    k = min(TOPK, m)
+    sk = float(np.partition(row_scores, -k)[-k])
+    return min(sum(1 for x in returned if x >= sk - 1e-4), k) / k
+
+
 def status(ok: bool | None) -> str:
     return "PASS" if ok else ("INCONCLUSIVE" if ok is None else "FAIL")
 
@@ -110,6 +121,7 @@ def main() -> None:
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--subset", type=int, help="first N vectors only (smoke test, never evidence)")
     a = ap.parse_args()
+    a_out_npz = a.out.with_suffix(".queries.npz")
     t_start = time.time()
     base, Q = h1.load_corpus(a.vectors)
     base = base[: a.subset] if a.subset else base
@@ -205,24 +217,39 @@ def main() -> None:
                 if str(pa.id) == str(pk.id):
                     md = max(md, abs(pa.score - pk.score)); pe &= pa.payload == pk.payload
         pairs[k] = {**c, "max_abs_score_diff_same_id": md, "payload_equal_same_id": pe, "examples": first}
-    recalls = {k: [] for k in names}; empty = {k: 0 for k in names}
+    recalls = {k: [] for k in names}; empty = {k: 0 for k in names}; id_recalls = {k: [] for k in names}
     for qi in range(nq):
         order = np.argsort(-S[qi])[:TOPK]
         truth = {ids[j] for j in order if S[qi, j] >= THRESH}
         for k in names:
             idk = {str(p.id) for p in res[k][qi]}
             if not idk: empty[k] += 1
-            if truth: recalls[k].append(len(truth & idk) / len(truth))
+            tr = tie_recall(S[qi], [p.score for p in res[k][qi]])
+            if tr is not None: recalls[k].append(tr)
+            if truth: id_recalls[k].append(len(truth & idk) / len(truth))
+    row_of = {i_: j for j, i_ in enumerate(ids)}
+    npz = {}
+    for k in names:
+        npz[k + "_ids"] = np.array([[row_of.get(str(p.id), -1) for p in res[k][qi]] + [-2] * (TOPK - len(res[k][qi])) for qi in range(nq)], dtype=np.int32)
+        npz[k + "_scores"] = np.array([[p.score for p in res[k][qi]] + [np.nan] * (TOPK - len(res[k][qi])) for qi in range(nq)], dtype=np.float32)
+    np.savez_compressed(a_out_npz, **npz)
+    mean_r = {k: float(np.mean(v)) for k, v in recalls.items()}
+    worse = {k: int(sum(1 for x, y in zip(recalls[k], recalls["A"]) if x < y - 1e-9)) for k in names if k != "A"}
+    better = {k: int(sum(1 for x, y in zip(recalls[k], recalls["A"]) if x > y + 1e-9)) for k in names if k != "A"}
+    tol = 0.002
+    crit_ok = all(mean_r[k] >= min(mean_r["A"], mean_r["A2"]) - tol for k in ("B", "Bx")) and all(pairs[k]["payload_equal_same_id"] and pairs[k]["max_abs_score_diff_same_id"] <= 1e-6 for k in ("B", "Bx"))
     rep["checks"]["search_grpc"] = {
-        "queries": nq, "vs_A": pairs, "empty_result_queries": empty,
-        "recall_at_100_mean": {k: round(float(np.mean(v)), 5) for k, v in recalls.items()},
-        "recall_at_100_min": {k: round(float(np.min(v)), 4) for k, v in recalls.items()},
-        "queries_with_ground_truth": len(recalls["A"]),
-        "criterion": "PASS = for B and Bx: zero 'genuine' differences (score sequences equal within 1e-6, payload equal). "
-                     "Strict ordered-id identity is reported (identical) but is not achievable even between two builds of the "
-                     "SAME layout (control A2) because of equal-scored duplicate vectors. This criterion was defined by the "
-                     "investigation, not by the owner.",
-        "status": status(all(pairs[k]["genuine"] == 0 and pairs[k]["payload_equal_same_id"] for k in ("B", "Bx")))}
+        "queries": nq, "vs_A": pairs, "empty_result_queries": empty, "queries_with_ground_truth": len(recalls["A"]),
+        "tie_aware_recall_at_100_mean": {k: round(v, 5) for k, v in mean_r.items()},
+        "tie_aware_recall_at_100_min": {k: round(float(np.min(v)), 4) for k, v in recalls.items()},
+        "queries_with_lower_recall_than_A": worse, "queries_with_higher_recall_than_A": better,
+        "id_based_recall_at_100_mean_NOT_RELIABLE_with_ties": {k: round(float(np.mean(v)), 5) for k, v in id_recalls.items()},
+        "per_query_results_file": a_out_npz.name,
+        "criterion": f"PASS = for B and Bx: mean tie-aware recall >= min(mean A, mean A2) - {tol} (A2 = same-layout control build), "
+                     "same-id score diff <= 1e-6 and payload equal. Strict ordered-id identity and 'genuine' score-sequence differences are "
+                     "reported in vs_A but are not achievable even between two builds of the SAME layout (control A2). "
+                     "Defined by the investigation (revised after run 1, see FINDINGS), not by the owner.",
+        "status": status(crit_ok)}
 
     # ---- REST parity (production search_batch) --------------------------------------------------------
     rest_res = {}
@@ -236,7 +263,8 @@ def main() -> None:
     same_rg = {k: sum([h.id for h in rest_res[k][j]] == [str(p.id) for p in res[k][j]] for j in range(nq)) for k in ("A", "B")}
     sc_rab = sum(len(rest_res["A"][j]) == len(rest_res["B"][j]) and all(abs(x.score - y.score) <= 1e-6 for x, y in zip(rest_res["A"][j], rest_res["B"][j])) for j in range(nq))
     rep["checks"]["rest_parity"] = {"queries": nq, "rest_equals_grpc_ordered_ids": same_rg, "rest_A_vs_rest_B_score_sequences_equal": sc_rab,
-                                    "status": status(all(v == nq for v in same_rg.values()) and sc_rab == nq)}
+                                    "note": "PASS = REST ordered ids equal gRPC for the same layout; REST A vs REST B differs for the same reason gRPC A vs B does (build-to-build ANN variation) and is informational",
+                                    "status": status(all(v == nq for v in same_rg.values()))}
     ix["A2"].delete_collection("eqA2"); names.pop("A2"); ix.pop("A2"); del res["A2"]
 
     # ---- filter semantics ----------------------------------------------------------------------------
@@ -267,20 +295,23 @@ def main() -> None:
         f = shapes["trep+seq<=1"][0](s)
         sets = [sorted(p.id for p in ix[k].scroll(names[k], f, page=64)[0]) for k in names]
         id_mismatch += not (sets[0] == sets[1] == sets[2] and len(sets[0]) == 12)
-    # filtered vector search (gRPC): hits must lie inside the subject and be identical across layouts
-    fs_bad = 0
-    for s in subjects[:30]:
-        qv = X[int(s[1:]) * 12]
+    # filtered vector search (gRPC): hits must be exactly the subject's 12 points, same SET in every layout
+    fs_bad = 0; fs_detail = []; fs_order_diff = 0
+    for s_ in subjects[:30]:
+        qv = X[int(s_[1:]) * 12]
         outs = []
         for k, name in names.items():
             r = H.client.query_points(name, query=qv.tolist(), limit=50, with_payload=["trep"],
-                                      query_filter=m.Filter(must=[m.FieldCondition(key="trep", match=m.MatchValue(value=s))])).points
+                                      query_filter=m.Filter(must=[m.FieldCondition(key="trep", match=m.MatchValue(value=s_))])).points
             outs.append([str(p.id) for p in r])
-            fs_bad += any(p.payload.get("trep") != s for p in r)
-        fs_bad += not (outs[0] == outs[1] == outs[2] and len(outs[0]) == 12)
+            if any(p.payload.get("trep") != s_ for p in r) or len(r) != 12:
+                fs_bad += 1; fs_detail.append({"subject": s_, "layout": k, "hits": len(r), "foreign": sum(p.payload.get("trep") != s_ for p in r)})
+        if not (set(outs[0]) == set(outs[1]) == set(outs[2])):
+            fs_bad += 1; fs_detail.append({"subject": s_, "problem": "id sets differ across layouts"})
+        fs_order_diff += not (outs[0] == outs[1] == outs[2])
     nfail = sum(v["fail"] for v in fres.values()) + id_mismatch + fs_bad
     rep["checks"]["filters"] = {"subjects": len(subjects), "per_shape": fres, "scroll_id_mismatches": id_mismatch,
-                                "filtered_search_failures": fs_bad, "total_failures": nfail,
+                                "filtered_search_failures": fs_bad, "filtered_search_failure_detail": fs_detail[:10], "filtered_search_order_differences_same_set": fs_order_diff, "total_failures": nfail,
                                 "tests": sum(v["tests"] for v in fres.values()) + len(subjects) + 30, "status": status(nfail == 0)}
 
     # ---- delete-by-filter + re-upsert/cleanup --------------------------------------------------------
@@ -348,32 +379,25 @@ def main() -> None:
             rec["interrupted_count"] = c; rec["interrupted_unique_ids"] = len(set(got)); rec["interrupted_duplicates"] = len(got) - len(set(got))
             rec["interrupted_within_sent_bound"] = 0 <= c <= min(n, kill_at + 500)
         # serving generation (B) still queryable after the crash: recall on a sample vs brute force on the surviving points
-        gone = {ids[j] for s in dsub + msub for j in range(int(s[1:]) * 12, int(s[1:]) * 12 + 12)}
-        rr = []
-        for qi in range(0, nq, 4):
-            order = np.argsort(-S[qi])[:TOPK + 300]
-            truth = [ids[j] for j in order if S[qi, j] >= THRESH and ids[j] not in gone][:TOPK]
-            got = {str(p.id) for p in gq("eqB", Qn[qi])}
-            if truth: rr.append(len(set(truth) & got) / len(truth))
-        rec["serving_generation_recall_after_crash_mean"] = round(float(np.mean(rr)), 5)
-        rec["serving_generation_recall_before_crash_mean"] = rep["checks"]["search_grpc"]["recall_at_100_mean"]["B"]
+        gone_rows = [j for s_ in dsub for j in range(int(s_[1:]) * 12, int(s_[1:]) * 12 + 12)]
+        S2 = S.copy(); S2[:, gone_rows] = -1.0   # deleted subjects no longer count as exact neighbours
+        rr = [tie_recall(S2[qi], [p.score for p in gq("eqB", Qn[qi])]) for qi in range(0, nq, 4)]
+        rr = [x for x in rr if x is not None]
+        rec["serving_generation_tie_recall_after_crash_mean"] = round(float(np.mean(rr)), 5)
+        rec["serving_generation_tie_recall_before_crash_mean"] = rep["checks"]["search_grpc"]["tie_aware_recall_at_100_mean"]["B"]
         # resume: re-send everything (deterministic ids => idempotent), then verify
         for i in range(0, n, 500):
             ix["B"].upsert("eqC", [Point(ids[j], X[j], H.payload("target", f"s{j // 12}", 1, j % 12)) for j in range(i, min(i + 500, n))])
         ix["B"].wait_green("eqC", 1800)
         rec["count_after_resend"] = ix["B"].count("eqC"); rec["expected_after_resend"] = n
         rec["payload_schema_after_restart"] = {f: v.get("params") or v.get("data_type") for f, v in ix["B"].collection_info("eqC")["payload_schema"].items()}
-        rc = []
-        for qi in range(0, nq, 4):
-            order = np.argsort(-S[qi])[:TOPK]
-            truth = {ids[j] for j in order if S[qi, j] >= THRESH}
-            if truth: rc.append(len(truth & {str(p.id) for p in gq("eqC", Qn[qi])}) / len(truth))
-        rec["recall_after_recovery_mean"] = round(float(np.mean(rc)), 5)
-        rec["recall_original_B_mean"] = rep["checks"]["search_grpc"]["recall_at_100_mean"]["B"]
+        rc = [tie_recall(S[qi], [p.score for p in gq("eqC", Qn[qi])]) for qi in range(0, nq, 4)]
+        rec["tie_recall_after_recovery_mean"] = round(float(np.mean([x for x in rc if x is not None])), 5)
+        rec["tie_recall_original_B_mean"] = rep["checks"]["search_grpc"]["tie_aware_recall_at_100_mean"]["B"]
         ok = (rec["other_collections_present"] and all(v == exp_total for v in rec["counts_after_restart"].values())
               and rec.get("interrupted_duplicates", 0) == 0 and rec.get("interrupted_within_sent_bound", True)
-              and rec["count_after_resend"] == n and rec["serving_generation_recall_after_crash_mean"] >= rec["serving_generation_recall_before_crash_mean"] - 0.02
-              and rec["recall_after_recovery_mean"] >= rec["recall_original_B_mean"] - 0.01)
+              and rec["count_after_resend"] == n and rec["serving_generation_tie_recall_after_crash_mean"] >= rec["serving_generation_tie_recall_before_crash_mean"] - 0.01
+              and rec["tie_recall_after_recovery_mean"] >= rec["tie_recall_original_B_mean"] - 0.01)
     else:
         ok = False
     rec["status"] = status(ok)
